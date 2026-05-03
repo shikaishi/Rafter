@@ -55,6 +55,26 @@
   .status-error { background: #fce8e8; color: #8a1a1a; border: 1px solid #f0b0b0; }
   .status-sending { background: #e8f0fc; color: #1a3a7a; border: 1px solid #b0c8f0; }
   .empty-note { text-align: center; color: #888; font-size: 13px; padding: 8px; }
+  gmp-placeautocomplete {
+    width: 100%;
+    display: block;
+  }
+  gmp-placeautocomplete::part(input) {
+    border: 1px solid #d8d8d0;
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 14px;
+    background: #fafaf8;
+    width: 100%;
+    font-family: -apple-system, 'Helvetica Neue', sans-serif;
+    color: #1a1a1a;
+    outline: none;
+    box-sizing: border-box;
+  }
+  gmp-placeautocomplete::part(input):focus {
+    border-color: #2a6a4a;
+    background: white;
+  }
   @media (max-width: 600px) {
     .field-row { grid-template-columns: 1fr; }
     .field-row.three { grid-template-columns: 1fr 1fr; }
