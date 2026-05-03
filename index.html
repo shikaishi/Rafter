@@ -178,40 +178,87 @@ const MATERIAL_UUIDS = {
   'SUB-007': '9f26ffb8-7138-492c-952b-242449bcec8b',
   'SUB-008': 'a955c166-48e9-420c-a5b3-24244a0e52cb',
   'SUB-009': '17cce1a3-66f4-458e-9bdb-24244dbb496b',
-  'EXC-001': 'placeholder', 'EXC-002': 'placeholder',
-  'DRN-001': 'placeholder',
-  'RWS-001': 'placeholder', 'RWS-002': 'placeholder', 'RWS-003': 'placeholder',
-  'RWS-004': 'placeholder', 'RWS-005': 'placeholder',
-  'BWL-001': 'placeholder', 'BWL-002': 'placeholder', 'BWL-003': 'placeholder',
-  'BWL-004': 'placeholder', 'BWL-005': 'placeholder', 'BWL-006': 'placeholder',
-  'BWL-007': 'placeholder',
-  'BED-001': 'placeholder', 'BED-002': 'placeholder', 'BED-003': 'placeholder',
-  'BED-004': 'placeholder', 'BED-005': 'placeholder',
-  'CON-001': 'placeholder', 'CON-002': 'placeholder',
-  'PAV-001': 'placeholder', 'PAV-002': 'placeholder', 'PAV-003': 'placeholder',
-  'PAV-004': 'placeholder', 'PAV-005': 'placeholder', 'PAV-006': 'placeholder',
-  'PAV-007': 'placeholder', 'PAV-008': 'placeholder', 'PAV-009': 'placeholder',
-  'PAV-010': 'placeholder', 'PAV-011': 'placeholder',
-  'STP-001': 'placeholder', 'STP-002': 'placeholder', 'STP-003': 'placeholder',
-  'STP-004': 'placeholder', 'STP-005': 'placeholder',
-  'FEN-001': 'placeholder', 'FEN-002': 'placeholder', 'FEN-003': 'placeholder',
-  'GED-001': 'placeholder', 'GED-002': 'placeholder', 'GED-003': 'placeholder',
-  'TRL-001': 'placeholder', 'TRL-002': 'placeholder',
-  'SPL-001': 'placeholder', 'SPL-002': 'placeholder', 'SPL-003': 'placeholder',
-  'SPL-004': 'placeholder', 'SPL-005': 'placeholder', 'SPL-006': 'placeholder',
-  'IRR-001': 'placeholder', 'IRR-002': 'placeholder', 'IRR-003': 'placeholder',
-  'IRR-004': 'placeholder',
-  'MUL-001': 'placeholder', 'MUL-002': 'placeholder',
-  'ITF-001': 'placeholder', 'ITF-002': 'placeholder', 'ITF-003': 'placeholder',
-  'ITF-004': 'placeholder', 'ITF-005': 'placeholder',
-  'STF-001': 'placeholder', 'STF-002': 'placeholder', 'STF-003': 'placeholder',
-  'STF-004': 'placeholder', 'STF-005': 'placeholder', 'STF-006': 'placeholder',
-  'STF-007': 'placeholder',
-  'GRS-001': 'placeholder', 'GRS-002': 'placeholder', 'GRS-003': 'placeholder',
-  'GRS-004': 'placeholder', 'GRS-005': 'placeholder', 'GRS-006': 'placeholder',
-  'PLE-001': 'placeholder', 'PLE-002': 'placeholder', 'PLE-003': 'placeholder',
-  'TES-001': 'placeholder', 'TES-002': 'placeholder',
-  'PSE-001': 'placeholder',
+  'EXC-001': 'ff613ef3-a292-4c02-9713-2424403062bb',
+  'EXC-002': '83fdf2cd-9a27-4133-be5d-24244ae2d7db',
+  'DRN-001': '884e90f5-3dc4-43ba-b8a4-2424428eec6b',
+  'RWS-001': '79a161ee-2fad-4b49-a568-2424497fce8b',
+  'RWS-002': '9522f724-4220-4286-bca7-242446e1658b',
+  'RWS-003': '1bcc043e-4720-4ae9-a8a3-24244b34da6b',
+  'RWS-004': 'd15e50cf-6d73-435d-887b-24244091e90b',
+  'RWS-005': '5bec17e1-9773-4905-9543-24244698545b',
+  'BWL-001': 'a6cc6283-91fc-4c52-9138-24244aa2196b',
+  'BWL-002': '7c038358-4f83-40f3-8b8a-24244c394b7b',
+  'BWL-003': 'd234516f-7892-460b-8676-2424419466cb',
+  'BWL-004': 'dd0fdbb1-173b-453b-8112-24244092d20b',
+  'BWL-005': '27a985c9-8d48-4e58-a17c-24244670291b',
+  'BWL-006': 'c211153b-8640-415a-939a-24244f686ddb',
+  'BWL-007': '9fb5b326-9684-4a38-9a77-2424423b4c3b',
+  'BED-001': 'a0638c4a-c3f1-4c0f-80e8-24244007aa5b',
+  'BED-002': 'd049caab-2c8a-43b1-ab22-24244e86a13b',
+  'BED-003': 'f7455f70-4c88-4517-82d7-24244ccc308b',
+  'BED-004': 'c89baddf-8a13-4996-bdea-24244561d79b',
+  'BED-005': '395b095f-7c53-4aa5-9182-24244d03dc8b',
+  'CON-001': 'a1f29a85-c665-416c-ad6e-24244eec1ceb',
+  'CON-002': '49178ab8-908f-462f-9cbd-24244889e29b',
+  'PAV-001': '30eddd88-9f25-4542-8f88-24244d49d25b',
+  'PAV-002': '764df5f3-8a60-45e4-bccd-24244bd407db',
+  'PAV-003': 'eedc9931-2457-4c8c-8bb2-24244e12910b',
+  'PAV-004': '79f33dfb-ca1f-4e42-871d-24244abb0fab',
+  'PAV-005': '17716a30-69ef-4ebb-9617-2424415ada7b',
+  'PAV-006': 'dcd5390f-8c10-421c-8fd9-242442074b3b',
+  'PAV-007': 'd0c44da7-6acc-465f-b1f8-24244ce6a65b',
+  'PAV-008': '7e7a7cd1-5765-496f-ab85-24244b1a969b',
+  'PAV-009': 'ea296610-e76b-4939-8ba1-2424422a9eab',
+  'PAV-010': 'e7d8cd00-c435-418b-8d87-24244021020b',
+  'PAV-011': '8db015d2-1993-4be3-a53b-24244f806c8b',
+  'STP-001': 'dc0ba253-ccc1-48b8-8220-242440764f5b',
+  'STP-002': '9dd0a104-435d-4d8b-90f5-24244af3888b',
+  'STP-003': 'f32e6f89-8ddd-4ee8-8ad5-24244814ed0b',
+  'STP-004': 'd4312d2a-83ab-4dbc-9724-242449d0a8cb',
+  'STP-005': 'd8e8fcb1-b74c-4aa9-97c9-24244529764b',
+  'FEN-001': '507755a4-d4ea-4a6e-8d3b-242443baeb3b',
+  'FEN-002': 'e5df8825-f54b-4c03-bdd1-24244d6bc94b',
+  'FEN-003': 'b34190a1-cf6b-401e-8f58-24244ffa055b',
+  'GED-001': 'd1209891-fd4a-47ed-9784-2424491f578b',
+  'GED-002': 'b87a669e-3c9b-4faf-8389-24244357e33b',
+  'GED-003': '15827dad-0041-464d-a6eb-24244b1c216b',
+  'TRL-001': 'a8aa7881-3f2b-4387-8ff5-242449b7875b',
+  'TRL-002': 'cda5097b-6445-4ebf-9277-2424420ea2cb',
+  'SPL-001': '0d86f1a4-aaf4-479c-8f26-2424439650bb',
+  'SPL-002': '5bb8152d-192f-4f2f-8db3-24244812873b',
+  'SPL-003': '83886028-1a66-4f02-903c-242443ddb7ab',
+  'SPL-004': '601636e9-cc05-4422-8ce4-24244f38e73b',
+  'SPL-005': 'bd4161ca-86ea-44d0-9fa2-242447b825bb',
+  'SPL-006': '3a3a8e8d-3612-442f-9d36-24244eadbddb',
+  'IRR-001': '432225e6-5d7f-4fbb-9844-24244e90b94b',
+  'IRR-002': 'e12151a9-0560-448b-9bab-2424439aa35b',
+  'IRR-003': '5671aeff-7d6b-4531-902f-2424418c599b',
+  'IRR-004': 'c6ac7bb4-8828-4197-b8f5-242446908c9b',
+  'MUL-001': 'b7562c49-6a1c-4d16-8d94-2424498c6abb',
+  'MUL-002': '320124c8-d9df-412a-b600-242443b1aebb',
+  'ITF-001': 'eebd7880-ca14-4fee-941b-24244755223b',
+  'ITF-002': '903595b3-d30e-4c22-8f74-24244547ec9b',
+  'ITF-003': '30b69f48-c997-4e27-820a-242446e728db',
+  'ITF-004': '61a8529c-c117-4bf9-8e4b-2424411639db',
+  'ITF-005': '7c902a8f-fbe3-42fc-995a-24244ca2dbdb',
+  'STF-001': '49fec4f9-1396-4b87-9b25-2424436ea2fb',
+  'STF-002': 'b41a34a7-1386-4861-8ca4-242441d7a22b',
+  'STF-003': 'f6f770e1-ca70-4ca3-a556-242441d4057b',
+  'STF-004': '4a0b8bb9-6b69-4082-8042-242444198f9b',
+  'STF-005': '25630cfd-5d9c-4886-a40f-242448956dcb',
+  'STF-006': '244e005c-0675-4607-b4dc-24244b01e56b',
+  'STF-007': '4c0dffc0-4d9b-47d7-8e4e-242448e93ecb',
+  'GRS-001': 'a2b95e87-e492-491a-b2c2-242447ceb7fb',
+  'GRS-002': 'b78b87e5-b173-4437-a82b-24244971354b',
+  'GRS-003': '77c22137-2eb7-4284-9bf0-242446ac7aeb',
+  'GRS-004': '3f6025f9-19ae-49df-8f57-2424445e18db',
+  'GRS-005': '2741a859-5d67-44a3-87e9-242445b65f9b',
+  'GRS-006': '201e6120-257d-4531-9719-242441f6d1eb',
+  'PLE-001': '839b5125-b6c0-49a4-9eec-2424418ce86b',
+  'PLE-002': 'd52ecb5e-c8ad-471b-8f01-242441056bcb',
+  'PLE-003': '081fa817-933a-4c24-9f02-242448b4006b',
+  'TES-001': 'cca2d401-1b5d-492c-9465-2424445e864b',
+  'TES-002': '4f1c96c8-a392-431a-bf47-242447bdbcdb',
 };
 
 const CAT_PREFIX = {
@@ -398,6 +445,15 @@ function catFields(cat) {
 function buildLineItems() {
   const items = [];
   const f = state.fields;
+
+  function addItem(code, name, qty) {
+    if (!qty || parseFloat(qty) <= 0) return;
+    items.push({ itemCode: code, name, qty: parseFloat(qty), material_uuid: MATERIAL_UUIDS[code]||'' });
+  }
+  function addYN(fieldKey, code, name) {
+    if (f[fieldKey] === 'Yes') items.push({ itemCode: code, name, qty: 1, material_uuid: MATERIAL_UUIDS[code]||'' });
+  }
+
   const bhKeys = {
     'Site Setup & Cleanup':'ssc_bh','Excavation':'exc_bh','Drainage':'drn_bh',
     'Retaining Wall (Sleeper)':'rws_bh','Block Wall':'bwl_bh','Brick Edging':'bed_bh',
@@ -406,26 +462,147 @@ function buildLineItems() {
     'Mulching':'mul_bh','Instant Turf':'itf_bh','Synthetic Turf':'stf_bh',
     'Gravel & Stone':'grs_bh','Plant Establishment':'ple_bh','Turf Establishment':'tes_bh'
   };
-  const subKeys = {
-    'Site Setup & Cleanup':[['ssc_spray','SUB-001','Subcontractor - Spray'],['ssc_pclean','SUB-002','Subcontractor - Pressure Clean']],
-    'Drainage':[['drn_plumb','SUB-003','Subcontractor - Plumber']],
-    'Block Wall':[['bwl_sub','SUB-004','Subcontractor - Block Wall']],
-    'Paving':[['pav_sub','SUB-005','Subcontractor - Paving']],
-    'Steppers':[['stp_sub','SUB-006','Subcontractor - Steppers']],
-    'Carpentry':[['carp_sub','SUB-007','Subcontractor - Carpentry']],
-    'Synthetic Turf':[['stf_sub','SUB-008','Subcontractor - Synthetic Turf']],
-    'Paving Sealer':[['pse_sub','SUB-009','Subcontractor - Paving Sealer']]
-  };
+
   state.selected.forEach(cat => {
     const bk = bhKeys[cat];
     if(bk && f[bk] && parseFloat(f[bk]) > 0) {
       const labCode = LAB_CODES[cat]||'LAB-001';
       items.push({ itemCode: labCode, name:`Labour - ${cat}`, qty: parseFloat(f[bk]), material_uuid: MATERIAL_UUIDS[labCode]||'' });
     }
-    (subKeys[cat]||[]).forEach(([fk,code,name]) => {
-      if(f[fk] && parseFloat(f[fk]) > 0)
-        items.push({ itemCode: code, name, qty: 1, unitPrice: parseFloat(f[fk]), material_uuid: MATERIAL_UUIDS[code]||'' });
-    });
+    switch(cat) {
+      case 'Site Setup & Cleanup':
+        if(f.ssc_spray && parseFloat(f.ssc_spray)>0) items.push({itemCode:'SUB-001',name:'Subcontractor - Spray',qty:1,unitPrice:parseFloat(f.ssc_spray),material_uuid:MATERIAL_UUIDS['SUB-001']});
+        if(f.ssc_pclean && parseFloat(f.ssc_pclean)>0) items.push({itemCode:'SUB-002',name:'Subcontractor - Pressure Clean',qty:1,unitPrice:parseFloat(f.ssc_pclean),material_uuid:MATERIAL_UUIDS['SUB-002']});
+        break;
+      case 'Excavation':
+        if(f.exc_a1_sqm) addItem('EXC-001','Excavation - Machinery Hire',1);
+        if(f.exc_skip) addItem('EXC-002','Excavation - Skip Bin Disposal',1);
+        break;
+      case 'Drainage':
+        if(f.drn_plumb && parseFloat(f.drn_plumb)>0) items.push({itemCode:'SUB-003',name:'Subcontractor - Plumber',qty:1,unitPrice:parseFloat(f.drn_plumb),material_uuid:MATERIAL_UUIDS['SUB-003']});
+        if(f.drn_parts && parseFloat(f.drn_parts)>0) addItem('DRN-001','Drainage - Parts',1);
+        break;
+      case 'Retaining Wall (Sleeper)':
+        addItem('RWS-001','Retaining Wall - Sleepers',f.rws_count);
+        addItem('RWS-002','Retaining Wall - Posts',f.rws_posts);
+        addItem('RWS-003','Retaining Wall - Concrete (m3)',f.rws_conc);
+        if(f.rws_scoria) addItem('RWS-004','Retaining Wall - Scoria',1);
+        addYN('rws_del','RWS-005','Retaining Wall - Delivery');
+        break;
+      case 'Block Wall':
+        if(f.bwl_sub && parseFloat(f.bwl_sub)>0) items.push({itemCode:'SUB-004',name:'Subcontractor - Block Wall',qty:1,unitPrice:parseFloat(f.bwl_sub),material_uuid:MATERIAL_UUIDS['SUB-004']});
+        addItem('BWL-001','Block Wall - Besser Blocks',f.bwl_blocks);
+        addItem('BWL-002','Block Wall - Trench Mesh',f.bwl_mesh);
+        addItem('BWL-003','Block Wall - Rod N12',f.bwl_rod);
+        addItem('BWL-004','Block Wall - Footing Concrete (m3)',f.bwl_foot);
+        addItem('BWL-005','Block Wall - Corefill Concrete (m3)',f.bwl_core);
+        addYN('bwl_del','BWL-006','Block Wall - Concrete Delivery');
+        break;
+      case 'Brick Edging':
+        addItem('BED-001','Brick Edging - Crush Rock',f.bed_crush);
+        addItem('BED-002','Brick Edging - Brick Sand',f.bed_bsand);
+        addItem('BED-003','Brick Edging - Cement',f.bed_cem);
+        addItem('BED-004','Brick Edging - Mortar',f.bed_mort);
+        addYN('bed_del','BED-005','Brick Edging - Delivery');
+        break;
+      case 'Concreting':
+        addItem('CON-002','Concreting - Concrete (m3)',f.con_area);
+        addYN('con_pump','CON-001','Concreting - Concrete Pump Truck');
+        break;
+      case 'Paving':
+        if(f.pav_sub && parseFloat(f.pav_sub)>0) items.push({itemCode:'SUB-005',name:'Subcontractor - Paving',qty:1,unitPrice:parseFloat(f.pav_sub),material_uuid:MATERIAL_UUIDS['SUB-005']});
+        addItem('PAV-001','Paving - Pavers',f.pav_area);
+        addItem('PAV-002','Paving - Crushed Rock',f.pav_crush);
+        addItem('PAV-003','Paving - Concrete (m3)',f.pav_conc);
+        addItem('PAV-004','Paving - Reo Mesh',f.pav_reo);
+        addItem('PAV-005','Paving - Washed Sand',f.pav_wsand);
+        addItem('PAV-006','Paving - Brick Sand',f.pav_bsand);
+        addItem('PAV-007','Paving - Cement',f.pav_cem);
+        addItem('PAV-008','Paving - Bondcrete',f.pav_bond);
+        addYN('pav_grout','PAV-009','Paving - Grouting');
+        addYN('pav_caulk','PAV-010','Paving - Caulking');
+        addYN('pav_del','PAV-011','Paving - Delivery');
+        break;
+      case 'Steppers':
+        if(f.stp_sub && parseFloat(f.stp_sub)>0) items.push({itemCode:'SUB-006',name:'Subcontractor - Steppers',qty:1,unitPrice:parseFloat(f.stp_sub),material_uuid:MATERIAL_UUIDS['SUB-006']});
+        addItem('STP-001','Steppers - Steppers',f.stp_count);
+        addItem('STP-002','Steppers - Brick Sand',f.stp_bsand);
+        addItem('STP-003','Steppers - Cement',f.stp_cem);
+        addItem('STP-004','Steppers - Mortar',f.stp_mort);
+        addItem('STP-005','Steppers - Bondcrete',f.stp_bond);
+        break;
+      case 'Paving Sealer':
+        if(f.pse_sub && parseFloat(f.pse_sub)>0) items.push({itemCode:'SUB-009',name:'Subcontractor - Paving Sealer',qty:1,unitPrice:parseFloat(f.pse_sub),material_uuid:MATERIAL_UUIDS['SUB-009']});
+        break;
+      case 'Fencing':
+        addItem('FEN-001','Fencing - Materials',f.fen_instlen);
+        addItem('FEN-002','Fencing - Starter Posts',f.fen_start);
+        addItem('FEN-003','Fencing - Soldier Posts',f.fen_sold);
+        break;
+      case 'Carpentry':
+        if(f.carp_sub && parseFloat(f.carp_sub)>0) items.push({itemCode:'SUB-007',name:'Subcontractor - Carpentry',qty:1,unitPrice:parseFloat(f.carp_sub),material_uuid:MATERIAL_UUIDS['SUB-007']});
+        break;
+      case 'Garden Edging':
+        addItem('GED-001','Garden Edging - Materials',f.ged_len);
+        addItem('GED-002','Garden Edging - Stakes',f.ged_stakes);
+        addYN('ged_del','GED-003','Garden Edging - Delivery');
+        break;
+      case 'Trellis':
+        addItem('TRL-001','Trellis - Materials',f.trl_len);
+        addItem('TRL-002','Trellis - Rope',f.trl_rope);
+        break;
+      case 'Soil Prep & Planting':
+        addItem('SPL-001','Soil Prep and Planting - Compost (m3)',f.spl_comp);
+        addYN('spl_mach','SPL-002','Soil Prep and Planting - Machinery');
+        addYN('spl_plantdel','SPL-003','Soil Prep and Planting - Plant Delivery');
+        addItem('SPL-004','Soil Prep and Planting - AP Fertiliser',f.spl_apfert);
+        addItem('SPL-005','Soil Prep and Planting - Tree Stakes',f.spl_stakes);
+        addYN('spl_del','SPL-006','Soil Prep and Planting - Delivery');
+        break;
+      case 'Irrigation':
+        addYN('irr_ctrl','IRR-001','Irrigation - Controller');
+        addItem('IRR-002','Irrigation - Solenoid Valves',f.irr_sol);
+        addItem('IRR-003','Irrigation - Sprinklers',f.irr_sprink);
+        if(f.irr_parts && parseFloat(f.irr_parts)>0) addItem('IRR-004','Irrigation - Parts',1);
+        break;
+      case 'Mulching':
+        addItem('MUL-001','Mulching - Mulch (m3)',f.mul_vol);
+        addYN('mul_del','MUL-002','Mulching - Delivery');
+        break;
+      case 'Instant Turf':
+        addItem('ITF-001','Instant Turf - Turf',f.itf_area);
+        addItem('ITF-002','Instant Turf - Topsoil (m3)',f.itf_top);
+        addItem('ITF-003','Instant Turf - Washed Sand',f.itf_wsand);
+        addYN('itf_mach','ITF-004','Instant Turf - Machinery');
+        addYN('itf_del','ITF-005','Instant Turf - Delivery');
+        break;
+      case 'Synthetic Turf':
+        if(f.stf_sub && parseFloat(f.stf_sub)>0) items.push({itemCode:'SUB-008',name:'Subcontractor - Synthetic Turf',qty:1,unitPrice:parseFloat(f.stf_sub),material_uuid:MATERIAL_UUIDS['SUB-008']});
+        addItem('STF-001','Synthetic Turf - Turf',f.stf_area);
+        addItem('STF-002','Synthetic Turf - Crushed Rock',f.stf_crush);
+        addItem('STF-003','Synthetic Turf - Crusher Dust',f.stf_dust);
+        addItem('STF-004','Synthetic Turf - Pegs',f.stf_pegs);
+        addYN('stf_mach','STF-006','Synthetic Turf - Machinery');
+        addYN('stf_del','STF-007','Synthetic Turf - Delivery');
+        break;
+      case 'Gravel & Stone':
+        addItem('GRS-001','Gravel and Stone - Crushed Rock',f.grs_area);
+        addItem('GRS-002','Gravel and Stone - Gravel or Stone',f.grs_area);
+        addYN('grs_weed','GRS-003','Gravel and Stone - Weed Mat');
+        addItem('GRS-004','Gravel and Stone - Pegs',f.grs_pegs);
+        addYN('grs_mach','GRS-005','Gravel and Stone - Machinery');
+        addYN('grs_del','GRS-006','Gravel and Stone - Delivery');
+        break;
+      case 'Plant Establishment':
+        addItem('PLE-001','Plant Establishment - Liquid Fertiliser',f.ple_liqf);
+        addItem('PLE-002','Plant Establishment - AP Fertiliser',f.ple_apf);
+        addItem('PLE-003','Plant Establishment - Monthly Follow-up Visit',f.ple_fups);
+        break;
+      case 'Turf Establishment':
+        addItem('TES-001','Turf Establishment - Lawn Fertiliser',f.tes_lawn);
+        addItem('TES-002','Turf Establishment - Monthly Follow-up Visit',f.tes_fups);
+        break;
+    }
   });
   return items;
 }
