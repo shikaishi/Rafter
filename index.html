@@ -63,6 +63,7 @@
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC0jXEG5nCnpI-Odu8wKLpJc2n3HKRfUdg&libraries=places&callback=initAutocomplete" async defer></script>
 </head>
 <body>
 <div class="app">
@@ -450,6 +451,23 @@ function toggleCat(cat) {
   render();
 }
 
+function initAutocomplete() {
+  const input = document.getElementById('job_addr_field');
+  if (!input) return;
+  const autocomplete = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: 'au' },
+    fields: ['formatted_address'],
+    types: ['address']
+  });
+  autocomplete.addListener('place_changed', () => {
+    const place = autocomplete.getPlace();
+    if (place.formatted_address) {
+      state.job.siteAddress = place.formatted_address;
+      input.value = place.formatted_address;
+    }
+  });
+}
+
 function captureJobFields() {
   const cn = document.getElementById('job_client_field');
   const sa = document.getElementById('job_addr_field');
@@ -538,6 +556,10 @@ function render() {
     ${state.selected.length > 0
       ? `<button class="btn btn-primary" onclick="captureJobFields();state.screen='summary';state.sendStatus='';render()">Review &amp; Submit &#8594;</button>`
       : `<p class="empty-note">Select at least one category above to continue.</p>`}`;
+  // Reinitialise address autocomplete after render
+  setTimeout(() => {
+    if (typeof google !== 'undefined' && state.screen === 'form') initAutocomplete();
+  }, 100);
 }
 
 render();
