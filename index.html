@@ -77,6 +77,45 @@
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script>
+// Monkey-patch Shadow DOM to allow styling of gmp-place-autocomplete
+if (!window.gmpShadowPatched) {
+  window.gmpShadowPatched = true;
+  const originalAttachShadow = Element.prototype.attachShadow;
+  Element.prototype.attachShadow = function(init) {
+    if (this.localName === 'gmp-place-autocomplete') {
+      const shadow = originalAttachShadow.call(this, { ...init, mode: 'open' });
+      const style = document.createElement('style');
+      style.textContent = `
+        .input-container {
+          border: 1px solid #d8d8d0 !important;
+          border-radius: 8px !important;
+          background-color: #fafaf8 !important;
+          box-shadow: none !important;
+        }
+        .input-container:focus-within {
+          border-color: #2a6a4a !important;
+          background-color: white !important;
+        }
+        input {
+          border: none !important;
+          outline: none !important;
+          font-size: 14px !important;
+          font-family: -apple-system, 'Helvetica Neue', sans-serif !important;
+          background: transparent !important;
+          color: #1a1a1a !important;
+        }
+        .autocomplete-icon svg {
+          fill: #2a6a4a !important;
+        }
+      `;
+      shadow.appendChild(style);
+      return shadow;
+    }
+    return originalAttachShadow.call(this, init);
+  };
+}
+</script>
 <script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC0jXEG5nCnpI-Odu8wKLpJc2n3HKRfUdg&libraries=places,marker&v=weekly&callback=initAutocomplete" async defer></script>
 </head>
 <body>
