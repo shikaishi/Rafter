@@ -453,47 +453,40 @@ function toggleCat(cat) {
 
 async function initAutocomplete() {
   const input = document.getElementById('job_addr_field');
-  if (!input) return;
+  if (!input || input.tagName === 'GMP-PLACEAUTOCOMPLETE') return;
   
   try {
     const { PlaceAutocompleteElement } = await google.maps.importLibrary('places');
     
-    // Create the autocomplete element
+    // Create the autocomplete element restricted to Australia
     const autocompleteEl = new PlaceAutocompleteElement({
-      componentRestrictions: { country: 'au' },
+      includedRegionCodes: ['au'],
       types: ['address']
     });
     
     // Style it to match our form
     autocompleteEl.style.width = '100%';
-    autocompleteEl.style.border = '1px solid #d8d8d0';
-    autocompleteEl.style.borderRadius = '8px';
-    autocompleteEl.style.padding = '8px 10px';
-    autocompleteEl.style.fontSize = '14px';
-    autocompleteEl.style.background = '#fafaf8';
-    autocompleteEl.style.fontFamily = 'inherit';
-    autocompleteEl.style.outline = 'none';
+    autocompleteEl.style.display = 'block';
     
     // Replace the input with the autocomplete element
     input.parentNode.replaceChild(autocompleteEl, input);
     autocompleteEl.id = 'job_addr_field';
     
-    // Listen for place selection
-    autocompleteEl.addEventListener('gmp-placeselect', (event) => {
+    // Listen for place selection - correct event for PlaceAutocompleteElement
+    autocompleteEl.addEventListener('gmp-select', async (event) => {
       const place = event.placePrediction.toPlace();
-      place.fetchFields({ fields: ['formattedAddress'] }).then(() => {
-        state.job.siteAddress = place.formattedAddress;
-      });
+      await place.fetchFields({ fields: ['formattedAddress'] });
+      state.job.siteAddress = place.formattedAddress;
+      console.log('Address selected:', place.formattedAddress);
     });
     
-    // Also update state on any input change
+    // Also update state on any input change for manual typing
     autocompleteEl.addEventListener('input', (e) => {
-      state.job.siteAddress = e.target.value;
+      state.job.siteAddress = e.target.value || '';
     });
     
   } catch(err) {
-    // Fallback to plain text input if Places fails
-    console.log('Places API not available, using plain text input');
+    console.log('Places API error:', err);
   }
 }
 
