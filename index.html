@@ -77,10 +77,6 @@
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
-<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
-<script>
-  emailjs.init({ publicKey: '0TSIRgj7CHuJgodsx' });
-</script>
 <script>
 // Monkey-patch Shadow DOM to allow styling of gmp-place-autocomplete
 if (!window.gmpShadowPatched) {
@@ -663,20 +659,7 @@ async function sendToMake() {
       body: JSON.stringify(payload)
     }) : Promise.resolve();
 
-    // Send email via EmailJS with PDF attachment
-    const emailPromise = emailjs.send('service_raftermail', 'template_ju0io6p', {
-      client_name: payload.clientName || 'Unknown Client',
-      site_address: payload.siteAddress || '',
-      date: payload.date || '',
-      prepared_by: payload.preparedBy || '',
-      categories: payload.categories || '',
-      notes: payload.notes || '',
-      pdf_base64: pdfBase64,
-      pdf_name: pdfName,
-      to_email: 'willthurlow73@gmail.com'
-    });
-
-    await Promise.all([webhookPromise, emailPromise]);
+    await webhookPromise;
     state.sendStatus='success'; render();
   } catch(e) {
     console.error('Send error:', e);
