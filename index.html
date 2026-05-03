@@ -77,6 +77,10 @@
   }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@emailjs/browser@4/dist/email.min.js"></script>
+<script>
+  emailjs.init({ publicKey: '0TSIRgj7CHuJgodsx' });
+</script>
 <script>
 // Monkey-patch Shadow DOM to allow styling of gmp-place-autocomplete
 if (!window.gmpShadowPatched) {
@@ -145,6 +149,73 @@ const LAB_CODES = {
   'Irrigation':'LAB-014','Mulching':'LAB-015','Instant Turf':'LAB-016',
   'Synthetic Turf':'LAB-017','Gravel & Stone':'LAB-018',
   'Plant Establishment':'LAB-019','Turf Establishment':'LAB-020'
+};
+
+const MATERIAL_UUIDS = {
+  'LAB-001': '534264b6-f393-4228-ba40-242444adcf7b',
+  'LAB-002': 'f2ee3517-7e9c-424a-b4b2-24244b0fe0cb',
+  'LAB-003': '90160008-8cfa-48d1-9c6a-242445b77b3b',
+  'LAB-004': 'c4f58936-f0e2-4fe0-8b82-242447d0c8ab',
+  'LAB-005': 'f9ce5f4a-e6ed-449a-b50f-242441f714db',
+  'LAB-006': '66fb615f-f727-42ff-b9a4-2424497444eb',
+  'LAB-007': '1b22b2d8-3743-4227-b809-2424406150fb',
+  'LAB-008': 'd7ffa764-d521-4bf1-a12d-242442ab982b',
+  'LAB-009': 'b85ab110-f595-4475-898e-2424408db0db',
+  'LAB-010': 'e549a7e4-e36f-4ad7-a722-242442c4604b',
+  'LAB-011': 'da316045-a6e7-4b20-a06f-24244c5f86ab',
+  'LAB-012': '3413f911-86fa-499a-a54a-242449eecf5b',
+  'LAB-013': '9b2c39b0-6a1f-4ffe-a804-24244803278b',
+  'LAB-014': '9af65e9b-91b7-44dd-8c98-242440a9f97b',
+  'LAB-015': 'd48a3618-ce17-4e91-9f0a-24244882884b',
+  'LAB-016': 'c6b8d1d5-d5aa-42a7-bf1c-24244dfee3bb',
+  'LAB-017': '6a062105-cc05-423d-b17d-24244392980b',
+  'LAB-018': '53facbe3-b848-4fd3-ac55-24244fa3d56b',
+  'LAB-019': 'd478ec9b-3e52-4205-9b1a-242442c57f8b',
+  'LAB-020': 'f26b3552-3398-4709-b619-24244e37ad3b',
+  'LAB-021': '3f3da100-0608-4b5d-a774-24244f835eeb',
+  'SUB-001': '1e202964-ce03-4f78-8df5-242448f442fb',
+  'SUB-002': '3e2d8a7d-5a28-4a0d-995a-24244dab270b',
+  'SUB-003': '4833882c-b1cc-418a-8545-242447fdc44b',
+  'SUB-004': '87b5e43a-9562-43fd-afca-24244e6789eb',
+  'SUB-005': 'df469663-37f8-4924-b4ac-24244b05bf7b',
+  'SUB-006': 'cb065990-a686-414e-9a42-242441e5538b',
+  'SUB-007': '9f26ffb8-7138-492c-952b-242449bcec8b',
+  'SUB-008': 'a955c166-48e9-420c-a5b3-24244a0e52cb',
+  'SUB-009': '17cce1a3-66f4-458e-9bdb-24244dbb496b',
+  'EXC-001': 'placeholder', 'EXC-002': 'placeholder',
+  'DRN-001': 'placeholder',
+  'RWS-001': 'placeholder', 'RWS-002': 'placeholder', 'RWS-003': 'placeholder',
+  'RWS-004': 'placeholder', 'RWS-005': 'placeholder',
+  'BWL-001': 'placeholder', 'BWL-002': 'placeholder', 'BWL-003': 'placeholder',
+  'BWL-004': 'placeholder', 'BWL-005': 'placeholder', 'BWL-006': 'placeholder',
+  'BWL-007': 'placeholder',
+  'BED-001': 'placeholder', 'BED-002': 'placeholder', 'BED-003': 'placeholder',
+  'BED-004': 'placeholder', 'BED-005': 'placeholder',
+  'CON-001': 'placeholder', 'CON-002': 'placeholder',
+  'PAV-001': 'placeholder', 'PAV-002': 'placeholder', 'PAV-003': 'placeholder',
+  'PAV-004': 'placeholder', 'PAV-005': 'placeholder', 'PAV-006': 'placeholder',
+  'PAV-007': 'placeholder', 'PAV-008': 'placeholder', 'PAV-009': 'placeholder',
+  'PAV-010': 'placeholder', 'PAV-011': 'placeholder',
+  'STP-001': 'placeholder', 'STP-002': 'placeholder', 'STP-003': 'placeholder',
+  'STP-004': 'placeholder', 'STP-005': 'placeholder',
+  'FEN-001': 'placeholder', 'FEN-002': 'placeholder', 'FEN-003': 'placeholder',
+  'GED-001': 'placeholder', 'GED-002': 'placeholder', 'GED-003': 'placeholder',
+  'TRL-001': 'placeholder', 'TRL-002': 'placeholder',
+  'SPL-001': 'placeholder', 'SPL-002': 'placeholder', 'SPL-003': 'placeholder',
+  'SPL-004': 'placeholder', 'SPL-005': 'placeholder', 'SPL-006': 'placeholder',
+  'IRR-001': 'placeholder', 'IRR-002': 'placeholder', 'IRR-003': 'placeholder',
+  'IRR-004': 'placeholder',
+  'MUL-001': 'placeholder', 'MUL-002': 'placeholder',
+  'ITF-001': 'placeholder', 'ITF-002': 'placeholder', 'ITF-003': 'placeholder',
+  'ITF-004': 'placeholder', 'ITF-005': 'placeholder',
+  'STF-001': 'placeholder', 'STF-002': 'placeholder', 'STF-003': 'placeholder',
+  'STF-004': 'placeholder', 'STF-005': 'placeholder', 'STF-006': 'placeholder',
+  'STF-007': 'placeholder',
+  'GRS-001': 'placeholder', 'GRS-002': 'placeholder', 'GRS-003': 'placeholder',
+  'GRS-004': 'placeholder', 'GRS-005': 'placeholder', 'GRS-006': 'placeholder',
+  'PLE-001': 'placeholder', 'PLE-002': 'placeholder', 'PLE-003': 'placeholder',
+  'TES-001': 'placeholder', 'TES-002': 'placeholder',
+  'PSE-001': 'placeholder',
 };
 
 const CAT_PREFIX = {
@@ -351,11 +422,13 @@ function buildLineItems() {
   };
   state.selected.forEach(cat => {
     const bk = bhKeys[cat];
-    if(bk && f[bk] && parseFloat(f[bk]) > 0)
-      items.push({ itemCode: LAB_CODES[cat]||'LAB-001', name:`Labour - ${cat}`, qty: parseFloat(f[bk]) });
+    if(bk && f[bk] && parseFloat(f[bk]) > 0) {
+      const labCode = LAB_CODES[cat]||'LAB-001';
+      items.push({ itemCode: labCode, name:`Labour - ${cat}`, qty: parseFloat(f[bk]), material_uuid: MATERIAL_UUIDS[labCode]||'' });
+    }
     (subKeys[cat]||[]).forEach(([fk,code,name]) => {
       if(f[fk] && parseFloat(f[fk]) > 0)
-        items.push({ itemCode: code, name, qty: 1, unitPrice: parseFloat(f[fk]) });
+        items.push({ itemCode: code, name, qty: 1, unitPrice: parseFloat(f[fk]), material_uuid: MATERIAL_UUIDS[code]||'' });
     });
   });
   return items;
@@ -378,90 +451,197 @@ function buildPayload() {
 
 function generatePDFBase64() {
   const { jsPDF } = window.jspdf;
-  const doc = new jsPDF();
+  const doc = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4' });
   const p = buildPayload();
-  let y = 15;
-  const lineH = 7;
+  
   const margin = 15;
   const pageW = 180;
-
-  // Header
-  doc.setFontSize(16);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Two Men and a Shovel', margin, y);
-  y += lineH;
-  doc.setFontSize(11);
-  doc.setFont('helvetica', 'normal');
-  doc.text('Site Visit Quoting Sheet', margin, y);
-  y += lineH + 3;
-
-  // Divider
-  doc.setDrawColor(40, 100, 60);
-  doc.line(margin, y, margin + pageW, y);
-  y += 8;
-
-  // Job Details
-  doc.setFontSize(12);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Job Details', margin, y);
-  y += lineH;
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'normal');
-  doc.text(`Client: ${p.clientName}`, margin, y); y += lineH;
-  doc.text(`Address: ${p.siteAddress}`, margin, y); y += lineH;
-  doc.text(`Date: ${p.date}`, margin, y); y += lineH;
-  doc.text(`Prepared by: ${p.preparedBy}`, margin, y); y += lineH;
-  doc.text(`Categories: ${p.categories}`, margin, y); y += lineH;
-  if(p.notes) { 
-    const noteLines = doc.splitTextToSize(`Notes: ${p.notes}`, pageW);
-    doc.text(noteLines, margin, y); 
-    y += noteLines.length * lineH; 
+  const pageH = 297;
+  const lineH = 6;
+  const sectionGap = 5;
+  
+  // Colours
+  const darkGreen = [26, 58, 42];
+  const midGreen = [42, 106, 74];
+  const lightGreen = [232, 244, 238];
+  const black = [17, 31, 28];
+  const grey = [100, 100, 100];
+  const lightGrey = [240, 240, 238];
+  
+  let y = 0;
+  
+  function checkPage(needed) {
+    if (y + needed > pageH - 20) {
+      doc.addPage();
+      y = 15;
+      drawPageHeader();
+    }
   }
-  y += 5;
+  
+  function drawPageHeader() {
+    // Green header bar
+    doc.setFillColor(...darkGreen);
+    doc.rect(0, 0, 210, 22, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(14);
+    doc.setFont('helvetica', 'bold');
+    doc.text('TWO MEN AND A SHOVEL', margin, 10);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Site Visit Quoting Sheet', margin, 17);
+    // Right side - date
+    doc.setFontSize(8);
+    doc.text(`${p.date}  |  Prepared by: ${p.preparedBy}`, 210 - margin, 10, { align: 'right' });
+    doc.setTextColor(...black);
+    y = 30;
+  }
 
-  // Category Details
+  function sectionHeader(title) {
+    checkPage(14);
+    doc.setFillColor(...lightGreen);
+    doc.rect(margin, y, pageW, 8, 'F');
+    doc.setFillColor(...midGreen);
+    doc.rect(margin, y, 3, 8, 'F');
+    doc.setTextColor(...darkGreen);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text(title.toUpperCase(), margin + 6, y + 5.5);
+    doc.setTextColor(...black);
+    y += 11;
+  }
+  
+  function fieldRow(label, value) {
+    if (!value) return;
+    checkPage(lineH + 2);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...grey);
+    doc.text(label.toUpperCase(), margin + 2, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...black);
+    doc.setFontSize(9);
+    const lines = doc.splitTextToSize(String(value), pageW - 50);
+    doc.text(lines, margin + 55, y);
+    y += Math.max(lineH, lines.length * lineH);
+  }
+
+  function twoColRow(label1, val1, label2, val2) {
+    if (!val1 && !val2) return;
+    checkPage(lineH + 2);
+    const colW = pageW / 2 - 2;
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(...grey);
+    if (val1) doc.text(label1.toUpperCase(), margin + 2, y);
+    if (val2) doc.text(label2.toUpperCase(), margin + colW + 6, y);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...black);
+    doc.setFontSize(9);
+    if (val1) doc.text(String(val1), margin + 30, y);
+    if (val2) doc.text(String(val2), margin + colW + 30, y);
+    y += lineH;
+  }
+
+  // Draw first page header
+  drawPageHeader();
+
+  // Job summary box
+  doc.setFillColor(...lightGrey);
+  doc.roundedRect(margin, y, pageW, 28, 2, 2, 'F');
+  doc.setFontSize(13);
+  doc.setFont('helvetica', 'bold');
+  doc.setTextColor(...darkGreen);
+  doc.text(p.clientName || '—', margin + 4, y + 8);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  doc.setTextColor(...grey);
+  doc.text(p.siteAddress || '—', margin + 4, y + 15);
+  doc.setFontSize(8);
+  doc.text(`Categories: ${p.categories || '—'}`, margin + 4, y + 22);
+  y += 34;
+
+  // General notes
+  if (p.notes) {
+    doc.setFillColor(255, 249, 230);
+    doc.setDrawColor(200, 160, 0);
+    doc.roundedRect(margin, y, pageW, 10 + doc.splitTextToSize(p.notes, pageW - 8).length * lineH, 2, 2, 'FD');
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(140, 100, 0);
+    doc.text('SITE NOTES', margin + 3, y + 5);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...black);
+    doc.setFontSize(9);
+    const noteLines = doc.splitTextToSize(p.notes, pageW - 8);
+    doc.text(noteLines, margin + 3, y + 10);
+    y += 14 + noteLines.length * lineH;
+  }
+
+  y += sectionGap;
+
+  // Category sections
   state.selected.forEach(cat => {
     const prefix = CAT_PREFIX[cat];
-    const entries = Object.entries(state.fields).filter(([k,v])=> v && k.startsWith(prefix+'_'));
-    if(!entries.length) return;
-    if(y > 260) { doc.addPage(); y = 15; }
-    doc.line(margin, y, margin + pageW, y); y += 6;
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text(cat, margin, y); y += lineH;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    entries.forEach(([k,v]) => {
-      if(y > 270) { doc.addPage(); y = 15; }
-      const label = FIELD_LABELS[k] || k;
-      const line = doc.splitTextToSize(`${label}: ${v}`, pageW);
-      doc.text(line, margin, y);
-      y += line.length * lineH;
-    });
-    y += 3;
+    const entries = Object.entries(state.fields).filter(([k,v]) => v && k.startsWith(prefix + '_'));
+    if (!entries.length) return;
+    
+    sectionHeader(cat);
+    
+    // Group into pairs for two-column layout
+    for (let i = 0; i < entries.length; i += 2) {
+      const [k1, v1] = entries[i];
+      const [k2, v2] = entries[i + 1] || [null, null];
+      const l1 = FIELD_LABELS[k1] || k1;
+      const l2 = k2 ? (FIELD_LABELS[k2] || k2) : null;
+      twoColRow(l1, v1, l2, v2);
+    }
+    y += sectionGap;
   });
 
-  // Line Items
-  if(p.lineItems && p.lineItems.length > 0) {
-    if(y > 240) { doc.addPage(); y = 15; }
-    doc.line(margin, y, margin + pageW, y); y += 6;
+  // Line items table
+  if (p.lineItems && p.lineItems.length > 0) {
+    sectionHeader('ServiceM8 Line Items');
+    
+    // Table header
+    doc.setFillColor(...darkGreen);
+    doc.rect(margin, y, pageW, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(8);
     doc.setFont('helvetica', 'bold');
-    doc.setFontSize(11);
-    doc.text('Line Items', margin, y); y += lineH;
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(10);
-    p.lineItems.forEach(li => {
-      if(y > 270) { doc.addPage(); y = 15; }
-      doc.text(`${li.itemCode} — ${li.name} — Qty: ${li.qty}`, margin, y);
-      y += lineH;
+    doc.text('ITEM CODE', margin + 2, y + 5);
+    doc.text('DESCRIPTION', margin + 30, y + 5);
+    doc.text('QTY', margin + pageW - 15, y + 5);
+    y += 7;
+
+    p.lineItems.forEach((li, idx) => {
+      checkPage(7);
+      if (idx % 2 === 0) {
+        doc.setFillColor(248, 249, 246);
+        doc.rect(margin, y, pageW, 6, 'F');
+      }
+      doc.setTextColor(...black);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(li.itemCode || '', margin + 2, y + 4);
+      doc.text(li.name || '', margin + 30, y + 4);
+      doc.text(String(li.qty || ''), margin + pageW - 15, y + 4);
+      y += 6;
     });
+    y += sectionGap;
   }
 
-  // Footer
-  y += 5;
-  doc.setFontSize(8);
-  doc.setTextColor(150);
-  doc.text(`Generated by Rafter | ${new Date().toLocaleString('en-AU')}`, margin, y);
+  // Footer on each page
+  const totalPages = doc.getNumberOfPages();
+  for (let i = 1; i <= totalPages; i++) {
+    doc.setPage(i);
+    doc.setFillColor(...darkGreen);
+    doc.rect(0, pageH - 12, 210, 12, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(7);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`Two Men and a Shovel  |  Site Visit Quote  |  ${new Date().toLocaleString('en-AU')}`, margin, pageH - 5);
+    doc.text(`Page ${i} of ${totalPages}`, 210 - margin, pageH - 5, { align: 'right' });
+  }
 
   return doc.output('datauristring').split(',')[1];
 }
@@ -471,15 +651,37 @@ async function sendToMake() {
   state.sendStatus='sending'; render();
   try {
     const payload = buildPayload();
-    payload.pdfBase64 = generatePDFBase64();
-    payload.pdfName = `Quote_${(payload.clientName||'Draft').replace(/\s+/g,'_')}_${payload.date}.pdf`;
-    const response = await fetch(state.webhookUrl, {
+    const pdfBase64 = generatePDFBase64();
+    const pdfName = `Quote_${(payload.clientName||'Draft').replace(/\s+/g,'_')}_${payload.date}.pdf`;
+    payload.pdfBase64 = pdfBase64;
+    payload.pdfName = pdfName;
+
+    // Send to Make webhook (ServiceM8)
+    const webhookPromise = state.webhookUrl ? fetch(state.webhookUrl, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(payload)
+    }) : Promise.resolve();
+
+    // Send email via EmailJS with PDF attachment
+    const emailPromise = emailjs.send('service_raftermail', 'template_ju0io6p', {
+      client_name: payload.clientName || 'Unknown Client',
+      site_address: payload.siteAddress || '',
+      date: payload.date || '',
+      prepared_by: payload.preparedBy || '',
+      categories: payload.categories || '',
+      notes: payload.notes || '',
+      pdf_base64: pdfBase64,
+      pdf_name: pdfName,
+      to_email: 'willthurlow73@gmail.com'
     });
+
+    await Promise.all([webhookPromise, emailPromise]);
     state.sendStatus='success'; render();
-  } catch(e) { state.sendStatus='error:Failed to send. Check the webhook URL and try again.'; render(); }
+  } catch(e) {
+    console.error('Send error:', e);
+    state.sendStatus='error:Failed to send. Check console for details.'; render();
+  }
 }
 
 function downloadSummary() {
