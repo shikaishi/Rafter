@@ -608,6 +608,12 @@ function buildLineItems() {
 }
 
 function buildPayload() {
+  // Build a formatted job note for ServiceM8 job diary
+  const noteLines = [];
+  noteLines.push('Categories: ' + state.selected.join(', '));
+  if (state.job.notes) noteLines.push('Site Notes: ' + state.job.notes);
+  const jobNote = noteLines.join('\n');
+
   const flat = {
     clientName: state.job.clientName,
     siteAddress: state.job.siteAddress,
@@ -615,6 +621,8 @@ function buildPayload() {
     preparedBy: state.job.preparedBy,
     notes: state.job.notes,
     categories: state.selected.join(', '),
+    jobNote: jobNote,
+    staffUuid: '5ba57e76-53c0-4340-86ce-24244cfa725b',
     submittedAt: new Date().toISOString(),
     lineItems: buildLineItems()
   };
