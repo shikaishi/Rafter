@@ -47,10 +47,19 @@
 </div>
 
 <div class="card">
+  <h2>Step 1b — Fetch Staff UUID <span id="badge_staff" class="status-badge badge-pending">pending</span></h2>
+  <p class="step">JobActivity records require a staff_uuid. This fetches your staff record automatically.</p>
+  <button onclick="fetchStaff()">Fetch Staff UUID</button>
+  <div id="result_staff" class="result"></div>
+</div>
+
+<div class="card">
   <h2>Step 2 — Test publish_job_notes <span id="badge_notes" class="status-badge badge-pending">pending</span></h2>
   <p class="step">POSTs a test note to the job diary. A 200/201 response means the scope is approved. A 403 means it's not.</p>
   <label>Job UUID (auto-filled from Step 1)</label>
   <input type="text" id="job_uuid" placeholder="Run Step 1 first...">
+  <label>Staff UUID (auto-filled from Step 1b)</label>
+  <input type="text" id="staff_uuid" placeholder="Run Step 1b first...">
   <label>Test Note</label>
   <textarea id="test_note">Test note from Rafter scope tester — can delete.</textarea>
   <button onclick="testJobNotes()">Test publish_job_notes</button>
@@ -82,6 +91,32 @@
     const el = document.getElementById(id);
     el.textContent = text;
     el.className = 'status-badge ' + (type === 'ok' ? 'badge-ok' : type === 'fail' ? 'badge-fail' : 'badge-pending');
+  }
+
+  async function fetchStaff() {
+    show('result_staff', 'Fetching staff...', 'info');
+    try {
+      const res = await fetch('https://api.servicem8.com/api_1.0/staff.json?%24top=1', {
+        headers: { 'Authorization': getAuth(), 'Accept': 'application/json' }
+      });
+      const text = await res.text();
+      const data = JSON.parse(text);
+      if (!data.length) {
+        show('result_staff', 'No staff records found.', 'error');
+        setBadge('badge_staff', 'fail', 'no staff');
+        return;
+      }
+      const staff = data[0];
+      document.getElementById('staff_uuid').value = staff.uuid;
+      show('result_staff',
+        'SUCCESS — Staff found:\n\nUUID: ' + staff.uuid + '\nName: ' + (staff.first + ' ' + staff.last).trim(),
+        'success');
+      setBadge('badge_staff', 'ok', '✓ got UUID');
+    } catch(e) {
+      show('result_staff', 'Error: ' + e.message, 'error');
+      setBadge('badge_staff', 'fail', 'CORS error');
+      appendCorsNote('result_staff');
+    }
   }
 
   async function fetchJob() {
@@ -117,7 +152,9 @@
 
   async function testJobNotes() {
     const uuid = document.getElementById('job_uuid').value.trim();
+    const staff_uuid = document.getElementById('staff_uuid').value.trim();
     if (!uuid) { alert('Run Step 1 first to get a job UUID.'); return; }
+    if (!staff_uuid) { alert('Run Step 1b first to get a staff UUID.'); return; }
     const note = document.getElementById('test_note').value;
     show('result_notes', 'Posting job note...', 'info');
     try {
@@ -128,7 +165,7 @@
           'Content-Type': 'application/json',
           'Accept': 'application/json'
         },
-        body: JSON.stringify({ job_uuid: uuid, note: note, active: 1 })
+        body: JSON.stringify({ job_uuid: uuid, staff_uuid: staff_uuid, note: note, active: 1 })
       });
       const text = await res.text();
       if (res.status === 403) {
