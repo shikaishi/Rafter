@@ -612,7 +612,7 @@ function buildPayload() {
   const noteLines = [];
   noteLines.push('Categories: ' + state.selected.join(', '));
   if (state.job.notes) noteLines.push('Site Notes: ' + state.job.notes);
-  const jobNote = noteLines.join('\n');
+  const jobNote = noteLines.join(' | ');
 
   const flat = {
     clientName: state.job.clientName,
