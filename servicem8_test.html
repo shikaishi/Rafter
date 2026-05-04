@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>ServiceM8 Scope Tester — Rafter</title>
+<style>
+  body { font-family: -apple-system, sans-serif; background: #E8FFFC; color: #1a1a1a; padding: 32px; max-width: 700px; margin: 0 auto; }
+  h1 { color: #1a3a2a; font-size: 20px; margin-bottom: 4px; }
+  p.sub { color: #6b8f7a; font-size: 13px; margin-bottom: 28px; }
+  .card { background: white; border-radius: 10px; padding: 24px; margin-bottom: 20px; border: 1px solid #d4ede8; }
+  h2 { font-size: 14px; font-weight: 700; color: #1a3a2a; text-transform: uppercase; letter-spacing: 0.5px; margin: 0 0 16px; }
+  label { display: block; font-size: 12px; font-weight: 600; color: #6b8f7a; text-transform: uppercase; margin-bottom: 4px; }
+  input, textarea { width: 100%; box-sizing: border-box; padding: 10px 12px; border: 1px solid #d0d0c8; border-radius: 6px; font-size: 14px; margin-bottom: 14px; }
+  textarea { height: 80px; resize: vertical; }
+  button { background: #1a3a2a; color: white; border: none; padding: 11px 24px; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; margin-right: 10px; }
+  button:hover { background: #2a5a3a; }
+  button.secondary { background: #6b8f7a; }
+  .result { margin-top: 16px; padding: 14px; border-radius: 6px; font-size: 13px; font-family: monospace; white-space: pre-wrap; word-break: break-all; display: none; }
+  .result.success { background: #e8fff4; border: 1px solid #5cb85c; color: #1a4a1a; }
+  .result.error   { background: #fff0f0; border: 1px solid #d9534f; color: #4a1a1a; }
+  .result.info    { background: #f0f8ff; border: 1px solid #5bc0de; color: #1a3a4a; }
+  .status-badge { display: inline-block; padding: 2px 10px; border-radius: 20px; font-size: 12px; font-weight: 700; margin-left: 8px; }
+  .badge-ok  { background: #e8fff4; color: #1a4a1a; border: 1px solid #5cb85c; }
+  .badge-fail { background: #fff0f0; color: #4a1a1a; border: 1px solid #d9534f; }
+  .badge-pending { background: #fff8e8; color: #4a3a1a; border: 1px solid #e8a030; }
+  .step { font-size: 12px; color: #6b8f7a; margin-bottom: 6px; }
+</style>
+</head>
+<body>
+
+<h1>ServiceM8 Scope Tester</h1>
+<p class="sub">Tests publish_job_notes and manage_attachments scopes against your ServiceM8 account.</p>
+
+<div class="card">
+  <h2>Credentials</h2>
+  <label>Email</label>
+  <input type="email" id="sm8_email" value="willthurlow73@gmail.com">
+  <label>Password</label>
+  <input type="password" id="sm8_password" placeholder="Your ServiceM8 password">
+</div>
+
+<div class="card">
+  <h2>Step 1 — Fetch a Job UUID <span id="badge_job" class="status-badge badge-pending">pending</span></h2>
+  <p class="step">Calls GET /api_1.0/job.json to retrieve your first job. If this fails with 401, your credentials are wrong. If it returns jobs, we grab a UUID for the next tests.</p>
+  <button onclick="fetchJob()">Fetch Job UUID</button>
+  <div id="result_job" class="result"></div>
+</div>
+
+<div class="card">
+  <h2>Step 2 — Test publish_job_notes <span id="badge_notes" class="status-badge badge-pending">pending</span></h2>
+  <p class="step">POSTs a test note to the job diary. A 200/201 response means the scope is approved. A 403 means it's not.</p>
+  <label>Job UUID (auto-filled from Step 1)</label>
+  <input type="text" id="job_uuid" placeholder="Run Step 1 first...">
+  <label>Test Note</label>
+  <textarea id="test_note">Test note from Rafter scope tester — can delete.</textarea>
+  <button onclick="testJobNotes()">Test publish_job_notes</button>
+  <div id="result_notes" class="result"></div>
+</div>
+
+<div class="card">
+  <h2>Step 3 — Test manage_attachments <span id="badge_attach" class="status-badge badge-pending">pending</span></h2>
+  <p class="step">POSTs a minimal attachment record to the job. A 200/201 means the scope is approved. A 403 means it's not.</p>
+  <button onclick="testAttachments()">Test manage_attachments</button>
+  <div id="result_attach" class="result"></div>
+</div>
+
+<script>
+  function getAuth() {
+    const email = document.getElementById('sm8_email').value.trim();
+    const password = document.getElementById('sm8_password').value;
+    return 'Basic ' + btoa(email + ':' + password);
+  }
+
+  function show(id, text, type) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'result ' + type;
+    el.style.display = 'block';
+  }
+
+  function setBadge(id, type, text) {
+    const el = document.getElementById(id);
+    el.textContent = text;
+    el.className = 'status-badge ' + (type === 'ok' ? 'badge-ok' : type === 'fail' ? 'badge-fail' : 'badge-pending');
+  }
+
+  async function fetchJob() {
+    show('result_job', 'Fetching jobs...', 'info');
+    try {
+      const res = await fetch('https://api.servicem8.com/api_1.0/job.json?%24top=1', {
+        headers: { 'Authorization': getAuth(), 'Accept': 'application/json' }
+      });
+      const text = await res.text();
+      if (res.status === 401) {
+        show('result_job', '401 Unauthorised — check your email/password.', 'error');
+        setBadge('badge_job', 'fail', 'failed');
+        return;
+      }
+      const data = JSON.parse(text);
+      if (!data.length) {
+        show('result_job', 'No jobs found in your account. Submit the Rafter form once to create one first.', 'error');
+        setBadge('badge_job', 'fail', 'no jobs');
+        return;
+      }
+      const job = data[0];
+      document.getElementById('job_uuid').value = job.uuid;
+      show('result_job',
+        'SUCCESS — Job found:\n\nUUID: ' + job.uuid + '\nStatus: ' + job.status + '\nGenerated job ID: ' + (job.generated_job_id || 'n/a'),
+        'success');
+      setBadge('badge_job', 'ok', '✓ got UUID');
+    } catch(e) {
+      show('result_job', 'Error: ' + e.message + '\n\nThis is likely a CORS block — see note below.', 'error');
+      setBadge('badge_job', 'fail', 'CORS error');
+      appendCorsNote('result_job');
+    }
+  }
+
+  async function testJobNotes() {
+    const uuid = document.getElementById('job_uuid').value.trim();
+    if (!uuid) { alert('Run Step 1 first to get a job UUID.'); return; }
+    const note = document.getElementById('test_note').value;
+    show('result_notes', 'Posting job note...', 'info');
+    try {
+      const res = await fetch('https://api.servicem8.com/api_1.0/jobactivity.json', {
+        method: 'POST',
+        headers: {
+          'Authorization': getAuth(),
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({ job_uuid: uuid, note: note, active: 1 })
+      });
+      const text = await res.text();
+      if (res.status === 403) {
+        show('result_notes', '403 Forbidden — publish_job_notes scope is NOT yet approved.\n\nResponse: ' + text, 'error');
+        setBadge('badge_notes', 'fail', '✗ not approved');
+      } else if (res.status === 200 || res.status === 201) {
+        show('result_notes', '✓ SUCCESS — publish_job_notes scope is APPROVED!\n\nStatus: ' + res.status + '\nResponse: ' + text, 'success');
+        setBadge('badge_notes', 'ok', '✓ approved');
+      } else {
+        show('result_notes', 'HTTP ' + res.status + '\n\nResponse: ' + text, 'error');
+        setBadge('badge_notes', 'fail', 'HTTP ' + res.status);
+      }
+    } catch(e) {
+      show('result_notes', 'Error: ' + e.message, 'error');
+      setBadge('badge_notes', 'fail', 'CORS error');
+      appendCorsNote('result_notes');
+    }
+  }
+
+  async function testAttachments() {
+    const uuid = document.getElementById('job_uuid').value.trim();
+    if (!uuid) { alert('Run Step 1 first to get a job UUID.'); return; }
+    show('result_attach', 'Posting attachment record...', 'info');
+    try {
+      const res = await fetch('https://api.servicem8.com/api_1.0/jobattachment.json', {
+        method: 'POST',
+        headers: {
+          'Authorization': getAuth(),
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        },
+        body: JSON.stringify({
+          job_uuid: uuid,
+          attachment_name: 'rafter_scope_test.txt',
+          file_type: 'text/plain',
+          active: 1
+        })
+      });
+      const text = await res.text();
+      if (res.status === 403) {
+        show('result_attach', '403 Forbidden — manage_attachments scope is NOT yet approved.\n\nResponse: ' + text, 'error');
+        setBadge('badge_attach', 'fail', '✗ not approved');
+      } else if (res.status === 200 || res.status === 201) {
+        show('result_attach', '✓ SUCCESS — manage_attachments scope is APPROVED!\n\nStatus: ' + res.status + '\nResponse: ' + text, 'success');
+        setBadge('badge_attach', 'ok', '✓ approved');
+      } else {
+        show('result_attach', 'HTTP ' + res.status + '\n\nResponse: ' + text, 'error');
+        setBadge('badge_attach', 'fail', 'HTTP ' + res.status);
+      }
+    } catch(e) {
+      show('result_attach', 'Error: ' + e.message, 'error');
+      setBadge('badge_attach', 'fail', 'CORS error');
+      appendCorsNote('result_attach');
+    }
+  }
+
+  function appendCorsNote(id) {
+    const el = document.getElementById(id);
+    el.textContent += '\n\n— CORS NOTE —\nServiceM8 may block browser-based API calls (CORS policy).\nIf you see a CORS error, open your browser DevTools (F12) → Network tab,\nlook at the failed request and check the actual HTTP status code.\nAlternatively, paste the URL into Postman or use Make to test instead.';
+  }
+</script>
+
+</body>
+</html>
