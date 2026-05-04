@@ -282,7 +282,15 @@ let state = {
   fields: {}
 };
 
-function sf(id, val) { state.fields[id] = val; }
+function sf(id, val) {
+  // Clamp number fields to 0 minimum — prevents negative values typed directly
+  const el = document.getElementById(id);
+  if (el && el.type === 'number') {
+    const n = parseFloat(val);
+    if (!isNaN(n) && n < 0) { val = '0'; el.value = '0'; }
+  }
+  state.fields[id] = val;
+}
 function gf(id) { return state.fields[id] || ''; }
 
 function inp(id, label, placeholder, type) {
@@ -293,7 +301,7 @@ function inp(id, label, placeholder, type) {
 }
 function num(id, label) {
   FIELD_LABELS[id] = label;
-  return `<div class="field"><label>${label}</label><input type="number" id="${id}" value="${gf(id)}" placeholder="0" oninput="sf('${id}',this.value)"></div>`;
+  return `<div class="field"><label>${label}</label><input type="number" min="0" id="${id}" value="${gf(id)}" placeholder="0" oninput="sf('${id}',this.value)" onchange="sf('${id}',this.value)"></div>`;
 }
 function sel(id, label, opts) {
   FIELD_LABELS[id] = label;
@@ -607,19 +615,26 @@ function buildLineItems() {
   return items;
 }
 
+function sanitise(str) {
+  // Strip newlines, carriage returns, tabs and other control characters
+  // that break JSON string literals in Make's HTTP module
+  if (!str) return '';
+  return str.replace(/[\r\n\t]/g, ' ').replace(/[\x00-\x1F\x7F]/g, '').trim();
+}
+
 function buildPayload() {
   // Build a formatted job note for ServiceM8 job diary
   const noteLines = [];
   noteLines.push('Categories: ' + state.selected.join(', '));
-  if (state.job.notes) noteLines.push('Site Notes: ' + state.job.notes);
+  if (state.job.notes) noteLines.push('Site Notes: ' + sanitise(state.job.notes));
   const jobNote = noteLines.join(' | ');
 
   const flat = {
-    clientName: state.job.clientName,
-    siteAddress: state.job.siteAddress,
+    clientName: sanitise(state.job.clientName),
+    siteAddress: sanitise(state.job.siteAddress),
     date: state.job.date,
-    preparedBy: state.job.preparedBy,
-    notes: state.job.notes,
+    preparedBy: sanitise(state.job.preparedBy),
+    notes: sanitise(state.job.notes),
     categories: state.selected.join(', '),
     jobNote: jobNote,
     staffUuid: '5ba57e76-53c0-4340-86ce-24244cfa725b',
@@ -905,6 +920,14 @@ async function initAutocomplete() {
     // Replace the input with the autocomplete element
     input.parentNode.replaceChild(autocompleteEl, input);
     autocompleteEl.id = 'job_addr_field';
+
+    // Restore previously entered address into the GMP element's inner input
+    if (state.job.siteAddress) {
+      setTimeout(() => {
+        const inner = autocompleteEl.querySelector('input');
+        if (inner) inner.value = state.job.siteAddress;
+      }, 50);
+    }
     
     // Listen for place selection - correct event for PlaceAutocompleteElement
     autocompleteEl.addEventListener('gmp-select', async (event) => {
