@@ -665,7 +665,21 @@
       });
 
       if (!dataRes.ok) throw new Error(`Data retrieval failed: ${dataRes.status}`);
-      const accountData = await dataRes.json();
+      const rawText = await dataRes.text();
+      let accountData;
+      try {
+        accountData = JSON.parse(rawText);
+      } catch(parseErr) {
+        // Attempt to sanitise and re-parse
+        const sanitised = rawText
+          .replace(/[\u0000-\u001F\u007F-\u009F]/g, ' ')  // strip control chars
+          .replace(/\\'/g, "'");                             // fix escaped single quotes
+        try {
+          accountData = JSON.parse(sanitised);
+        } catch(e2) {
+          throw new Error(`Could not parse account data: ${parseErr.message}. Raw starts with: ${rawText.substring(0, 200)}`);
+        }
+      }
 
       setStatus('Rendering results…');
       renderAll(accountData);
