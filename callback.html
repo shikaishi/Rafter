@@ -1,0 +1,681 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rafter Setup — Reading your account</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #0F1117;
+    --ink-soft: #52585F;
+    --ink-faint: #9AA0A6;
+    --canvas: #F7F5F0;
+    --white: #FFFFFF;
+    --green: #1D9E75;
+    --green-dark: #085041;
+    --green-light: #E1F5EE;
+    --amber: #F5A623;
+    --amber-light: #FAEEDA;
+    --red: #E53935;
+    --red-light: #FEF2F2;
+    --border: #E2DDD6;
+    --radius: 12px;
+  }
+
+  html, body {
+    min-height: 100vh;
+    background: var(--canvas);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  header {
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(247,245,240,0.8);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .logo-mark {
+    width: 32px; height: 32px;
+    background: var(--ink);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .logo-mark svg { width: 18px; height: 18px; }
+
+  .logo-name {
+    font-family: 'Instrument Serif', serif;
+    font-size: 18px;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+
+  .logo-sep { color: var(--border); margin: 0 4px; font-size: 18px; }
+
+  .logo-sub {
+    font-size: 13px;
+    color: var(--ink-soft);
+    font-family: 'DM Mono', monospace;
+  }
+
+  main {
+    flex: 1;
+    padding: 48px 24px;
+    max-width: 900px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* Loading state */
+  #loading {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 400px;
+    gap: 20px;
+    animation: rise 0.4s ease both;
+  }
+
+  .spinner {
+    width: 44px; height: 44px;
+    border: 3px solid var(--border);
+    border-top-color: var(--green);
+    border-radius: 50%;
+    animation: spin 0.8s linear infinite;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .loading-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 24px;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+
+  .loading-sub {
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    color: var(--ink-faint);
+    letter-spacing: 0.05em;
+  }
+
+  /* Error state */
+  #error {
+    display: none;
+    background: var(--red-light);
+    border: 1px solid #FCA5A5;
+    border-radius: var(--radius);
+    padding: 24px;
+    margin-top: 40px;
+    animation: rise 0.4s ease both;
+  }
+
+  .error-title {
+    font-weight: 500;
+    color: var(--red);
+    margin-bottom: 8px;
+  }
+
+  .error-msg {
+    font-size: 13px;
+    color: #B91C1C;
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* Results */
+  #results {
+    display: none;
+    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(12px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .results-header {
+    margin-bottom: 32px;
+  }
+
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .eyebrow::before {
+    content: '';
+    width: 20px; height: 2px;
+    background: var(--green);
+    display: inline-block;
+    border-radius: 2px;
+  }
+
+  .results-title {
+    font-family: 'Instrument Serif', serif;
+    font-size: 32px;
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 8px;
+  }
+
+  .results-sub {
+    font-size: 14px;
+    color: var(--ink-soft);
+  }
+
+  /* Section */
+  .section {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    margin-bottom: 16px;
+    overflow: hidden;
+  }
+
+  .section-header {
+    padding: 16px 20px;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--canvas);
+  }
+
+  .section-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .section-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    background: var(--green-light);
+    color: var(--green-dark);
+    padding: 2px 8px;
+    border-radius: 20px;
+  }
+
+  .section-body { padding: 4px 0; }
+
+  /* Row */
+  .data-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    align-items: start;
+    font-size: 13px;
+  }
+
+  .data-row:last-child { border-bottom: none; }
+
+  .data-label {
+    color: var(--ink-soft);
+    font-weight: 500;
+  }
+
+  .data-value {
+    color: var(--ink);
+    font-family: 'DM Mono', monospace;
+    font-size: 12px;
+    word-break: break-all;
+  }
+
+  .data-value.name {
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+  }
+
+  /* Table */
+  .data-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 12.5px;
+  }
+
+  .data-table th {
+    padding: 10px 20px;
+    text-align: left;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    border-bottom: 1px solid var(--border);
+    background: var(--canvas);
+  }
+
+  .data-table td {
+    padding: 10px 20px;
+    border-bottom: 1px solid var(--border);
+    color: var(--ink);
+    vertical-align: top;
+  }
+
+  .data-table tr:last-child td { border-bottom: none; }
+
+  .data-table tr:hover td { background: #FAFAF8; }
+
+  .uuid {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    word-break: break-all;
+  }
+
+  /* Copy button */
+  .copy-btn {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 3px 8px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--ink-soft);
+    cursor: pointer;
+    transition: all 0.1s;
+  }
+
+  .copy-btn:hover {
+    background: var(--green-light);
+    color: var(--green-dark);
+    border-color: var(--green);
+  }
+
+  /* Export bar */
+  .export-bar {
+    background: var(--ink);
+    border-radius: 12px;
+    padding: 16px 20px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 24px;
+  }
+
+  .export-label {
+    font-size: 13px;
+    color: rgba(255,255,255,0.7);
+  }
+
+  .export-btn {
+    background: var(--green);
+    color: white;
+    border: none;
+    border-radius: 8px;
+    padding: 8px 16px;
+    font-size: 13px;
+    font-weight: 500;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    transition: background 0.15s;
+  }
+
+  .export-btn:hover { background: #17835f; }
+
+  footer {
+    padding: 20px 40px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-brand {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.06em;
+  }
+
+  .inactive { opacity: 0.4; }
+  .badge-active { color: var(--green); font-size: 11px; font-family: 'DM Mono', monospace; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="logo-mark">
+      <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 14L9 4L15 14" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M5.5 10.5H12.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <span class="logo-name">Rafter</span>
+    <span class="logo-sep">·</span>
+    <span class="logo-sub">Account Setup</span>
+  </header>
+
+  <main>
+    <!-- Loading -->
+    <div id="loading">
+      <div class="spinner"></div>
+      <div class="loading-title">Reading your account…</div>
+      <div class="loading-sub" id="loading-status">Connecting to ServiceM8</div>
+    </div>
+
+    <!-- Error -->
+    <div id="error">
+      <div class="error-title">Something went wrong</div>
+      <div class="error-msg" id="error-msg"></div>
+    </div>
+
+    <!-- Results -->
+    <div id="results">
+      <div class="results-header">
+        <div class="eyebrow">Step 2 of 2 — Complete</div>
+        <div class="results-title" id="company-name">Account loaded</div>
+        <div class="results-sub">Read-only snapshot from ServiceM8. Nothing was changed in your account.</div>
+      </div>
+
+      <div class="export-bar">
+        <span class="export-label">Account configuration ready — copy or export for setup</span>
+        <button class="export-btn" onclick="exportJSON()">Export JSON</button>
+      </div>
+
+      <!-- Company -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Company</span>
+        </div>
+        <div class="section-body" id="company-body"></div>
+      </div>
+
+      <!-- Staff -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Staff</span>
+          <span class="section-count" id="staff-count">0</span>
+        </div>
+        <div class="section-body">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>Email</th><th>UUID</th><th></th></tr></thead>
+            <tbody id="staff-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Materials -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Materials / Inventory</span>
+          <span class="section-count" id="materials-count">0</span>
+        </div>
+        <div class="section-body">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>Unit Price</th><th>UUID</th><th></th></tr></thead>
+            <tbody id="materials-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Categories -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Job Categories</span>
+          <span class="section-count" id="categories-count">0</span>
+        </div>
+        <div class="section-body">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>UUID</th><th></th></tr></thead>
+            <tbody id="categories-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Queues -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Job Queues</span>
+          <span class="section-count" id="queues-count">0</span>
+        </div>
+        <div class="section-body">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>UUID</th><th></th></tr></thead>
+            <tbody id="queues-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Templates -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Document Templates</span>
+          <span class="section-count" id="templates-count">0</span>
+        </div>
+        <div class="section-body">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>UUID</th><th></th></tr></thead>
+            <tbody id="templates-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Badges -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Badges</span>
+          <span class="section-count" id="badges-count">0</span>
+        </div>
+        <div class="section-body">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>UUID</th><th></th></tr></thead>
+            <tbody id="badges-body"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Tax Rates -->
+      <div class="section">
+        <div class="section-header">
+          <span class="section-title">Tax Rates</span>
+          <span class="section-count" id="taxrates-count">0</span>
+        </div>
+        <div class="section-body">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>Rate</th><th>UUID</th><th></th></tr></thead>
+            <tbody id="taxrates-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <span class="footer-brand">DEEP GREEN SEA · RAFTER</span>
+    <span class="footer-legal" style="font-size:11px;color:var(--ink-faint)">Read-only · No data stored</span>
+  </footer>
+</div>
+
+<script>
+  const TOKEN_WEBHOOK  = 'https://hook.eu1.make.com/38k3vwhijsfun40uu3pmk942gdjnvj32';
+  const DATA_WEBHOOK   = 'https://hook.eu1.make.com/hao3fhj1n2d1il4bhkkabozjwl892ujt';
+
+  let rawData = null;
+
+  function setStatus(msg) {
+    document.getElementById('loading-status').textContent = msg;
+  }
+
+  function showError(msg) {
+    document.getElementById('loading').style.display = 'none';
+    const el = document.getElementById('error');
+    el.style.display = 'block';
+    document.getElementById('error-msg').textContent = msg;
+  }
+
+  function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+      btn.textContent = 'Copied!';
+      setTimeout(() => btn.textContent = 'Copy', 1500);
+    });
+  }
+
+  function active(item) { return item.active == 1 || item.active === '1' || item.active === true; }
+
+  function renderCompany(data) {
+    const c = Array.isArray(data) ? data[0] : data;
+    if (!c) return;
+    document.getElementById('company-name').textContent = c.name || 'Account loaded';
+    const fields = [
+      ['Account Name', c.name],
+      ['Email', c.email],
+      ['Phone', c.phone],
+      ['Address', c.address],
+      ['ABN', c.abn],
+      ['Timezone', c.timezone],
+    ];
+    document.getElementById('company-body').innerHTML = fields
+      .filter(([,v]) => v)
+      .map(([l,v]) => `<div class="data-row"><span class="data-label">${l}</span><span class="data-value name">${v}</span></div>`)
+      .join('');
+  }
+
+  function renderTable(tbodyId, countId, items, cols) {
+    const active_items = items.filter(active);
+    document.getElementById(countId).textContent = active_items.length;
+    document.getElementById(tbodyId).innerHTML = active_items.map(item => {
+      const cells = cols.map(col => {
+        if (col === 'uuid') return `<td><span class="uuid">${item.uuid || ''}</span></td>`;
+        if (col === 'copy') return `<td><button class="copy-btn" onclick="copyText('${item.uuid}', this)">Copy</button></td>`;
+        if (col === 'price') return `<td>$${parseFloat(item.cost || 0).toFixed(2)}</td>`;
+        if (col === 'rate') return `<td>${item.rate || item.tax_rate || ''}%</td>`;
+        return `<td>${item[col] || ''}</td>`;
+      });
+      return `<tr>${cells.join('')}</tr>`;
+    }).join('');
+  }
+
+  function renderAll(data) {
+    rawData = data;
+    renderCompany(data.company);
+
+    const staff = Array.isArray(data.staff) ? data.staff : [];
+    renderTable('staff-body', 'staff-count', staff, ['first', 'last', 'uuid', 'copy']);
+    // Fix staff names
+    document.querySelectorAll('#staff-body tr').forEach((tr, i) => {
+      if (staff.filter(active)[i]) {
+        const s = staff.filter(active)[i];
+        tr.cells[0].textContent = `${s.first || ''} ${s.last || ''}`.trim();
+        tr.cells[1].textContent = s.email || '';
+      }
+    });
+
+    renderTable('materials-body', 'materials-count', Array.isArray(data.materials) ? data.materials : [], ['name', 'price', 'uuid', 'copy']);
+    renderTable('categories-body', 'categories-count', Array.isArray(data.categories) ? data.categories : [], ['name', 'uuid', 'copy']);
+    renderTable('queues-body', 'queues-count', Array.isArray(data.queues) ? data.queues : [], ['name', 'uuid', 'copy']);
+    renderTable('templates-body', 'templates-count', Array.isArray(data.templates) ? data.templates : [], ['name', 'uuid', 'copy']);
+    renderTable('badges-body', 'badges-count', Array.isArray(data.badges) ? data.badges : [], ['name', 'uuid', 'copy']);
+    renderTable('taxrates-body', 'taxrates-count', Array.isArray(data.taxrates) ? data.taxrates : [], ['name', 'rate', 'uuid', 'copy']);
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('results').style.display = 'block';
+  }
+
+  function exportJSON() {
+    if (!rawData) return;
+    const blob = new Blob([JSON.stringify(rawData, null, 2)], { type: 'application/json' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'servicem8-account-config.json';
+    a.click();
+  }
+
+  async function run() {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+
+    if (!code) {
+      showError('No authorisation code received from ServiceM8. Please go back and try connecting again.');
+      return;
+    }
+
+    try {
+      // Step 1: Exchange code for access token
+      setStatus('Exchanging authorisation code…');
+      const tokenRes = await fetch(TOKEN_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code })
+      });
+
+      if (!tokenRes.ok) throw new Error(`Token exchange failed: ${tokenRes.status}`);
+      const tokenData = await tokenRes.json();
+      const accessToken = tokenData.access_token;
+      if (!accessToken) throw new Error('No access token returned. Check Scenario 1 in Make.');
+
+      // Step 2: Pull account data
+      setStatus('Reading your ServiceM8 account…');
+      const dataRes = await fetch(DATA_WEBHOOK, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ access_token: accessToken })
+      });
+
+      if (!dataRes.ok) throw new Error(`Data retrieval failed: ${dataRes.status}`);
+      const accountData = await dataRes.json();
+
+      setStatus('Rendering results…');
+      renderAll(accountData);
+
+    } catch (err) {
+      showError(err.message || 'An unexpected error occurred.');
+    }
+  }
+
+  run();
+</script>
+</body>
+</html>

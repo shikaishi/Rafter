@@ -1,0 +1,316 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rafter Setup — Connect your ServiceM8 account</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #0F1117;
+    --ink-soft: #52585F;
+    --ink-faint: #9AA0A6;
+    --canvas: #F7F5F0;
+    --white: #FFFFFF;
+    --green: #1D9E75;
+    --green-dark: #085041;
+    --green-light: #E1F5EE;
+    --border: #E2DDD6;
+    --radius: 12px;
+  }
+
+  html, body {
+    min-height: 100vh;
+    background: var(--canvas);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  /* Grain overlay */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* Header */
+  header {
+    padding: 24px 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(247,245,240,0.8);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+
+  .logo-mark {
+    width: 32px;
+    height: 32px;
+    background: var(--ink);
+    border-radius: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .logo-mark svg { width: 18px; height: 18px; }
+
+  .logo-name {
+    font-family: 'Instrument Serif', serif;
+    font-size: 18px;
+    color: var(--ink);
+    letter-spacing: -0.02em;
+  }
+
+  .logo-sep {
+    color: var(--border);
+    margin: 0 4px;
+    font-size: 18px;
+  }
+
+  .logo-sub {
+    font-size: 13px;
+    color: var(--ink-soft);
+    font-family: 'DM Mono', monospace;
+  }
+
+  /* Main content */
+  main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 60px 24px;
+  }
+
+  .card {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 56px 52px;
+    max-width: 520px;
+    width: 100%;
+    box-shadow: 0 4px 32px rgba(15,17,23,0.06), 0 1px 4px rgba(15,17,23,0.04);
+    animation: rise 0.5s cubic-bezier(0.22, 1, 0.36, 1) both;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(16px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 16px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  .eyebrow::before {
+    content: '';
+    width: 20px;
+    height: 2px;
+    background: var(--green);
+    display: inline-block;
+    border-radius: 2px;
+  }
+
+  h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 36px;
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 16px;
+  }
+
+  h1 em {
+    font-style: italic;
+    color: var(--green);
+  }
+
+  .description {
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--ink-soft);
+    margin-bottom: 36px;
+  }
+
+  /* Scope list */
+  .scope-list {
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    margin-bottom: 36px;
+    list-style: none;
+  }
+
+  .scope-list-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 12px;
+  }
+
+  .scope-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 0;
+    font-size: 13px;
+    color: var(--ink-soft);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .scope-item:last-child { border-bottom: none; }
+
+  .scope-dot {
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--green);
+    flex-shrink: 0;
+  }
+
+  /* Connect button */
+  .btn-connect {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 16px 24px;
+    background: var(--ink);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    text-decoration: none;
+    transition: background 0.15s, transform 0.1s;
+    letter-spacing: -0.01em;
+  }
+
+  .btn-connect:hover {
+    background: #1a2030;
+    transform: translateY(-1px);
+  }
+
+  .btn-connect:active { transform: translateY(0); }
+
+  .btn-connect svg { width: 18px; height: 18px; }
+
+  .footer-note {
+    margin-top: 20px;
+    font-size: 12px;
+    color: var(--ink-faint);
+    text-align: center;
+    line-height: 1.6;
+  }
+
+  /* Footer */
+  footer {
+    padding: 20px 40px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .footer-brand {
+    font-family: 'DM Mono', monospace;
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: 0.06em;
+  }
+
+  .footer-legal {
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <div class="logo-mark">
+      <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M3 14L9 4L15 14" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M5.5 10.5H12.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/>
+      </svg>
+    </div>
+    <span class="logo-name">Rafter</span>
+    <span class="logo-sep">·</span>
+    <span class="logo-sub">Account Setup</span>
+  </header>
+
+  <main>
+    <div class="card">
+      <div class="eyebrow">Step 1 of 2</div>
+      <h1>Connect your <em>ServiceM8</em> account</h1>
+      <p class="description">
+        We'll read your account configuration — staff, materials, categories, and templates — so we can set up your quoting tools correctly. Nothing will be changed in your account.
+      </p>
+
+      <div class="scope-list">
+        <div class="scope-list-label">Read-only access requested</div>
+        <li class="scope-item"><span class="scope-dot"></span>Company information</li>
+        <li class="scope-item"><span class="scope-dot"></span>Staff names and IDs</li>
+        <li class="scope-item"><span class="scope-dot"></span>Materials and inventory</li>
+        <li class="scope-item"><span class="scope-dot"></span>Job categories and queues</li>
+        <li class="scope-item"><span class="scope-dot"></span>Document templates</li>
+        <li class="scope-item"><span class="scope-dot"></span>Badges and tax rates</li>
+      </div>
+
+      <a href="https://go.servicem8.com/oauth/authorize?response_type=code&client_id=782214&scope=vendor%20vendor_logo%20read_staff%20read_inventory%20read_job_categories%20read_job_queues%20manage_templates%20manage_badges%20read_tax_rates%20read_forms&redirect_uri=https%3A%2F%2Frafter.deepgreensea.au%2Fcallback" class="btn-connect">
+        <svg viewBox="0 0 18 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M9 2C5.13 2 2 5.13 2 9s3.13 7 7 7 7-3.13 7-7-3.13-7-7-7zm0 2.8c1.16 0 2.1.94 2.1 2.1S10.16 9 9 9 6.9 8.06 6.9 6.9 7.84 4.8 9 4.8zm0 9.94c-1.75 0-3.3-.9-4.2-2.26.02-1.39 2.8-2.16 4.2-2.16 1.4 0 4.18.77 4.2 2.16-.9 1.36-2.45 2.26-4.2 2.26z" fill="white"/>
+        </svg>
+        Connect ServiceM8
+      </a>
+
+      <p class="footer-note">
+        You'll be redirected to ServiceM8 to approve access.<br>Your credentials are never seen or stored by Rafter.
+      </p>
+    </div>
+  </main>
+
+  <footer>
+    <span class="footer-brand">DEEP GREEN SEA · RAFTER</span>
+    <span class="footer-legal">Read-only · No data stored</span>
+  </footer>
+</div>
+</body>
+</html>
