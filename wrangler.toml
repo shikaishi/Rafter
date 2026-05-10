@@ -1,4 +1,4 @@
-name = "rafter-materials-sync"
+name = "rafter"
 main = "workers/materials-sync/index.js"
 compatibility_date = "2024-01-01"
 
