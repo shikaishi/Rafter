@@ -1,0 +1,10 @@
+name = "rafter-materials-sync"
+main = "workers/materials-sync/index.js"
+compatibility_date = "2024-01-01"
+
+[[kv_namespaces]]
+binding = "RAFTER_CLIENTS"
+id = "7c7ad02d8136452eb6d03d1af89a684f"
+
+[triggers]
+crons = ["0 10 * * *"]
