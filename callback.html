@@ -114,11 +114,13 @@
       if (!accessToken) throw new Error('No access token returned from Make.');
 
       setStatus('Sending account data…');
-      fetch(DATA_WEBHOOK, {
+      const dataRes = await fetch(DATA_WEBHOOK, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ access_token: accessToken })
-      }).catch(() => {});
+      });
+
+      if (!dataRes.ok) throw new Error('Data retrieval failed: ' + dataRes.status);
 
       showComplete();
 
