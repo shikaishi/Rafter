@@ -3,7 +3,7 @@
 ## Purpose
 This prompt provides complete context to pick up Rafter development in a new conversation with zero information loss. Paste the full contents into Claude Chat or Claude Code at the start of each new session. Sections marked [VERIFY BEFORE USE] must be checked against current state before acting.
 
-**Last updated:** 2026-05-10 (end of day, post T1-C2)
+**Last updated:** 2026-05-11 (post T1-A5)
 
 > **Note for next session:** This file is a redacted copy committed to a public repo. The live `RAFTER_WORKER_SECRET` value, any future credentials, and any other sensitive material live ONLY in the full version at `G:\My Drive\Rafter\Product & Architecture\rafter-continuation-prompt.md`. When pasting into Claude, paste the Drive version — it has everything. This repo copy is the version-controlled snapshot.
 
@@ -50,7 +50,7 @@ Rafter is an AI-assisted quoting and operations platform for Australian tradespe
 | `setup.html` | OAuth initiation — `rafter.deepgreensea.au/setup` | Live |
 | `callback.html` | OAuth callback — exchanges code via Make, awaits data webhook (T1-A4 fix) | Live |
 | `index.html` | Quoting form — pointed at trial instance | Live (prototype only — T1-D2 will rebuild) |
-| Worker `rafter` | Serves static HTML at `rafter.deepgreensea.au`. Auto-deploys from `main` on every push (Cloudflare git-deploy: build `exit 0`, deploy `npx wrangler deploy`). **Currently publishes the entire repo as static files** — see Issue 4 in §4. | Live |
+| Worker `rafter` | Serves three public HTML pages (`setup.html`, `callback.html`, `index.html`) from `workers/rafter/` at `rafter.deepgreensea.au` (custom domain) and `rafter.will-8e8.workers.dev`. Auto-deploys from `main` on push (Cloudflare git-deploy: Root directory `workers/rafter/`, build `exit 0`, deploy `npx wrangler deploy`). All non-deployed repo paths (workers source, `.git/`, `.gitignore`, continuation prompt) return 404. | Live (T1-A5) |
 | Worker `rafter-materials-sync` | Token store + materials sync. Full details in §14. | Live (T1-C2) |
 | KV namespace `RAFTER_CLIENTS` | id `7c7ad02d8136452eb6d03d1af89a684f`. Holds `client:{uuid}` config + tokens, and `materials:{uuid}` cache (24h TTL). | Live |
 | R2 bucket `rafter-assets` | 283 photos under `clients/448e12a8-…/photos/{folder}/{filename}`. | Live (T1-B1) |
@@ -66,13 +66,7 @@ Rafter is an AI-assisted quoting and operations platform for Australian tradespe
 
 ## 4. Open issues
 
-**Issue 4 — Cloudflare git-deploy exposes entire repo as public static files (T1-A5, blocker for T1-C1)**
-- Problem: the `rafter` Worker's git-deploy is publishing every file in the repo at `rafter.deepgreensea.au`. Verified 2026-05-10: `GET /.gitignore` → 200, `GET /workers/materials-sync/index.js` → 200 (Worker source code publicly readable). This is why this prompt's repo copy is REDACTED.
-- Impact: any future credential, config, or sensitive code committed to the repo is publicly retrievable. The current Worker source exposes the auth scheme and KV key conventions but no live secret value.
-- Fix: Cloudflare dashboard → Workers & Pages → `rafter` → Settings → Build → restrict served files to `*.html` only via a `_headers`/`_redirects` file, asset manifest, or a "Build output directory" setting. Alternative: move all Worker source out of the repo entirely.
-- **TRACK 1 BLOCKER — must be resolved before T1-C1 PDF Worker source is committed.**
-
-(Issues 1–3 from prior versions of this prompt — Maps API key, Make webhook response, OAuth refresh — are all resolved; see §9.)
+None open. Issues 1–4 from prior versions of this prompt (Maps API key, Make webhook response, OAuth refresh, repo file exposure) are all resolved — see §9.
 
 ---
 
@@ -140,14 +134,14 @@ Rafter is an AI-assisted quoting and operations platform for Australian tradespe
 - T1-A2: Fix Make Webhook Response — ✅ done (Make returns JSON with `access_token` + `expiry`, status 200)
 - T1-A3: OAuth token refresh — ✅ done (Make Data Store + Make's native connections handle refresh; `/store-token` bridge syncs into KV)
 - T1-A4: callback.html error handling uplift — ✅ done (commit `02015f6` — awaits data webhook, surfaces failures via existing error UI)
-- **T1-A5: Restrict rafter Worker file exposure** — **OPEN, blocks T1-C1 commit.** See §4 Issue 4.
+- T1-A5: Restrict rafter Worker file exposure — ✅ done 2026-05-11 (commit `3a6a0c9`). Moved `setup.html`/`callback.html`/`index.html` into `workers/rafter/`; new `workers/rafter/wrangler.toml` with `[assets] directory = "."`, `not_found_handling = "none"`, custom domain binding preserved; Cloudflare dashboard Root directory set to `workers/rafter/`. Deleted stale `servicem8_test.html`. Verified: all worker source, `.git/*`, `.gitignore`, and `rafter-continuation-prompt.md` now return 404 on both `rafter.deepgreensea.au` and `rafter.will-8e8.workers.dev`; OAuth paths `/setup` and `/callback` still 200.
 
 **Group B — Infrastructure**
 - T1-B1: Upload Andy photos to R2 — ✅ done (283 files; 6 in `Confirm with Andy/` pending)
 - T1-B2: Load Andy client config into KV — ✅ done. Namespace `RAFTER_CLIENTS` id `7c7ad02d8136452eb6d03d1af89a684f`. Key `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` holds branding, payment_thresholds, proposal_types, job_categories, job_queues, 26 templates, r2_photo_path. Token fields are merged in by `/store-token`.
 
 **Group C — Cloudflare Workers**
-- **T1-C1: Build PDF generation Worker** — **next, code-unblocked.** V2 ✅. Two modes: preview (blob) + submit (binary to Make). Delimiter markers in `job_description` content. **DO NOT commit Worker source until T1-A5 is resolved.** Build and test locally first; deploy via `wrangler deploy` from a per-Worker subdir (NOT root).
+- **T1-C1: Build PDF generation Worker** — **next, fully unblocked (T1-A5 resolved 2026-05-11).** V2 ✅. Two modes: preview (blob) + submit (binary to Make). Delimiter markers in `job_description` content. Build under `workers/<name>/` and deploy via `wrangler deploy` from that subdir (NOT repo root, per §10 #10).
 - T1-C2: Build materials Sync Worker — ✅ done. Full details in §14.
 
 **Group D — Quoting form**
@@ -185,7 +179,7 @@ Rafter is an AI-assisted quoting and operations platform for Australian tradespe
 8. No assumptions about platform capabilities — if not confirmed in this document, flag it as requiring verification before committing.
 9. Citations required for external platform capabilities. No guessing.
 10. **NO `wrangler.toml` at repo root.** The `rafter` Worker has Cloudflare git-deploy enabled with deploy command `npx wrangler deploy`. Any wrangler.toml at root is picked up post-push and overwrites the `rafter` Worker, taking down `rafter.deepgreensea.au/setup.html` and `/callback.html`. All Worker configs must live in `workers/<name>/wrangler.toml` and be deployed manually via `wrangler deploy` from inside that subdir. Recovery from accidental overwrite: roll the `rafter` Worker back to the previous version via Cloudflare API (POST `/accounts/{id}/workers/scripts/rafter/deployments` with the prior version_id).
-11. **Until T1-A5 is fixed:** the `rafter` Worker publishes ALL repo files as public static assets at `rafter.deepgreensea.au/<path>`. Do NOT commit anything sensitive. New Worker source can be developed locally and deployed via `wrangler deploy`, but its source files must NOT be pushed to GitHub until T1-A5 lands.
+11. **rafter Worker deploys only `workers/rafter/`.** Git-deploy's Root directory is set to that subdir in the Cloudflare dashboard; deploys upload only the files alongside `workers/rafter/wrangler.toml`. The rest of the repo (other workers, `.git/`, `.gitignore`, continuation prompt) is private to GitHub. If new public-facing static files are needed, put them in `workers/rafter/` and they'll auto-deploy on next push. Anything else in the repo will NOT be served — by design.
 
 ---
 
@@ -205,6 +199,7 @@ Rafter is an AI-assisted quoting and operations platform for Australian tradespe
 | Rafter decision log (Sheets) | id `1ZFBQSHiZzs-ZGKYaqpw2WfzQr86BBGBSZ9oG-7bQt5Y` |
 | GitHub repo | `shikaishi/Rafter` (cloned at `C:\Users\will\Documents\GitHub\Rafter`) |
 | materials-sync source | `workers/materials-sync/index.js` + `workers/materials-sync/wrangler.toml` |
+| rafter static source | `workers/rafter/{setup,callback,index}.html` + `workers/rafter/wrangler.toml` |
 | Cloudflare account ID | `8e87fd293978a1508cb38e414e766058` |
 | KV namespace `RAFTER_CLIENTS` id | `7c7ad02d8136452eb6d03d1af89a684f` |
 | R2 bucket | `rafter-assets` |
@@ -213,9 +208,13 @@ Rafter is an AI-assisted quoting and operations platform for Australian tradespe
 
 ---
 
-## 12. State at session close (2026-05-10)
+## 12. State at session close (2026-05-11)
 
-**Done today:**
+**Done this session (2026-05-11):**
+- T1-A5 ✅ rafter Worker file exposure restricted (commit `3a6a0c9`). Repo restructured: HTML pages moved into `workers/rafter/` alongside a new minimal `wrangler.toml`; Cloudflare dashboard Root directory set to `workers/rafter/`. Deploy now uploads only the 3 public pages. Verified on both `rafter.deepgreensea.au` and `rafter.will-8e8.workers.dev` — all worker source, `.git/*`, `.gitignore`, and the continuation prompt return 404; OAuth paths `/setup` and `/callback` still 200. Stale `servicem8_test.html` deleted.
+- §3, §4, §9, §10 #11, §11, §13 updated to reflect T1-A5 resolution.
+
+**Done 2026-05-10:**
 - T1-A1 ✅ Google Maps API key referrer added
 - T1-A2 ✅ Make Webhook Response now returns JSON
 - T1-A3 ✅ OAuth refresh via Make Data Store + native connections
@@ -225,17 +224,15 @@ Rafter is an AI-assisted quoting and operations platform for Australian tradespe
 - T1-B1 ✅ 283 photos uploaded to R2 (6 `Confirm with Andy` pending)
 - T1-B2 ✅ Andy config in KV under `client:448e12a8-…`
 - T1-C2 ✅ `rafter-materials-sync` Worker deployed and end-to-end tested (117 materials returned; KV `materials:{uuid}` written with 24h TTL)
-- (Incident:) `rafter` Worker briefly overwritten by my T1-C2 deploy via Cloudflare git auto-deploy reading wrangler.toml at repo root. Rolled back via Cloudflare API to the prior version. Wrangler.toml moved to `workers/materials-sync/wrangler.toml`. Constraint added (§10 #10).
-- (Discovery:) the `rafter` Worker publishes the entire repo as public static files. New issue T1-A5 added (§4).
+- (Incident:) `rafter` Worker briefly overwritten by the T1-C2 deploy via Cloudflare git auto-deploy reading wrangler.toml at repo root. Rolled back via Cloudflare API to the prior version. Wrangler.toml moved to `workers/materials-sync/wrangler.toml`. Constraint added (§10 #10).
 
 **Open Track 1 work for next session:**
-- **T1-A5** — restrict `rafter` Worker file exposure (BLOCKS committing T1-C1 source)
+- **T1-C1** — PDF Worker (V2 ✅, T1-A5 ✅ → fully unblocked; build under `workers/<name>/` per §10 #10)
 - **T1-D0** — design research (independent, can start immediately)
-- **T1-C1** — PDF Worker (V2 done; build code locally; do not commit until T1-A5 fixed)
 - V3, V4, V5 — verifications still open (need SM8 Inbox testing)
 - Operator follow-ups: delete stale `Upload-PhotosToR2.failures.csv` on Drive, decide on the 6 `Confirm with Andy` photos
 
-**Repo state:** clean on main as of 2026-05-10, last commit (will be filled in by the close-out commit). materials-sync Worker source lives at `workers/materials-sync/`. Cron registered in Cloudflare for `rafter-materials-sync` at `0 10 * * *` UTC.
+**Repo state:** clean on main as of 2026-05-11, last commit `3a6a0c9` ("T1-A5: Restrict rafter Worker deploy to public HTML files"). Layout: `workers/rafter/` (wrangler.toml + 3 HTML files — public static Worker), `workers/materials-sync/` (wrangler.toml + index.js — backend Worker with nightly cron), `rafter-continuation-prompt.md` at root (private). Cloudflare git-deploy Root directory: `workers/rafter/`. Cron registered for `rafter-materials-sync` at `0 10 * * *` UTC.
 
 ---
 
@@ -246,11 +243,10 @@ You are working on Rafter — an AI-assisted quoting platform for Australian tra
 **Read this whole prompt before starting. Do not ask Will what to do unless something is genuinely ambiguous. Lead.**
 
 **Logical next-action priority:**
-1. **T1-A5 first** — fix the `rafter` Worker's file-exposure config. Operator task in the Cloudflare dashboard. Claude Code can describe the steps and verify the fix worked by re-running the curl probes from §4.
-2. **T1-D0 in parallel** — design research can run alongside while T1-A5 is being addressed. Pure research, no infra needed.
-3. **T1-C1** — build the PDF generation Worker locally. V2 is done so the code path is unblocked. Hold the commit/push until T1-A5 is resolved.
+1. **T1-C1** — build the PDF generation Worker. V2 ✅ and T1-A5 ✅, so fully unblocked. Build under `workers/<name>/` (e.g. `workers/pdf-gen/`) with its own `wrangler.toml` and deploy via `wrangler deploy` from that subdir.
+2. **T1-D0** — design research, can run alongside T1-C1 (no infra dependency).
 
-If Will opens with "let's get to work", start working on T1-A5 / T1-D0 in parallel as appropriate.
+If Will opens with "let's get to work", start on T1-C1 (with T1-D0 in parallel if appropriate).
 
 If Will tells you something has changed since session close (a task completed, a verification done, an issue resolved) — update your understanding and adjust accordingly.
 
@@ -262,7 +258,7 @@ If Will tells you something has changed since session close (a task completed, a
 - Append-only on `job_description`. Never write code that could overwrite content outside Rafter delimiter markers.
 - Complete the whole thing. No partial implementations. No dangling threads. No workarounds when the real fix exists.
 - Do not hold back waiting for permission. If the next action is clear and the dependencies are met, do it.
-- **Until T1-A5 lands, treat the repo as fully public.** Do not commit Worker source, secrets, tokens, or anything you wouldn't paste to a public GitHub gist.
+- **Only `workers/rafter/` is publicly served.** Everything else in the repo (other workers, `.git/`, `.gitignore`, continuation prompt, future docs) is private to GitHub. If you add a new public-facing static file, put it in `workers/rafter/` — anywhere else stays private by design.
 
 ---
 
