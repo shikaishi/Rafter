@@ -1,0 +1,11 @@
+name = "rafter"
+compatibility_date = "2024-01-01"
+workers_dev = true
+
+routes = [
+  { pattern = "rafter.deepgreensea.au", custom_domain = true }
+]
+
+[assets]
+directory = "."
+not_found_handling = "none"
