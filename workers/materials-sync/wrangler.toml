@@ -6,5 +6,9 @@ compatibility_date = "2024-01-01"
 binding = "RAFTER_CLIENTS"
 id = "7c7ad02d8136452eb6d03d1af89a684f"
 
+[[r2_buckets]]
+binding = "RAFTER_ASSETS"
+bucket_name = "rafter-assets"
+
 [triggers]
 crons = ["0 10 * * *"]

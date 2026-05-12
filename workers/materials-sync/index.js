@@ -1,13 +1,48 @@
 const SM8_MATERIALS_URL = "https://api.servicem8.com/api_1.0/material.json";
+const SM8_COMPANY_SEARCH_URL = "https://api.servicem8.com/api_1.0/company.json";
 const MATERIALS_TTL_SECONDS = 86400;
 const CLIENT_KEY_PREFIX = "client:";
 const MATERIALS_KEY_PREFIX = "materials:";
+const PHOTO_PREFIX = (uuid) => `clients/${uuid}/photos/`;
+const SENSITIVE_CLIENT_FIELDS = ["access_token", "refresh_token", "expires_at", "token_updated_at"];
+
+const ALLOWED_ORIGINS = new Set([
+  "https://rafter.deepgreensea.au",
+  "http://localhost:8787",
+  "http://127.0.0.1:8787",
+]);
+
+function corsHeaders(request) {
+  const origin = request.headers.get("origin") || "";
+  const allow = ALLOWED_ORIGINS.has(origin) ? origin : "https://rafter.deepgreensea.au";
+  return {
+    "access-control-allow-origin": allow,
+    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-headers": "Content-Type, Authorization",
+    "vary": "Origin",
+  };
+}
+
+function withCors(request, response) {
+  const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(corsHeaders(request))) headers.set(k, v);
+  return new Response(response.body, { status: response.status, headers });
+}
 
 function json(body, init = {}) {
   return new Response(JSON.stringify(body), {
     status: init.status || 200,
     headers: { "content-type": "application/json", ...(init.headers || {}) },
   });
+}
+
+function sanitizeClient(config) {
+  if (!config || typeof config !== "object") return null;
+  const out = {};
+  for (const [k, v] of Object.entries(config)) {
+    if (!SENSITIVE_CLIENT_FIELDS.includes(k)) out[k] = v;
+  }
+  return out;
 }
 
 function constantTimeEqual(a, b) {
@@ -163,6 +198,103 @@ async function syncOneClient(env, uuid) {
   return { uuid, status: "ok", count: summary.count, shape: summary.shape };
 }
 
+async function handleReadClient(uuid, env) {
+  const config = await readClient(env, uuid);
+  if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
+  const safe = sanitizeClient(config);
+  return json({ ok: true, uuid, client: safe });
+}
+
+async function handleReadMaterials(uuid, env) {
+  const raw = await env.RAFTER_CLIENTS.get(MATERIALS_KEY_PREFIX + uuid);
+  if (!raw) return json({ error: "materials_not_cached", uuid, hint: "call /refresh-materials first" }, { status: 404 });
+  let data;
+  try { data = JSON.parse(raw); }
+  catch { return json({ error: "materials_corrupt", uuid }, { status: 500 }); }
+  return json({ ok: true, uuid, materials: data });
+}
+
+async function handleListPhotos(uuid, env) {
+  if (!env.RAFTER_ASSETS) return json({ error: "r2_not_bound" }, { status: 500 });
+  const prefix = PHOTO_PREFIX(uuid);
+  const categories = new Map();
+  let cursor;
+  do {
+    const page = await env.RAFTER_ASSETS.list({ prefix, cursor, limit: 1000 });
+    for (const obj of page.objects) {
+      const rest = obj.key.slice(prefix.length);
+      const slash = rest.indexOf("/");
+      if (slash < 0) continue;
+      const category = rest.slice(0, slash);
+      const filename = rest.slice(slash + 1);
+      if (!filename || filename.includes("/")) continue;
+      if (!categories.has(category)) categories.set(category, []);
+      categories.get(category).push({ key: obj.key, filename });
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  const sorted = [...categories.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, photos]) => ({ name, photos: photos.sort((a, b) => a.filename.localeCompare(b.filename)) }));
+  return json({ ok: true, uuid, categories: sorted });
+}
+
+async function handleGetPhoto(url, env) {
+  if (!env.RAFTER_ASSETS) return new Response("r2_not_bound", { status: 500 });
+  const uuid = url.searchParams.get("uuid");
+  const key = url.searchParams.get("key");
+  if (!uuid || !key) return new Response("missing_params", { status: 400 });
+  if (!key.startsWith(PHOTO_PREFIX(uuid))) return new Response("forbidden", { status: 403 });
+  const obj = await env.RAFTER_ASSETS.get(key);
+  if (!obj) return new Response("not_found", { status: 404 });
+  const mime = obj.httpMetadata?.contentType || mimeFromKey(key);
+  return new Response(obj.body, {
+    status: 200,
+    headers: {
+      "content-type": mime,
+      "cache-control": "public, max-age=3600",
+    },
+  });
+}
+
+function mimeFromKey(key) {
+  const ext = key.toLowerCase().split(".").pop();
+  return ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" })[ext] || "application/octet-stream";
+}
+
+async function handleSm8Search(url, env) {
+  const uuid = url.searchParams.get("uuid");
+  const q = (url.searchParams.get("q") || "").trim();
+  if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
+  if (q.length < 3) return json({ ok: true, results: [], note: "query_too_short" });
+  const config = await readClient(env, uuid);
+  if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
+  if (!config.access_token) return json({ error: "token_required" }, { status: 412 });
+
+  const sm8 = new URL(SM8_COMPANY_SEARCH_URL);
+  sm8.searchParams.set("search", q);
+  const res = await fetch(sm8.toString(), {
+    headers: { "authorization": `Bearer ${config.access_token}`, "accept": "application/json" },
+  });
+  if (res.status === 401) return json({ error: "token_expired" }, { status: 401 });
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    return json({ error: "sm8_error", status: res.status, body: bodyText.slice(0, 500) }, { status: 502 });
+  }
+  let data;
+  try { data = await res.json(); } catch { return json({ error: "sm8_invalid_json" }, { status: 502 }); }
+  const list = Array.isArray(data) ? data : [];
+  const results = list
+    .filter((c) => c && !c.active === false)
+    .slice(0, 10)
+    .map((c) => ({
+      uuid: c.uuid,
+      name: c.name,
+      address: c.address || [c.address_street, c.address_city, c.address_state, c.address_postcode].filter(Boolean).join(", "),
+    }));
+  return json({ ok: true, results });
+}
+
 async function runScheduledSync(env) {
   const uuids = await listClientUuids(env);
   const results = [];
@@ -187,20 +319,32 @@ async function runScheduledSync(env) {
   return { total: uuids.length, ok, skipped, failed };
 }
 
+async function route(request, env) {
+  const url = new URL(request.url);
+  const path = url.pathname;
+  const method = request.method;
+
+  if (method === "OPTIONS") return new Response(null, { status: 204 });
+  if (method === "POST" && path === "/store-token") return handleStoreToken(request, env);
+  if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env);
+  if (method === "GET" && path === "/health") return json({ ok: true });
+
+  const clientMatch = method === "GET" && /^\/client\/([0-9a-f-]{36})$/i.exec(path);
+  if (clientMatch) return handleReadClient(clientMatch[1], env);
+  const materialsMatch = method === "GET" && /^\/materials\/([0-9a-f-]{36})$/i.exec(path);
+  if (materialsMatch) return handleReadMaterials(materialsMatch[1], env);
+  const photosMatch = method === "GET" && /^\/photos\/([0-9a-f-]{36})$/i.exec(path);
+  if (photosMatch) return handleListPhotos(photosMatch[1], env);
+  if (method === "GET" && path === "/photo") return handleGetPhoto(url, env);
+  if (method === "GET" && path === "/sm8-search") return handleSm8Search(url, env);
+
+  return json({ error: "not_found", path }, { status: 404 });
+}
+
 export default {
   async fetch(request, env, ctx) {
-    const url = new URL(request.url);
-
-    if (request.method === "POST" && url.pathname === "/store-token") {
-      return handleStoreToken(request, env);
-    }
-    if (request.method === "GET" && url.pathname === "/refresh-materials") {
-      return handleRefreshMaterials(url, env);
-    }
-    if (request.method === "GET" && url.pathname === "/health") {
-      return json({ ok: true });
-    }
-    return json({ error: "not_found", path: url.pathname }, { status: 404 });
+    const response = await route(request, env);
+    return withCors(request, response);
   },
 
   async scheduled(controller, env, ctx) {
