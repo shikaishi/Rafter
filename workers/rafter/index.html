@@ -375,11 +375,14 @@
   .ws-icon-btn.danger:hover { background: var(--rf-danger-bg); }
 
   .ws-body { padding: 12px 14px 14px; display: flex; flex-direction: column; gap: 12px; }
-  .ws-scope { display: flex; gap: 8px; align-items: flex-start; }
-  .ws-scope .indent { flex: 0 0 38px; }
+  .ws-scope {
+    display: flex;
+    gap: 8px;
+    align-items: flex-start;
+  }
   .ws-scope textarea {
     flex: 1;
-    height: 90px;
+    height: 140px;
     border: 0.5px solid var(--rf-border);
     border-radius: 8px;
     padding: 8px 10px;
@@ -388,6 +391,7 @@
     box-shadow: var(--shadow-input);
     resize: none;
     outline: none;
+    text-align: left;
   }
   .ws-scope textarea:focus { border-color: var(--rf-ocean); }
 
@@ -423,10 +427,11 @@
   .li-row .li-unit { font-size: 11px; color: var(--rf-muted); }
   .li-row .li-total { font-size: 13px; font-weight: 500; text-align: right; color: var(--rf-text); }
   .li-empty { font-size: 12px; color: var(--rf-muted); padding: 8px 0; }
-  .li-search { position: relative; margin-top: 8px; }
+  .li-search { position: relative; margin-top: 8px; margin-bottom: 0; }
   .li-search .dropdown {
     position: absolute;
-    top: 100%;
+    bottom: 100%;
+    top: auto;
     left: 0;
     right: 0;
     z-index: 100;
@@ -468,6 +473,8 @@
     box-shadow: var(--shadow-panel);
     margin-top: 8px;
     overflow: hidden;
+    width: 100%;
+    box-sizing: border-box;
   }
   .pp-head {
     display: flex; justify-content: space-between; align-items: center;
@@ -483,27 +490,34 @@
     -webkit-overflow-scrolling: touch;
     scrollbar-width: thin;
     border-bottom: 0.5px solid var(--rf-divider);
+    min-height: 44px;
   }
   .pp-cats::-webkit-scrollbar { height: 6px; }
   .pp-cats::-webkit-scrollbar-thumb { background: var(--rf-border); border-radius: 3px; }
   .pp-cats .chip { flex-shrink: 0; }
   .pp-grid {
     display: grid;
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: repeat(4, 1fr);
     gap: 6px;
     padding: 10px;
     overflow-y: auto;
-    max-height: 420px;
+    max-height: 260px;
   }
   .pp-cell {
     position: relative;
-    aspect-ratio: 4 / 3;
+    width: 100%;
+    padding-bottom: 75%;
     overflow: hidden;
     border-radius: 6px;
     cursor: pointer;
     border: 2px solid transparent;
+    background: var(--rf-row-bg);
+    height: 0;
   }
   .pp-cell img {
+    position: absolute;
+    top: 0;
+    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -519,6 +533,7 @@
     display: none; align-items: center; justify-content: center;
     font-size: 14px;
     box-shadow: var(--shadow-navy-btn);
+    z-index: 2;
   }
   .pp-cell.sel .check { display: flex; }
   .pp-foot {
@@ -754,6 +769,35 @@ const CHIP_VISIBLE_LIMIT = 14;
 const AUD = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const MEL_TZ = "Australia/Melbourne";
 
+const SCOPE_MAP = {
+  "BRICK EDGING": `Mark out garden design for edging\nPrepare the area by digging out a trench to a depth of 160mm\nLay bricks on a sand/mortar base`,
+  "CONCRETING": `Spread 50mm crushed rock sub base and compact\nLay out reinforced steel mesh SL 72bars\nSet up bar chairs 50mm from ground and connect joins with tie wires\nPour and install 100mm thick concrete\n2 coats of acid sealer for the exposed works (only for exposed agg)\nDiamond saw to cut the joints 2 days after pouring\n**Ex. Agg. quotes are based on a standard grey based mix range from metromix. Prices may vary slightly dependent on exact mix chosen`,
+  "EXCAVATION": `_____Excavation is __ sqm\nExcavate area to __mm depth\n_____Excavation is __ sqm\nExcavate area to __mm depth\n_____Excavation is __ sqm\nExcavate area to __mm depth\nMachinery: ________________\nWaste: ___skip\n*If permit required for skip, this will be an additional charge`,
+  "FENCING - TIMBER PALING": `Cypress pine posts, set in soil, stabilised by cement\nInstall paling fence with plinth board at base`,
+  "FORMBOSS STEEL EDGING": `Mark out garden design for edging\nPrepare the soil by digging out a trench, a minimum of one third of the edging must be in the ground\nBend and shape the edging pieces to suit the application\nJoin pieces together using connectors, clamp connectors and install screws\nKnock in stakes at desired height and line using stringline\nLay out the edging on top of stakes and screw in each of the stakes to secure`,
+  "GARDEN EDGING": `Mark out garden design for edging\nPrepare the soil by digging out a trench, a minimum of one-third of the edging must be in the ground\nKnock in stakes at desired height and line using string line\nLay out the edging against stakes and screw in each of the stakes to secure`,
+  "GRAVEL": `Spread, level and compact rock\nInstall weedmat (if quoted and desired)\nSpread, level and compact gravel/stone`,
+  "INSTANT TURF": `Rotary Hoe to break up soil\nSpread fresh top soil throughout area\nLevel out top soil using soil spreader\nEnsure smooth even level\nUse weighted roller to compact soil if necessary\nLevel soil again if necessary\nApply starter fertiliser and lightly water in\nLay out turf using correct procedures\nEnsure not to overlap rolls of turf\nFill gaps between turf rolls with washed sand\nUse weighted roller to compress turf into the soil ensuring the roots are in contact with soil and there is no air pockets\nGive the turf a deep soaking`,
+  "IRRIGATION": `Tap connection: ________ tap\nZones: ____\nSingle-Dual Zone Controller/Solenoid valves and wall mounted controller\nInstall brass ball valve and backflow prevention\nInstall _____ x 25mm Irritrol solenoid valves one to act as electronic master valve\nThe _____ zone system will be controlled by an automated timer`,
+  "MULCHING": `____m x __________ Mulch\nInstall mulch to garden beds at a depth of ____mm\nSpread the mulch evenly with rakes and/or hands throughout garden beds, ensuring the mulch is not significantly thicker in one area and thinner in another\nWhen mulching around shrubs and small trees, make an earth basin and keep the mulch pulled back a few inches to prevent rotting the trunks`,
+  "PAVING - FIXED": `Establish formwork\nPour and level concrete base 100mm depth\nAllow a 1:80 Fall for drainage\nLay pavers on a 20mm mortar base (with bondcrete)\nLight grey coloured grout in gaps between pavers\nCaulking against all hard surfaces to allow for some movement and avoid cracking\nWash and clean pavers\n**Paving sealer will be an additional charge if required and not quoted separately\n**Occasionally there may be a light haze showing days after grouting. Post paving acid clean is additional charge if required`,
+  "PAVING - SAND": `Mark out and excavate area to appropriate depth\nAdd base foundation of crushed rock to 75mm depth\nAllow a 1:80 Fall for drainage\nCompact with vibrating plate\nSet up screed rails and lay sand base to approximately 35mm and compact thoroughly\nScreed sand back to a depth of 25mm\nLay pavers leaving a 3mm gap between pavers\nHaunch in sides of paved area using mortar mix to approx 100mm depth from half way mark of paver\nSweep in gap sand and fill all voids\nCompact pavers (use piece of carpet at bottom of plate or tamper to avoid damaging pavers)\nLight spray of pavers to activate joint mix and wash away any excess sand`,
+  "PAVING SEALER": `Apply 2 coats of paving sealer to protect the paving from wear and stains`,
+  "PLANT ESTABLISHMENT CARE": `3 x Monthly follow ups\nMonitor plant establishment throughout critical initial 3 month phase\nLiquid Fertiliser -\nAP Fert -\nWeed Spray - Used on 2nd or 3rd visit`,
+  "POOL COPING": `Lay pavers on a 15mm thick mix of wash sand, white brick sand and cement\nInstall hide skimmer lids`,
+  "PRESSURE CLEAN": `Turbo jet machine to pressure clean pavers`,
+  "RETAINER WALL - BLOCKS": `Mark out line and height of wall\nExcavate trench width 450mm and depth to allow for 130mm concrete, 20mm sand and half of the first course\nPrepare the footing pouring the concrete and levelling off (use trench mesh if required)\nCreate 4:1 mix of sand and cement. Add some water but keep mix damp not wet.\nAdd 20mm of sand and cement mix to the base. Use screed rails to level.\nLay out blocks\nInstall capping on top`,
+  "RETAINER WALL - SLEEPERS": `Excavation of post holes to ____mm depth\nService assessment test required\nExcavator machine/Manual excavation to dig holes\nEstablish clear line and level for wall\nCompletely fill post holes with concrete ensuring strong and stable posts\nSteel channels to be set with a slight batter setback\nInstall sleepers at correct height (use coach screws if necessary)\nHammer in wedges behind the sleepers to line them all up with the front of the posts and to minimise long term warping of timber\nAttach builders film to the back of the sleepers to further protect sleepers from wear and rot`,
+  "SITE SETUP, CLEANUP, ADMIN & INSURANCE": `Begin weed control (if required) 2-4 weeks prior to works\nSet up site\n____m skip\nClean up and dispose all leftover materials and rubbish\nPressure clean hard surfaces where landscapers have dirtied at completion`,
+  "SOIL PREPARATION AND PLANTING": `Prepare the planting area with adequate compost and other soil additives dug through as required\nIf soil is dry, fill with water and allow to drain completely\nPlant roots are to be teased outwards if roots are matted in pot\nPlace plant in centre of hole and ensure that the top of the rootball is flush with the surrounding soil surface and the trunk is vertical\nSoil is to be backfilled firmly into the hole and thoroughly watered in\nTrees are to be staked with two hardwood stakes driven firmly into the ground but not through the rootball\nTrees are to be secured to the stakes with strong but flexible tree ties\nSlow release fertiliser and liquid fertiliser is to be applied to all garden beds and watered in thoroughly`,
+  "SOIL TESTING": `PH testing will be conducted prior to planting. It is critical to get the soil conditions right prior to planting. The outcome of this test will dictate whether soil additives will be used.\n*If soil additives necessary, this will be an additional charge.`,
+  "STEPPERS": `Install base if required\nLay steppers on a 20-50mm bed of mortar`,
+  "SYNTHETIC TURF": `Install 70mm coverage of crushed rock\nLevel out and compact with vibrating plate\nLay out screed rails and to create an even level for crusher dust\nUsing screed rails spread crusher dust\nRoll out synthetic turf, aiming to minimise the amount of joins\nPeg down sides and use tap to connect underside of joins\nSpread infill sand on top`,
+  "TIMBER EDGING": `Mark out garden design for edging\nPrepare the soil by digging out a trench, a minimum of one-third of the edging must be in the ground\nKnock in stakes at desired height and line using string line\nLay out the edging against stakes and screw in each of the stakes to secure`,
+  "TRELLIS": `Parallel horizontal rows at 30cm intervals\nInstall screw eyes at intervals in line with fence posts\nAttach metal rope to screw eyes using hydraulic crimpers\nUse fastener connections to tighten rope`,
+  "TURF ESTABLISHMENT CARE": `3 x Monthly follow ups\nMonitor turf establishment throughout critical initial 3 month phase, repair any areas if required\n1st Visit - Edge and mow lawn, Manual weed control, Liquid fertiliser\n2nd Visit - Edge and mow lawn, Manual weed control\n3rd Visit - Edge and mow lawn, Weed Control, Lawn Fert Pellets`
+};
+
 // ===== STATE =====
 const state = {
   client: null,
@@ -973,6 +1017,18 @@ function renderChips() {
 function templateByKey(key) {
   return templateList().find((t) => (t.key || t.name) === key);
 }
+function scopeLookup(name) {
+  if (!name) return "";
+  const upper = name.toUpperCase().trim();
+  // Exact match first
+  if (SCOPE_MAP[upper]) return SCOPE_MAP[upper];
+  // Partial match — handles cases where SM8 name has suffix
+  // like "BH-" stripped during chip render
+  const key = Object.keys(SCOPE_MAP).find((k) =>
+    upper.includes(k) || k.includes(upper)
+  );
+  return key ? SCOPE_MAP[key] : "";
+}
 function toggleSection(key, name) {
   const idx = state.sections.findIndex((s) => s.templateKey === key);
   if (idx >= 0) {
@@ -983,8 +1039,8 @@ function toggleSection(key, name) {
       id: uid(),
       templateKey: key,
       name,
-      scopeOriginal: tpl.scope || tpl.text || "",
-      scope: tpl.scope || tpl.text || "",
+      scopeOriginal: tpl.scope || tpl.text || scopeLookup(name) || "",
+      scope: tpl.scope || tpl.text || scopeLookup(name) || "",
       price: 0,
       priceManual: false,
       lineItems: [],
@@ -1052,8 +1108,11 @@ function renderOneSection(s) {
 
   // Scope textarea
   const scopeWrap = el(`<div class="ws-scope">
-    <div class="indent"></div>
     <textarea data-role="scope" placeholder="Scope of works…">${escapeHtml(s.scope || "")}</textarea>
+    <button class="btn btn-outline btn-sm" data-role="reset-text"
+      title="Reset to default text" style="flex-shrink:0;">
+      <i class="ti ti-rotate"></i>Reset
+    </button>
   </div>`);
   body.appendChild(scopeWrap);
 
@@ -1068,8 +1127,9 @@ function renderOneSection(s) {
 
   // Action buttons
   const actions = el(`<div class="ws-actions">
-    <button class="btn ${s.photos.length ? "btn-primary" : "btn-secondary"}" data-role="photos"><i class="ti ti-photo"></i>${s.photos.length ? `Add photos · ${s.photos.length}` : "Add photos"}</button>
-    <button class="btn btn-outline" data-role="reset-text"><i class="ti ti-rotate"></i>Reset text</button>
+    <button class="btn ${s.photos.length ? "btn-primary" : "btn-secondary"}"
+      data-role="photos"><i class="ti ti-photo"></i>${s.photos.length ?
+      `Add photos · ${s.photos.length}` : "Add photos"}</button>
   </div>`);
   body.appendChild(actions);
 
