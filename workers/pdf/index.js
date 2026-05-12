@@ -534,7 +534,6 @@ function buildHtml({ payload, client, logoDataUrl }) {
       ${siteAddress ? `<div class="addr">${escapeHtml(siteAddress)}</div>` : ""}
     </div>
     <div class="meta">
-      ${proposalNumber ? metaPair("Proposal", proposalNumber) : ""}
       ${proposalDate ? metaPair("Date", proposalDate) : ""}
       ${quoteRef ? metaPair("Reference", quoteRef) : ""}
       ${totalStr ? metaPair("Total", totalStr) : ""}
