@@ -1,0 +1,15 @@
+name = "rafter-pdf"
+main = "index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "RAFTER_CLIENTS"
+id = "7c7ad02d8136452eb6d03d1af89a684f"
+
+[[r2_buckets]]
+binding = "RAFTER_ASSETS"
+bucket_name = "rafter-assets"
+
+[browser]
+binding = "BROWSER"
