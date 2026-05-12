@@ -424,6 +424,19 @@
   .li-row .li-total { font-size: 13px; font-weight: 500; text-align: right; color: var(--rf-text); }
   .li-empty { font-size: 12px; color: var(--rf-muted); padding: 8px 0; }
   .li-search { position: relative; margin-top: 8px; }
+  .li-search .dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    right: 0;
+    z-index: 100;
+    background: #fff;
+    border: 0.5px solid var(--rf-border);
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0,0,0,0.10);
+    max-height: 220px;
+    overflow-y: auto;
+  }
   .manual-row { display: flex; gap: 8px; align-items: center; margin-top: 4px; flex-wrap: wrap; }
   .manual-badge {
     font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em;
@@ -462,8 +475,13 @@
   }
   .pp-head .label { font-size: 11px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.05em; color: var(--rf-muted); }
   .pp-cats {
-    display: flex; gap: 6px; padding: 10px 14px;
-    overflow-x: auto; white-space: nowrap;
+    display: flex;
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    gap: 6px;
+    padding: 10px 10px 6px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
     border-bottom: 0.5px solid var(--rf-divider);
   }
   .pp-cats::-webkit-scrollbar { height: 6px; }
@@ -472,22 +490,28 @@
   .pp-grid {
     display: grid;
     grid-template-columns: repeat(3, 1fr);
-    gap: 8px;
-    padding: 12px 14px;
-    max-height: 420px;
+    gap: 6px;
+    padding: 10px;
     overflow-y: auto;
+    max-height: 420px;
   }
   .pp-cell {
-    aspect-ratio: 1;
-    border-radius: 8px;
-    overflow: hidden;
     position: relative;
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: 6px;
     cursor: pointer;
-    border: 0.5px solid var(--rf-border);
-    background: var(--rf-row-bg);
+    border: 2px solid transparent;
   }
-  .pp-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
-  .pp-cell.sel { border: 2px solid var(--rf-navy); }
+  .pp-cell img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+  .pp-cell.sel {
+    border-color: var(--rf-navy);
+  }
   .pp-cell .check {
     position: absolute; top: 4px; right: 4px;
     width: 20px; height: 20px; border-radius: 50%;
@@ -1422,6 +1446,9 @@ async function submitQuote() {
 
 async function refreshMaterials() {
   updateMatBtn("loading");
+  const btn = document.getElementById('matBtn');
+  const span = btn.querySelector('span');
+  if (span) span.textContent = 'Syncing…';
   try {
     const r = await fetch(`${API}/refresh-materials?uuid=${CLIENT_UUID}`);
     const data = await r.json().catch(() => ({}));
@@ -1439,6 +1466,8 @@ async function refreshMaterials() {
     state.materialsAvailable = false;
     updateMatBtn();
     toast("Materials refresh failed", "err");
+  } finally {
+    if (span) span.textContent = 'Materials';
   }
 }
 
