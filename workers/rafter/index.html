@@ -214,18 +214,23 @@
   .pill-row {
     display: flex;
     flex-direction: column;
-    align-items: flex-start;
+    align-items: flex-end;
+  }
+  .pill-row .field-label {
+    width: 60%;
+    text-align: center;
   }
   .pill-toggle {
-    display: inline-flex;
+    display: flex;
+    width: 60%;
     background: var(--rf-teal-bg);
     border: 0.5px solid var(--rf-teal-border);
     border-radius: 20px;
     padding: 2px;
     box-shadow: var(--shadow-input);
-    align-self: flex-end;
   }
   .pill-toggle button {
+    flex: 1;
     background: transparent;
     border: none;
     color: var(--rf-navy);
@@ -238,6 +243,7 @@
     cursor: pointer;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 6px;
     font-family: inherit;
   }
@@ -551,18 +557,22 @@
     text-align: center;
   }
 
-  /* ===== SECTION 3 ===== */
+  /* ===== SECTION 3 — NOTES ===== */
   .section3-body {
+    padding: 16px 18px;
+  }
+  .section3-body .textarea { height: 100px; }
+
+  /* ===== SECTION 4 — TOTALS & PAYMENT ===== */
+  .section4-body {
     padding: 16px 18px;
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 18px;
   }
-  .totals-card {
-    border: 0.5px solid var(--rf-border);
-    border-radius: 10px;
-    background: #fff;
-    box-shadow: var(--shadow-card);
+  .totals-flat {
+    background: var(--rf-row-bg);
+    border-radius: 8px;
     overflow: hidden;
   }
   .totals-row {
@@ -609,9 +619,6 @@
   .pay-row .desc { color: var(--rf-muted); }
   .pay-row .amt { font-weight: 500; color: var(--rf-text); }
 
-  /* ===== SECTION 4 ===== */
-  .section4-body { padding: 14px 18px; }
-  .section4-body .textarea { height: 100px; }
 
   /* ===== FOOTER ===== */
   .footer {
@@ -649,8 +656,7 @@
   .pac-item-query { font-size: 12px; }
 
   @media (max-width: 920px) {
-    .section1-body, .section3-body { grid-template-columns: 1fr; }
-    .pill-toggle { align-self: flex-start; }
+    .section1-body, .section4-body { grid-template-columns: 1fr; }
   }
 </style>
 </head>
@@ -695,7 +701,7 @@
         <div id="clientHint" class="hint"></div>
       </div>
       <div class="pill-row">
-        <label class="field-label" style="align-self:flex-end;">Proposal type</label>
+        <label class="field-label">Proposal type</label>
         <div class="pill-toggle" id="proposalToggle">
           <button type="button" data-val="LC" class="active"><i class="ti ti-hammer"></i>Construction</button>
           <button type="button" data-val="GM"><i class="ti ti-leaf"></i>Maintenance</button>
@@ -722,11 +728,19 @@
     <div class="section2-empty" id="section2Empty">Add a section above to start.</div>
   </section>
 
-  <!-- SECTION 3 — TOTALS & PAYMENT -->
+  <!-- SECTION 3 — NOTES -->
   <section class="card">
-    <div class="section-bar"><div class="num">3</div><div class="title">Totals &amp; Payment</div></div>
+    <div class="section-bar"><div class="num">3</div><div class="title">Notes</div><div class="right">Optional</div></div>
     <div class="section3-body">
-      <div class="totals-card">
+      <textarea class="textarea" id="notes" placeholder="Add any site-specific notes, caveats, or additional instructions for this quote…"></textarea>
+    </div>
+  </section>
+
+  <!-- SECTION 4 — TOTALS & PAYMENT -->
+  <section class="card">
+    <div class="section-bar"><div class="num">4</div><div class="title">Totals &amp; Payment</div></div>
+    <div class="section4-body">
+      <div class="totals-flat">
         <div class="totals-row"><div class="lbl">Subtotal</div><div class="val" id="totSub">$0.00</div></div>
         <div class="totals-row gst"><div class="lbl">GST (10%)</div><div class="val" id="totGst">$0.00</div></div>
         <div class="totals-row grand"><div class="lbl">Total</div><div class="val" id="totGrand">$0.00</div></div>
@@ -736,14 +750,6 @@
         <div class="pay-note"><i class="ti ti-info-circle"></i><span id="payNote">Schedule will appear once total is calculated.</span></div>
         <div class="pay-schedule" id="paySchedule"></div>
       </div>
-    </div>
-  </section>
-
-  <!-- SECTION 4 — NOTES -->
-  <section class="card">
-    <div class="section-bar"><div class="num">4</div><div class="title">Notes</div><div class="right">Optional</div></div>
-    <div class="section4-body">
-      <textarea class="textarea" id="notes" placeholder="Add any site-specific notes, caveats, or additional instructions for this quote…"></textarea>
     </div>
   </section>
 
