@@ -27,19 +27,48 @@ const PROPOSAL_TYPE_LABEL = {
   GM: "Garden Maintenance",
 };
 
+const ALLOWED_ORIGINS = new Set([
+  "https://rafter.deepgreensea.au",
+  "https://rafter.will-8e8.workers.dev",
+  "http://localhost:8787",
+  "http://127.0.0.1:8787",
+]);
+
+function corsHeaders(request) {
+  const origin = request.headers.get("origin") || "";
+  const allow = ALLOWED_ORIGINS.has(origin) ? origin : "https://rafter.deepgreensea.au";
+  return {
+    "access-control-allow-origin": allow,
+    "access-control-allow-methods": "POST, GET, OPTIONS",
+    "access-control-allow-headers": "Content-Type",
+    "vary": "Origin",
+  };
+}
+
+function withCors(request, response) {
+  const headers = new Headers(response.headers);
+  for (const [k, v] of Object.entries(corsHeaders(request))) headers.set(k, v);
+  return new Response(response.body, { status: response.status, headers });
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
 
+    if (request.method === "OPTIONS") {
+      return new Response(null, { status: 204, headers: corsHeaders(request) });
+    }
+
+    let response;
     if (request.method === "GET" && url.pathname === "/health") {
-      return json({ ok: true });
+      response = json({ ok: true });
+    } else if (request.method === "POST" && url.pathname === "/generate") {
+      response = await handleGenerate(request, env, url);
+    } else {
+      response = new Response("Not found", { status: 404 });
     }
 
-    if (request.method === "POST" && url.pathname === "/generate") {
-      return handleGenerate(request, env, url);
-    }
-
-    return new Response("Not found", { status: 404 });
+    return withCors(request, response);
   },
 };
 
