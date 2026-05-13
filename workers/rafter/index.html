@@ -504,26 +504,22 @@
   .pp-grid {
     display: grid;
     grid-template-columns: repeat(4, 1fr);
+    grid-auto-rows: 72px;
     gap: 6px;
     padding: 10px;
     overflow-y: auto;
-    max-height: 260px;
+    max-height: 170px; /* 2 × 72px + 1 × 6px gap + 2 × 10px padding */
   }
   .pp-cell {
     position: relative;
-    width: 100%;
-    padding-bottom: 75%;
+    aspect-ratio: 1;
     overflow: hidden;
     border-radius: 6px;
     cursor: pointer;
     border: 2px solid transparent;
     background: var(--rf-row-bg);
-    height: 0;
   }
   .pp-cell img {
-    position: absolute;
-    top: 0;
-    left: 0;
     width: 100%;
     height: 100%;
     object-fit: cover;
