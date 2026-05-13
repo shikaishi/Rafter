@@ -79,6 +79,16 @@ async function handleGenerate(request, env, url) {
   const form = new FormData();
   form.append("pdf", new Blob([pdf], { type: "application/pdf" }), `${payload.quote_ref || "quote"}.pdf`);
   form.append("payload", JSON.stringify(payload));
+  // Individual fields so Make can map without JSON parsing
+  form.append("client_name",      payload.client_name      || "");
+  form.append("client_sm8_uuid",  payload.client_sm8_uuid  || "");
+  form.append("quote_ref",        payload.quote_ref        || "");
+  form.append("site_address",     payload.site_address     || "");
+  form.append("proposal_type",    payload.proposal_type    || "");
+  form.append("proposal_date",    payload.proposal_date    || "");
+  form.append("total",            String(payload.total     ?? ""));
+  form.append("notes",            payload.notes            || "");
+  form.append("job_description",  buildJobDescription(payload));
 
   const makeRes = await fetch(MAKE_RAFTER_FORM_WEBHOOK, { method: "POST", body: form });
   if (!makeRes.ok) {
@@ -710,6 +720,33 @@ function renderTerms(terms) {
     <h2 class="block-h">Terms and Conditions</h2>
     <div class="terms">${paras}</div>
   </section>`;
+}
+
+function buildJobDescription(payload) {
+  const ref = payload.quote_ref || "";
+  const lines = [
+    `--- RAFTER:${ref}:START ---`,
+    `Ref:  ${ref}`,
+    `Date: ${payload.proposal_date || ""}`,
+    `Type: ${PROPOSAL_TYPE_LABEL[payload.proposal_type] || payload.proposal_type || ""}`,
+    `Site: ${payload.site_address || ""}`,
+    "",
+  ];
+
+  for (const s of (payload.sections || [])) {
+    const heading = s.heading || (s.items?.[0]?.name) || "";
+    const price = s.items?.[0]?.price != null ? AUD.format(s.items[0].price) : "";
+    lines.push(`${heading}${price ? " — " + price : ""}`);
+    const scope = s.items?.[0]?.scope || "";
+    if (scope) lines.push(scope);
+    lines.push("");
+  }
+
+  if (payload.total != null) lines.push(`Total (inc. GST): ${AUD.format(payload.total)}`);
+  if (payload.notes) { lines.push(""); lines.push(`Notes: ${payload.notes}`); }
+
+  lines.push(`--- RAFTER:${ref}:END ---`);
+  return lines.join("\n");
 }
 
 function escapeHtml(s) {
