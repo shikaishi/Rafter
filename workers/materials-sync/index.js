@@ -1,5 +1,9 @@
 const SM8_MATERIALS_URL = "https://api.servicem8.com/api_1.0/material.json";
 const SM8_COMPANY_SEARCH_URL = "https://api.servicem8.com/api_1.0/company.json";
+// https://developer.servicem8.com/docs/authentication
+const SM8_TOKEN_URL = "https://go.servicem8.com/oauth/access_token";
+const SM8_CLIENT_ID = "781230";
+const TOKEN_REFRESH_BUFFER_MS = 5 * 60 * 1000; // refresh if expiring within 5 min
 const MATERIALS_TTL_SECONDS = 86400;
 const CLIENT_KEY_PREFIX = "client:";
 const MATERIALS_KEY_PREFIX = "materials:";
@@ -76,6 +80,62 @@ async function writeClient(env, uuid, config) {
   await env.RAFTER_CLIENTS.put(CLIENT_KEY_PREFIX + uuid, JSON.stringify(config));
 }
 
+async function refreshTokenIfNeeded(uuid, env) {
+  const config = await readClient(env, uuid);
+  if (!config) throw new Error(`client_not_found: ${uuid}`);
+
+  if (!config.access_token && !config.refresh_token) {
+    throw new Error(`no_tokens: ${uuid} — complete OAuth flow via /setup first`);
+  }
+
+  const expiresAt = config.expires_at ? new Date(config.expires_at).getTime() : 0;
+  const needsRefresh = !config.access_token
+    || !expiresAt
+    || Date.now() + TOKEN_REFRESH_BUFFER_MS >= expiresAt;
+
+  if (!needsRefresh) return config.access_token;
+
+  if (!config.refresh_token) {
+    throw new Error(`token_expired_no_refresh_token: ${uuid} — re-authorise via /setup`);
+  }
+  if (!env.SERVICEM8_CLIENT_SECRET) {
+    throw new Error("SERVICEM8_CLIENT_SECRET worker secret is not set");
+  }
+
+  const res = await fetch(SM8_TOKEN_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
+      grant_type: "refresh_token",
+      refresh_token: config.refresh_token,
+      client_id: SM8_CLIENT_ID,
+      client_secret: env.SERVICEM8_CLIENT_SECRET,
+    }).toString(),
+  });
+
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    throw new Error(`sm8_token_refresh_failed (${res.status}): ${detail.slice(0, 300)}`);
+  }
+
+  const tokens = await res.json();
+  if (!tokens.access_token) {
+    throw new Error(`sm8_token_refresh_invalid_response: ${JSON.stringify(tokens).slice(0, 200)}`);
+  }
+
+  config.access_token = tokens.access_token;
+  if (tokens.refresh_token) config.refresh_token = tokens.refresh_token;
+  if (tokens.expires_in) {
+    config.expires_at = new Date(Date.now() + tokens.expires_in * 1000).toISOString();
+  }
+  config.token_updated_at = new Date().toISOString();
+
+  await writeClient(env, uuid, config);
+  console.log(JSON.stringify({ event: "token_refreshed", uuid, expires_at: config.expires_at }));
+
+  return config.access_token;
+}
+
 async function fetchMaterials(accessToken) {
   const res = await fetch(SM8_MATERIALS_URL, {
     headers: { "authorization": `Bearer ${accessToken}`, "accept": "application/json" },
@@ -150,14 +210,15 @@ async function handleRefreshMaterials(url, env) {
 
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
-  if (!config.access_token) {
-    return json({ error: "token_required", detail: "no access_token in client config — run /store-token first" }, { status: 412 });
+
+  let accessToken;
+  try {
+    accessToken = await refreshTokenIfNeeded(uuid, env);
+  } catch (e) {
+    return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 });
   }
 
-  const result = await fetchMaterials(config.access_token);
-  if (result.status === 401) {
-    return json({ error: "token_expired", detail: "SM8 returned 401 — refresh required" }, { status: 401 });
-  }
+  const result = await fetchMaterials(accessToken);
   if (!result.ok) {
     return json(
       { error: "sm8_error", status: result.status, body: (result.bodyText || "").slice(0, 500) },
@@ -187,10 +248,15 @@ async function listClientUuids(env) {
 async function syncOneClient(env, uuid) {
   const config = await readClient(env, uuid);
   if (!config) return { uuid, status: "skipped", reason: "config_not_found" };
-  if (!config.access_token) return { uuid, status: "skipped", reason: "no_access_token" };
 
-  const result = await fetchMaterials(config.access_token);
-  if (result.status === 401) return { uuid, status: "skipped", reason: "token_expired" };
+  let accessToken;
+  try {
+    accessToken = await refreshTokenIfNeeded(uuid, env);
+  } catch (e) {
+    return { uuid, status: "skipped", reason: `token_refresh_failed: ${e.message}` };
+  }
+
+  const result = await fetchMaterials(accessToken);
   if (!result.ok) return { uuid, status: "failed", reason: `sm8_${result.status}` };
 
   await writeMaterials(env, uuid, result.data);
@@ -269,14 +335,19 @@ async function handleSm8Search(url, env) {
   if (q.length < 3) return json({ ok: true, results: [], note: "query_too_short" });
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
-  if (!config.access_token) return json({ error: "token_required" }, { status: 412 });
+
+  let accessToken;
+  try {
+    accessToken = await refreshTokenIfNeeded(uuid, env);
+  } catch (e) {
+    return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 });
+  }
 
   const sm8 = new URL(SM8_COMPANY_SEARCH_URL);
   sm8.searchParams.set("search", q);
   const res = await fetch(sm8.toString(), {
-    headers: { "authorization": `Bearer ${config.access_token}`, "accept": "application/json" },
+    headers: { "authorization": `Bearer ${accessToken}`, "accept": "application/json" },
   });
-  if (res.status === 401) return json({ error: "token_expired" }, { status: 401 });
   if (!res.ok) {
     const bodyText = await res.text().catch(() => "");
     return json({ error: "sm8_error", status: res.status, body: bodyText.slice(0, 500) }, { status: 502 });
