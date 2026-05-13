@@ -20,6 +20,8 @@ const AUD = new Intl.NumberFormat("en-AU", {
   maximumFractionDigits: 2,
 });
 
+const MAKE_RAFTER_FORM_WEBHOOK = "https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4";
+
 const PROPOSAL_TYPE_LABEL = {
   LC: "Landscape Construction",
   GM: "Garden Maintenance",
@@ -73,7 +75,18 @@ async function handleGenerate(request, env, url) {
     });
   }
 
-  return json({ error: "submit_mode_not_yet_wired", note: "T1-C1 preview-first per spec; submit wiring is the next step." }, 501);
+  // Submit: POST PDF + payload to Make Rafter Form webhook
+  const form = new FormData();
+  form.append("pdf", new Blob([pdf], { type: "application/pdf" }), `${payload.quote_ref || "quote"}.pdf`);
+  form.append("payload", JSON.stringify(payload));
+
+  const makeRes = await fetch(MAKE_RAFTER_FORM_WEBHOOK, { method: "POST", body: form });
+  if (!makeRes.ok) {
+    const detail = await makeRes.text().catch(() => "");
+    return json({ error: "make_webhook_failed", status: makeRes.status, detail: detail.slice(0, 500) }, 502);
+  }
+
+  return json({ ok: true, quote_ref: payload.quote_ref || null });
 }
 
 async function loadClient(env, uuid) {
