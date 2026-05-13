@@ -171,7 +171,7 @@ async function renderPdf(env, html) {
   try {
     const page = await browser.newPage();
     await page.setViewport({ width: 1240, height: 1754 });
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.evaluate(() => document.fonts.ready);
 
     const footerTemplate = `
