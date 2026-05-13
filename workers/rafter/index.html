@@ -1464,6 +1464,14 @@ async function previewPdf() {
   if (!state.sections.length) return toast("Add at least one section before previewing.", "err");
   const btn = $("previewBtn");
   btn.disabled = true; btn.style.opacity = "0.7";
+  // Open window synchronously inside the click handler so the browser
+  // doesn't treat it as a popup (window.open after await gets blocked).
+  const win = window.open("", "_blank");
+  if (!win) {
+    toast("Allow popups for this site to preview the PDF.", "err");
+    btn.disabled = false; btn.style.opacity = "";
+    return;
+  }
   try {
     const payload = buildPayload("preview");
     const r = await fetch(`${PDF_API}/generate?mode=preview`, {
@@ -1473,13 +1481,15 @@ async function previewPdf() {
     });
     if (!r.ok) {
       const txt = await r.text();
+      win.close();
       throw new Error(`PDF worker ${r.status}: ${txt.slice(0, 200)}`);
     }
     const blob = await r.blob();
     const url = URL.createObjectURL(blob);
-    window.open(url, "_blank", "noopener");
+    win.location.href = url;
     setTimeout(() => URL.revokeObjectURL(url), 60_000);
   } catch (e) {
+    win.close();
     toast(String(e.message || e), "err");
   } finally {
     btn.disabled = false; btn.style.opacity = "";
