@@ -1621,6 +1621,7 @@ async function submitQuote() {
   btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Submitting…';
   try {
     const payload = buildPayload("submit");
+    console.log("[rafter] submit payload", JSON.stringify(payload, null, 2));
     const r = await fetch(`${PDF_API}/generate?mode=submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },

@@ -123,6 +123,7 @@ async function handleGenerate(request, env, url) {
   form.append("total",            String(payload.total     ?? ""));
   form.append("notes",            payload.notes            || "");
   form.append("job_description",  buildJobDescription(payload));
+  form.append("lineItems",        JSON.stringify(payload.lineItems || []));
 
   const makeRes = await fetch(MAKE_RAFTER_FORM_WEBHOOK, { method: "POST", body: form });
   if (!makeRes.ok) {
