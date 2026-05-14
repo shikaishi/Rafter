@@ -134,7 +134,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 
 **Base URL:** `https://api.servicem8.com/api_1.0/`  
 **Auth:** `Authorization: Bearer {access_token}` (from KV)  
-**Token expiry:** 1 hour. Refresh token stored in KV — refresh logic NOT YET BUILT (BUG-03).  
+**Token endpoint:** `POST https://go.servicem8.com/oauth/access_token` (1-hour access token; refresh implemented in `rafter-materials-sync` Worker — see `workers/materials-sync/index.js`)  
 **App ID:** 781230  
 
 ### Key endpoints used
@@ -197,7 +197,7 @@ See **Rafter — Issue Tracker** (Google Sheets) for full detail.
 |----|-------|----------|--------|
 | BUG-01 | Google Maps API key domain restriction | P1 | Open — 5 min operator fix |
 | BUG-02 | Account Discovery Webhook Response returning "Accepted" not JSON | P1 | Open — Make config |
-| BUG-03 | OAuth token refresh logic not built | P1 | Open — build required |
+| BUG-03 | OAuth token refresh logic not built | P1 | Closed — implemented in `rafter-materials-sync` |
 | BUG-04 | Job Note module — staff_uuid empty | P1 | Open — hardcode UUID |
 | BUG-05 | Job Note module — note field not populating | P1 | Open — mapping fix |
 | BUG-06 | PDF not arriving in SM8 on submit | P1 | Open — triage rafter-pdf logs first |
@@ -302,10 +302,9 @@ CONTEXT: See CLAUDE.md
 
 ## Things that require verification before building
 
-1. SM8 refresh token endpoint URL and required parameters (BUG-03)
-2. SM8 Inbox API binary PDF attachment support (VER-01)
-3. SM8 OAuth scope for Inbox write access (VER-02)
-4. SM8 job creation response body includes UUID (VER-03)
+1. SM8 Inbox API binary PDF attachment support (VER-01)
+2. SM8 OAuth scope for Inbox write access (VER-02)
+3. SM8 job creation response body includes UUID (VER-03)
 
 Do not build against any of these without verifying first. Check SM8 developer docs at
 https://developer.servicem8.com or test against trial instance.
