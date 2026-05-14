@@ -89,9 +89,12 @@ async function handleGenerate(request, env, url) {
   if (!client_uuid) return json({ error: "missing_client_uuid" }, 400);
 
   const client = await loadClient(env, client_uuid);
-  const logoDataUrl = await fetchLogo(env, client_uuid);
+  const [logoDataUrl, photoMap] = await Promise.all([
+    fetchLogo(env, client_uuid),
+    fetchPhotos(env, collectPhotoKeys(payload)),
+  ]);
 
-  const html = buildHtml({ payload, client, logoDataUrl });
+  const html = buildHtml({ payload, client, logoDataUrl, photoMap });
   const pdf = await renderPdf(env, html);
 
   const filename = buildPdfFilename(payload);
@@ -153,6 +156,32 @@ async function fetchLogo(env, uuid) {
   return null;
 }
 
+function collectPhotoKeys(payload) {
+  const keys = new Set();
+  for (const fs of (payload.form_sections || [])) {
+    for (const k of (fs?.photos || [])) {
+      if (typeof k === "string" && k) keys.add(k);
+    }
+  }
+  return [...keys];
+}
+
+async function fetchPhotos(env, keys) {
+  if (!keys.length) return new Map();
+  const entries = await Promise.all(keys.map(async (k) => {
+    try {
+      const obj = await env.RAFTER_ASSETS.get(k);
+      if (!obj) return [k, null];
+      const buf = await obj.arrayBuffer();
+      const mime = obj.httpMetadata?.contentType || mimeFromPath(k);
+      return [k, `data:${mime};base64,${arrayBufferToBase64(buf)}`];
+    } catch {
+      return [k, null];
+    }
+  }));
+  return new Map(entries);
+}
+
 function mimeFromPath(p) {
   const ext = p.toLowerCase().split(".").pop();
   return ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" }[ext]) || "application/octet-stream";
@@ -195,7 +224,7 @@ async function renderPdf(env, html) {
   }
 }
 
-function buildHtml({ payload, client, logoDataUrl }) {
+function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   const businessName = client.business_name || "2 Men and a Shovel";
   const businessAddress = client.business_address || "";
   const businessEmail = client.business_email || "";
@@ -417,6 +446,27 @@ function buildHtml({ payload, client, logoDataUrl }) {
   }
   .asterisk-notes p { margin: 0 0 1mm 0; }
 
+  /* ---------- Section photos (rendered under each section's scope) ---------- */
+  .sect-photos {
+    margin-top: 4mm;
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 3mm;
+    page-break-inside: avoid;
+  }
+  .sect-photo {
+    aspect-ratio: 4 / 3;
+    overflow: hidden;
+    border-radius: 1mm;
+    background: #f0f0f0;
+  }
+  .sect-photo img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
   /* ---------- Totals block (after work sections, before credentials) ---------- */
   .totals {
     margin-top: 8mm;
@@ -558,6 +608,35 @@ function buildHtml({ payload, client, logoDataUrl }) {
   }
   .terms p { margin: 0 0 3mm 0; }
   .terms p:last-child { margin-bottom: 0; }
+
+  /* ---------- Appendix page (creds → payment → bank → terms, single A4) ---------- */
+  .appendix {
+    page-break-before: always;
+    break-before: page;
+  }
+  .appendix .block { margin-top: 5mm; }
+  .appendix .block:first-child { margin-top: 0; }
+  .appendix .block-h { font-size: 12pt; margin-bottom: 2.5mm; }
+  /* Credentials — two columns to halve vertical footprint */
+  .appendix .creds {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 6mm;
+    row-gap: 1mm;
+  }
+  .appendix .cred { gap: 2mm; }
+  .appendix .cred-dot { width: 3.5mm; height: 3.5mm; margin-top: 0.5mm; }
+  .appendix .cred-dot svg { width: 2.2mm; height: 2.2mm; }
+  .appendix .cred-text { font-size: 8.5pt; line-height: 1.3; }
+  .appendix .cred-text .detail { font-size: 8pt; }
+  /* Payment schedule */
+  .appendix .pay-row { padding: 1.5mm 0; font-size: 9.5pt; }
+  .appendix .pay-pct { font-size: 9.5pt; }
+  .appendix .pay-notes { font-size: 7.5pt; line-height: 1.35; margin-top: 2mm; }
+  /* Bank details */
+  .appendix .bank-row { padding: 0.8mm 0; font-size: 9.5pt; }
+  /* Terms — densest block; smallest type */
+  .appendix .terms { font-size: 7.5pt; line-height: 1.35; }
+  .appendix .terms p { margin: 0 0 1.5mm 0; }
 </style>
 </head>
 <body>
@@ -599,14 +678,17 @@ function buildHtml({ payload, client, logoDataUrl }) {
   <h1 class="job-title">${escapeHtml(jobTitle)}</h1>
 
   <div class="work">
-    ${renderSections(payload.sections || [])}
+    ${renderSections(payload.sections || [], payload.form_sections || [], photoMap)}
   </div>
 
   ${renderTotals(payload)}
-  ${renderCredentials(credentials)}
-  ${renderPaymentSchedule(payload.payment_schedule || [], payload.payment_notes || [])}
-  ${renderBank(payload.bank_details || {})}
-  ${renderTerms(terms)}
+
+  <div class="appendix">
+    ${renderCredentials(credentials)}
+    ${renderPaymentSchedule(payload.payment_schedule || [], payload.payment_notes || [])}
+    ${renderBank(payload.bank_details || {})}
+    ${renderTerms(terms)}
+  </div>
 
 </div>
 
@@ -647,17 +729,30 @@ function parseSuburb(addr) {
   return s;
 }
 
-function renderSections(sections) {
+function renderSections(sections, formSections, photoMap) {
   if (!sections.length) return "";
-  return sections.map(renderSection).join("");
+  return sections.map((s, i) => renderSection(s, formSections?.[i]?.photos || [], photoMap)).join("");
 }
 
-function renderSection(section) {
+function renderSection(section, photoKeys, photoMap) {
   const items = (section.items || []).map(renderItem).join("");
+  const photos = renderSectionPhotos(photoKeys, photoMap);
   return `<div class="section">
     <div class="section-h">${escapeHtml(section.heading || "")}</div>
     ${items}
+    ${photos}
   </div>`;
+}
+
+function renderSectionPhotos(keys, photoMap) {
+  if (!keys?.length || !photoMap) return "";
+  const tiles = keys
+    .map((k) => photoMap.get(k))
+    .filter(Boolean)
+    .map((url) => `<div class="sect-photo"><img src="${url}" alt=""></div>`)
+    .join("");
+  if (!tiles) return "";
+  return `<div class="sect-photos">${tiles}</div>`;
 }
 
 function renderItem(item) {
