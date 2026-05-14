@@ -355,8 +355,9 @@ async function handleSm8Search(url, env) {
   let data;
   try { data = await res.json(); } catch { return json({ error: "sm8_invalid_json" }, { status: 502 }); }
   const list = Array.isArray(data) ? data : [];
+  const ql = q.toLowerCase();
   const results = list
-    .filter((c) => c && !c.active === false)
+    .filter((c) => c && c.active != 0 && (c.name || "").toLowerCase().includes(ql))
     .slice(0, 10)
     .map((c) => ({
       uuid: c.uuid,
