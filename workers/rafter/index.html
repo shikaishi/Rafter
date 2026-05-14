@@ -695,6 +695,8 @@
   }
   .success-detail-row .lbl { color: var(--rf-muted); }
   .success-detail-row .val { font-weight: 500; color: var(--rf-text); }
+  .success-actions { display: flex; gap: 10px; }
+  .success-actions .btn { flex: 1; }
 
   /* ===== TOASTS ===== */
   #toasts {
@@ -836,9 +838,14 @@
     <h2>Quote submitted</h2>
     <p class="success-ref" id="successRef"></p>
     <div class="success-details" id="successDetails"></div>
-    <button class="btn btn-secondary" onclick="location.reload()" style="min-width:200px;">
-      <i class="ti ti-plus"></i>Submit another quote
-    </button>
+    <div class="success-actions">
+      <button class="btn btn-primary" onclick="returnToQuote()">
+        <i class="ti ti-arrow-left"></i>Return to quote
+      </button>
+      <button class="btn btn-secondary" onclick="location.reload()">
+        <i class="ti ti-plus"></i>Submit another
+      </button>
+    </div>
   </div>
 </div>
 
@@ -1582,6 +1589,12 @@ async function previewPdf() {
   } finally {
     btn.disabled = false; btn.style.opacity = "";
   }
+}
+
+function returnToQuote() {
+  $("successState").style.display = "none";
+  $("appMain").style.display = "";
+  window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
 function showSuccess(payload) {
