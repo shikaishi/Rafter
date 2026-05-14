@@ -609,7 +609,31 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   .terms p { margin: 0 0 3mm 0; }
   .terms p:last-child { margin-bottom: 0; }
 
-  /* ---------- Appendix page (creds → payment → bank → terms, single A4) ---------- */
+  /* ---------- Section-to-financial divider (BUG-18) ---------- */
+  .section-divider {
+    margin-top: 10mm;
+    border-top: 1.5px solid var(--rule);
+  }
+
+  /* ---------- Financial summary — costs / payment / bank (BUG-19) ---------- */
+  .financial-summary {
+    margin-top: 8mm;
+    padding: 8mm 10mm;
+    background: var(--soft);
+    border-radius: 2mm;
+  }
+  .financial-summary .totals {
+    margin-top: 0;
+  }
+  .financial-summary .block {
+    margin-top: 8mm;
+  }
+  .financial-summary .block-h {
+    font-size: 13pt;
+    margin-bottom: 3mm;
+  }
+
+  /* ---------- Appendix page (credentials + T&Cs only) ---------- */
   .appendix {
     page-break-before: always;
     break-before: page;
@@ -628,12 +652,6 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   .appendix .cred-dot svg { width: 2.2mm; height: 2.2mm; }
   .appendix .cred-text { font-size: 8.5pt; line-height: 1.3; }
   .appendix .cred-text .detail { font-size: 8pt; }
-  /* Payment schedule */
-  .appendix .pay-row { padding: 1.5mm 0; font-size: 9.5pt; }
-  .appendix .pay-pct { font-size: 9.5pt; }
-  .appendix .pay-notes { font-size: 7.5pt; line-height: 1.35; margin-top: 2mm; }
-  /* Bank details */
-  .appendix .bank-row { padding: 0.8mm 0; font-size: 9.5pt; }
   /* Terms — densest block; smallest type */
   .appendix .terms { font-size: 7.5pt; line-height: 1.35; }
   .appendix .terms p { margin: 0 0 1.5mm 0; }
@@ -681,12 +699,16 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     ${renderSections(payload.sections || [], payload.form_sections || [], photoMap)}
   </div>
 
-  ${renderTotals(payload)}
+  <div class="section-divider"></div>
+
+  <div class="financial-summary">
+    ${renderTotals(payload)}
+    ${renderPaymentSchedule(payload.payment_schedule || [], payload.payment_notes || [])}
+    ${renderBank(payload.bank_details || {})}
+  </div>
 
   <div class="appendix">
     ${renderCredentials(credentials)}
-    ${renderPaymentSchedule(payload.payment_schedule || [], payload.payment_notes || [])}
-    ${renderBank(payload.bank_details || {})}
     ${renderTerms(terms)}
   </div>
 
