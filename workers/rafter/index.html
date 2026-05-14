@@ -640,6 +640,62 @@
   .footer .summary .ti { color: var(--rf-ocean); }
   .footer-actions { display: flex; gap: 10px; }
 
+  /* ===== SUCCESS STATE ===== */
+  #successState {
+    display: none;
+    min-height: 70vh;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .success-card {
+    background: var(--rf-card);
+    border: 0.5px solid var(--rf-border);
+    border-radius: 16px;
+    box-shadow: var(--shadow-card);
+    padding: 48px 40px;
+    text-align: center;
+    max-width: 480px;
+    width: 100%;
+  }
+  .success-check {
+    width: 64px; height: 64px;
+    background: var(--rf-lime);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px auto;
+  }
+  .success-check .ti { font-size: 32px; color: #fff; }
+  .success-card h2 {
+    font-size: 20px; font-weight: 500;
+    color: var(--rf-green);
+    margin: 0 0 6px 0;
+  }
+  .success-ref {
+    font-size: 26px; font-weight: 700;
+    color: var(--rf-text);
+    letter-spacing: 0.02em;
+    margin: 0 0 24px 0;
+  }
+  .success-details {
+    background: var(--rf-row-bg);
+    border: 0.5px solid var(--rf-border);
+    border-radius: 10px;
+    padding: 14px 18px;
+    margin-bottom: 28px;
+    text-align: left;
+  }
+  .success-detail-row {
+    display: flex; justify-content: space-between; align-items: baseline;
+    font-size: 13px; padding: 3px 0;
+  }
+  .success-detail-row + .success-detail-row {
+    border-top: 0.5px solid var(--rf-divider);
+    padding-top: 6px; margin-top: 3px;
+  }
+  .success-detail-row .lbl { color: var(--rf-muted); }
+  .success-detail-row .val { font-weight: 500; color: var(--rf-text); }
+
   /* ===== TOASTS ===== */
   #toasts {
     position: fixed; bottom: 24px; right: 24px;
@@ -672,7 +728,7 @@
 </head>
 <body>
 
-<main class="app">
+<main class="app" id="appMain">
 
   <!-- HEADER -->
   <header class="card header">
@@ -773,6 +829,18 @@
   </footer>
 
 </main>
+
+<div id="successState">
+  <div class="success-card">
+    <div class="success-check"><i class="ti ti-check"></i></div>
+    <h2>Quote submitted</h2>
+    <p class="success-ref" id="successRef"></p>
+    <div class="success-details" id="successDetails"></div>
+    <button class="btn btn-secondary" onclick="location.reload()" style="min-width:200px;">
+      <i class="ti ti-plus"></i>Submit another quote
+    </button>
+  </div>
+</div>
 
 <div id="toasts"></div>
 
@@ -1516,6 +1584,21 @@ async function previewPdf() {
   }
 }
 
+function showSuccess(payload) {
+  $("successRef").textContent = payload.quote_ref || state.quoteRef || "";
+  const rows = [];
+  if (payload.client_name) rows.push({ lbl: "Client", val: payload.client_name });
+  if (payload.total != null) rows.push({ lbl: "Total (inc. GST)", val: AUD.format(payload.total) });
+  if (payload.proposal_date) rows.push({ lbl: "Date", val: payload.proposal_date });
+  $("successDetails").innerHTML = rows
+    .map((r) => `<div class="success-detail-row"><span class="lbl">${escapeHtml(r.lbl)}</span><span class="val">${escapeHtml(r.val)}</span></div>`)
+    .join("");
+  $("appMain").style.display = "none";
+  const ss = $("successState");
+  ss.style.display = "flex";
+  ss.scrollIntoView({ behavior: "smooth", block: "start" });
+}
+
 async function submitQuote() {
   if (!state.sections.length) return toast("Add at least one section before submitting.", "err");
   const btn = $("submitBtn");
@@ -1536,7 +1619,7 @@ async function submitQuote() {
       return;
     }
     if (!r.ok) throw new Error(data.error || `submit_${r.status}`);
-    toast(`Quote ${state.quoteRef} submitted.`, "ok");
+    showSuccess(payload);
   } catch (e) {
     toast(String(e.message || e), "err");
   } finally {
