@@ -1440,9 +1440,7 @@ function buildPayload(mode) {
     itemCode: "",
     name: li.name,
     qty: Number(li.qty) || 0,
-    unitPrice: Number(li.unitPrice) || 0,
     material_uuid: li.sm8_uuid || "",
-    section: s.name,
   })));
 
   return {
