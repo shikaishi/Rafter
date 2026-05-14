@@ -94,11 +94,13 @@ async function handleGenerate(request, env, url) {
   const html = buildHtml({ payload, client, logoDataUrl });
   const pdf = await renderPdf(env, html);
 
+  const filename = buildPdfFilename(payload);
+
   if (mode === "preview") {
     return new Response(pdf, {
       headers: {
         "Content-Type": "application/pdf",
-        "Content-Disposition": `inline; filename="${payload.quote_ref || "quote"}.pdf"`,
+        "Content-Disposition": `inline; filename="${filename}"`,
         "Cache-Control": "no-store",
       },
     });
@@ -106,7 +108,7 @@ async function handleGenerate(request, env, url) {
 
   // Submit: POST PDF + payload to Make Rafter Form webhook
   const form = new FormData();
-  form.append("pdf", new Blob([pdf], { type: "application/pdf" }), `${payload.quote_ref || "quote"}.pdf`);
+  form.append("pdf", new Blob([pdf], { type: "application/pdf" }), filename);
   form.append("payload", JSON.stringify(payload));
   // Individual fields so Make can map without JSON parsing
   form.append("client_name",      payload.client_name      || "");
@@ -749,6 +751,20 @@ function renderTerms(terms) {
     <h2 class="block-h">Terms and Conditions</h2>
     <div class="terms">${paras}</div>
   </section>`;
+}
+
+function buildPdfFilename(payload) {
+  const ref = payload.quote_ref || "quote";
+  const name = payload.client_name || "";
+  const base = name ? `${ref} - ${name}` : ref;
+  return `${sanitizeFilenamePart(base)}.pdf`;
+}
+
+function sanitizeFilenamePart(s) {
+  return String(s)
+    .replace(/[\\\/:*?"<>|\x00-\x1f]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function buildJobDescription(payload) {
