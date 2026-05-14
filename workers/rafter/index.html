@@ -1429,6 +1429,18 @@ function buildPayload(mode) {
     }],
   }));
 
+  // Flat lineItems[] across all sections — original GitHub Pages form shape
+  // (camelCase keys, top level). Make scenarios that wrote each row to SM8
+  // consume this array; kept alongside form_sections[].line_items.
+  const lineItems = state.sections.flatMap((s) => s.lineItems.map((li) => ({
+    itemCode: "",
+    name: li.name,
+    qty: Number(li.qty) || 0,
+    unitPrice: Number(li.unitPrice) || 0,
+    material_uuid: li.sm8_uuid || "",
+    section: s.name,
+  })));
+
   return {
     mode,
     client_uuid: CLIENT_UUID,
@@ -1439,6 +1451,7 @@ function buildPayload(mode) {
     site_address: state.siteAddress || $("siteAddress").value,
     proposal_date: state.proposalDate,
     sections: pdfSections,
+    lineItems,
     // Extended fields — current PDF worker ignores these but they are passed
     // through for future template work (line items, photos, notes in PDF).
     form_sections: state.sections.map((s) => ({
