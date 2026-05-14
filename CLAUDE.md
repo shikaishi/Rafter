@@ -155,7 +155,8 @@ Alternatively: Cloudflare KV → `RAFTER_CLIENTS` → `client:448e12a8-f7d9-4ace
 
 ### OAuth scopes (current)
 `vendor, vendor_logo, read_staff, read_inventory, read_job_categories, read_job_queues,
-manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, read_jobs`
+manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, read_jobs,
+manage_job_materials`
 
 Note: Inbox write scope status unverified (VER-02). May need additional scope + re-authorise.
 
