@@ -122,6 +122,9 @@
     border-color: var(--rf-danger);
     padding: 5px 10px;
   }
+  .btn:disabled { opacity: 0.6; cursor: not-allowed; filter: none; }
+  @keyframes rfSpin { to { transform: rotate(360deg); } }
+  .btn-spinner { display: inline-block; animation: rfSpin 0.8s linear infinite; transform-origin: 50% 50%; }
   .mat-btn {
     display: inline-flex; align-items: center; gap: 8px;
     background: var(--rf-navy);
@@ -1499,7 +1502,10 @@ async function previewPdf() {
 async function submitQuote() {
   if (!state.sections.length) return toast("Add at least one section before submitting.", "err");
   const btn = $("submitBtn");
-  btn.disabled = true; btn.style.opacity = "0.7";
+  if (btn.disabled) return;
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Submitting…';
   try {
     const payload = buildPayload("submit");
     const r = await fetch(`${PDF_API}/generate?mode=submit`, {
@@ -1517,7 +1523,8 @@ async function submitQuote() {
   } catch (e) {
     toast(String(e.message || e), "err");
   } finally {
-    btn.disabled = false; btn.style.opacity = "";
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
   }
 }
 
