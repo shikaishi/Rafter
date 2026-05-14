@@ -43,10 +43,10 @@ creates jobs in ServiceM8, and delivers the PDF via the SM8 Inbox.
 ├── workers/
 │   ├── materials-sync/ # rafter-materials-sync Worker
 │   │   ├── wrangler.toml
-│   │   └── src/index.js
+│   │   └── index.js
 │   └── pdf/            # rafter-pdf Worker
 │       ├── wrangler.toml
-│       └── src/index.js
+│       └── index.js
 ```
 
 **CRITICAL:** Never put wrangler.toml at repo root. Cloudflare Pages auto-deploys static files
