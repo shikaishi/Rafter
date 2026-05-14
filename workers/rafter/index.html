@@ -53,6 +53,8 @@
     box-shadow: var(--shadow-card);
     overflow: hidden;
   }
+  /* Cards containing a search dropdown must let it escape the card's clip */
+  .card:has(.dropdown) { overflow: visible; }
 
   /* ===== HEADER ===== */
   .header {
@@ -259,7 +261,7 @@
   /* Client search dropdown */
   .dropdown {
     position: absolute;
-    z-index: 10;
+    z-index: 100;
     top: calc(100% + 4px);
     left: 0; right: 0;
     background: #fff;
