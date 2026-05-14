@@ -330,8 +330,12 @@
     margin-top: 10px;
     overflow: hidden;
   }
+  /* Work sections containing a material search dropdown must let it escape
+     the section's overflow clip (same fix as .card:has(.dropdown) for BUG-11) */
+  .work-section:has(.dropdown) { overflow: visible; }
   .ws-head {
     background: var(--rf-row-bg);
+    border-radius: 10px 10px 0 0;
     padding: 10px 14px;
     display: flex;
     align-items: center;
