@@ -17,7 +17,7 @@
   html, body { min-height: 100vh; background: var(--canvas); font-family: 'DM Sans', sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
   .page { min-height: 100vh; display: flex; flex-direction: column; }
   header { padding: 24px 40px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: rgba(247,245,240,0.8); }
-  .logo-mark { width: 32px; height: 32px; background: var(--ink); border-radius: 8px; display: flex; align-items: center; justify-content: center; }
+  .logo-mark { width: 32px; height: 32px; background: #0D2E1C; border-radius: 8px; display: flex; align-items: center; justify-content: center; }
   .logo-name { font-family: 'Instrument Serif', serif; font-size: 18px; color: var(--ink); letter-spacing: -0.02em; }
   .logo-sep { color: var(--border); margin: 0 4px; }
   .logo-sub { font-size: 13px; color: var(--ink-soft); font-family: 'DM Mono', monospace; }
@@ -41,7 +41,7 @@
 <div class="page">
   <header>
     <div class="logo-mark">
-      <svg viewBox="0 0 18 18" fill="none"><path d="M3 14L9 4L15 14" stroke="white" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/><path d="M5.5 10.5H12.5" stroke="white" stroke-width="1.8" stroke-linecap="round"/></svg>
+      <svg viewBox="0 0 32 32" width="22" height="22" aria-hidden="true"><path d="M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z" fill="#84B741"/></svg>
     </div>
     <span class="logo-name">Rafter</span>
     <span class="logo-sep">·</span>
@@ -109,7 +109,17 @@
       });
 
       if (!tokenRes.ok) throw new Error('Token exchange failed: ' + tokenRes.status);
-      const tokenData = await tokenRes.json();
+      const tokenText = await tokenRes.text();
+      let tokenData;
+      try {
+        tokenData = JSON.parse(tokenText);
+      } catch (_) {
+        // Make's Webhook Response sometimes emits "expires_in": } (no value).
+        // Extract access_token directly rather than failing the whole flow.
+        const m = tokenText.match(/"access_token"\s*:\s*"([^"]+)"/);
+        if (!m) throw new Error('Token response parse failed. Raw: ' + tokenText.slice(0, 300));
+        tokenData = { access_token: m[1] };
+      }
       const accessToken = tokenData.access_token;
       if (!accessToken) throw new Error('No access token returned from Make.');
 
