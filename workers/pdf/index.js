@@ -621,6 +621,8 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     padding: 8mm 10mm;
     background: var(--soft);
     border-radius: 2mm;
+    page-break-inside: avoid;
+    break-inside: avoid;
   }
   .financial-summary .totals {
     margin-top: 0;
@@ -638,23 +640,23 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     page-break-before: always;
     break-before: page;
   }
-  .appendix .block { margin-top: 5mm; }
+  .appendix .block { margin-top: 10mm; }
   .appendix .block:first-child { margin-top: 0; }
-  .appendix .block-h { font-size: 12pt; margin-bottom: 2.5mm; }
-  /* Credentials — two columns to halve vertical footprint */
+  .appendix .block-h { font-size: 14pt; margin-bottom: 5mm; }
+  /* Credentials — two columns */
   .appendix .creds {
     grid-template-columns: 1fr 1fr;
     column-gap: 6mm;
-    row-gap: 1mm;
+    row-gap: 2.5mm;
   }
-  .appendix .cred { gap: 2mm; }
-  .appendix .cred-dot { width: 3.5mm; height: 3.5mm; margin-top: 0.5mm; }
-  .appendix .cred-dot svg { width: 2.2mm; height: 2.2mm; }
-  .appendix .cred-text { font-size: 8.5pt; line-height: 1.3; }
-  .appendix .cred-text .detail { font-size: 8pt; }
-  /* Terms — densest block; smallest type */
-  .appendix .terms { font-size: 7.5pt; line-height: 1.35; }
-  .appendix .terms p { margin: 0 0 1.5mm 0; }
+  .appendix .cred { gap: 3mm; }
+  .appendix .cred-dot { width: 4.5mm; height: 4.5mm; margin-top: 1mm; }
+  .appendix .cred-dot svg { width: 2.8mm; height: 2.8mm; }
+  .appendix .cred-text { font-size: 10pt; line-height: 1.4; }
+  .appendix .cred-text .detail { font-size: 9.5pt; }
+  /* Terms */
+  .appendix .terms { font-size: 9pt; line-height: 1.6; }
+  .appendix .terms p { margin: 0 0 3mm 0; }
 </style>
 </head>
 <body>
@@ -704,7 +706,7 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   <div class="financial-summary">
     ${renderTotals(payload)}
     ${renderPaymentSchedule(payload.payment_schedule || [], payload.payment_notes || [])}
-    ${renderBank(payload.bank_details || {})}
+    ${renderBank(client.bank_details || payload.bank_details || {})}
   </div>
 
   <div class="appendix">
