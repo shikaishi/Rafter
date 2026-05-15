@@ -328,6 +328,48 @@ function mimeFromKey(key) {
   return ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" })[ext] || "application/octet-stream";
 }
 
+async function handleBrandAsset(key, env) {
+  if (!env.RAFTER_ASSETS) return new Response("r2_not_bound", { status: 500 });
+  if (!/^[a-z0-9_.-]+$/i.test(key)) return new Response("invalid_key", { status: 400 });
+  const obj = await env.RAFTER_ASSETS.get(`brand/${key}`);
+  if (!obj) return new Response("not_found", { status: 404 });
+  const mime = obj.httpMetadata?.contentType || mimeFromKey(key);
+  return new Response(obj.body, {
+    status: 200,
+    headers: {
+      "content-type": mime,
+      "cache-control": "public, max-age=86400",
+    },
+  });
+}
+
+async function handleSm8Staff(url, env) {
+  const uuid = url.searchParams.get("uuid");
+  if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
+  const config = await readClient(env, uuid);
+  if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
+  let accessToken;
+  try {
+    accessToken = await refreshTokenIfNeeded(uuid, env);
+  } catch (e) {
+    return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 });
+  }
+  const res = await fetch("https://api.servicem8.com/api_1.0/staff.json", {
+    headers: { "authorization": `Bearer ${accessToken}`, "accept": "application/json" },
+  });
+  if (!res.ok) {
+    const bodyText = await res.text().catch(() => "");
+    return json({ error: "sm8_error", status: res.status, body: bodyText.slice(0, 500) }, { status: 502 });
+  }
+  let data;
+  try { data = await res.json(); } catch { return json({ error: "sm8_invalid_json" }, { status: 502 }); }
+  const list = Array.isArray(data) ? data : [];
+  const staff = list
+    .filter((s) => s && s.active != 0)
+    .map((s) => ({ uuid: s.uuid, first: s.first, last: s.last, email: s.email || "", type: s.type || "" }));
+  return json({ ok: true, staff });
+}
+
 async function handleResolveSlug(slug, env) {
   if (!slug || !/^[a-z0-9-]+$/i.test(slug)) {
     return json({ error: "invalid_slug" }, { status: 400 });
@@ -372,6 +414,7 @@ async function handleSm8Search(url, env) {
       uuid: c.uuid,
       name: c.name,
       address: c.address || [c.address_street, c.address_city, c.address_state, c.address_postcode].filter(Boolean).join(", "),
+      email: c.email || c.billing_email || "",
     }));
   return json({ ok: true, results });
 }
@@ -418,6 +461,9 @@ async function route(request, env) {
   if (photosMatch) return handleListPhotos(photosMatch[1], env);
   if (method === "GET" && path === "/photo") return handleGetPhoto(url, env);
   if (method === "GET" && path === "/sm8-search") return handleSm8Search(url, env);
+  if (method === "GET" && path === "/sm8-staff") return handleSm8Staff(url, env);
+  const brandMatch = method === "GET" && /^\/brand\/([a-z0-9_.-]+)$/i.exec(path);
+  if (brandMatch) return handleBrandAsset(brandMatch[1], env);
   const slugMatch = method === "GET" && /^\/resolve-slug\/([a-z0-9-]+)$/i.exec(path);
   if (slugMatch) return handleResolveSlug(slugMatch[1], env);
 

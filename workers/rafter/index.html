@@ -65,18 +65,12 @@
     gap: 16px;
   }
   .header .brand { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
-  .logo-mark {
-    width: 34px; height: 34px;
-    background: var(--rf-green);
-    border-radius: 8px;
-    box-shadow: var(--shadow-logo);
-    display: flex; align-items: center; justify-content: center;
-    flex-shrink: 0;
-  }
-  .logo-mark svg { width: 22px; height: 22px; }
+  .logo-mark { flex-shrink: 0; display: flex; align-items: center; }
+  .logo-mark img { height: 48px; width: auto; display: block; }
   .brand-text { display: flex; flex-direction: column; min-width: 0; }
   .brand-company { font-size: 14px; font-weight: 500; color: var(--rf-text); }
   .brand-sub { font-size: 11px; color: var(--rf-muted); }
+  .brand-phone { font-size: 11px; color: var(--rf-muted); }
   .header .meta { display: flex; align-items: center; gap: 10px; }
   .quote-ref {
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
@@ -753,13 +747,12 @@
   <header class="card header">
     <div class="brand">
       <div class="logo-mark">
-        <svg viewBox="0 0 32 32" aria-hidden="true">
-          <path d="M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z" fill="#84B741"/>
-        </svg>
+        <img src="https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png" alt="Rafter">
       </div>
       <div class="brand-text">
         <div class="brand-company" id="brandCompany">—</div>
         <div class="brand-sub">Rafter · Quote builder</div>
+        <div class="brand-phone" id="brandPhone" style="display:none;"></div>
       </div>
     </div>
     <div class="meta">
@@ -791,6 +784,14 @@
           <button type="button" data-val="LC" class="active"><i class="ti ti-hammer"></i>Construction</button>
           <button type="button" data-val="GM"><i class="ti ti-leaf"></i>Maintenance</button>
         </div>
+      </div>
+      <div class="full">
+        <label class="field-label" for="customerEmail">Customer email</label>
+        <div class="input-wrap">
+          <i class="ti ti-mail"></i>
+          <input class="input with-icon" id="customerEmail" type="email" autocomplete="off" placeholder="Customer email address…">
+        </div>
+        <div id="emailError" class="hint" style="color:var(--rf-danger);display:none;">Please enter a valid email address to send the quote.</div>
       </div>
       <div class="full">
         <label class="field-label" for="siteAddress">Site address</label>
@@ -843,7 +844,8 @@
     <div class="summary"><i class="ti ti-check"></i><span id="footerSummary">0 sections · $0.00 inc. GST</span></div>
     <div class="footer-actions">
       <button class="btn btn-secondary" id="previewBtn" type="button"><i class="ti ti-eye"></i>Preview PDF</button>
-      <button class="btn btn-primary" id="submitBtn" type="button"><i class="ti ti-send"></i>Submit quote</button>
+      <button class="btn btn-secondary" id="submitJobBtn" type="button"><i class="ti ti-briefcase"></i>Submit Job Only</button>
+      <button class="btn btn-primary" id="submitEmailBtn" type="button"><i class="ti ti-mail"></i>Submit &amp; Send Quote</button>
     </div>
   </footer>
 
@@ -860,7 +862,7 @@
 <div id="successState">
   <div class="success-card">
     <div class="success-check"><i class="ti ti-check"></i></div>
-    <h2>Quote submitted</h2>
+    <h2 id="successMsg">Quote submitted to ServiceM8</h2>
     <p class="success-ref" id="successRef"></p>
     <div class="success-details" id="successDetails"></div>
     <div class="success-actions">
@@ -927,6 +929,7 @@ const state = {
   proposalType: "LC",
   clientName: "",
   clientSm8Uuid: null,
+  customerEmail: "",
   siteAddress: "",
   sections: [],        // { id, name, scope, price, priceManual, lineItems[], photos[], collapsed, photoPanelOpen, photoCat }
   notes: "",
@@ -1075,6 +1078,10 @@ async function loadPhotos() {
 function renderHeader() {
   const company = state.client && state.client.company_name ? state.client.company_name : "Rafter";
   $("brandCompany").textContent = company;
+  const phone = state.client && state.client.phone ? state.client.phone : "";
+  const phoneEl = $("brandPhone");
+  phoneEl.textContent = phone;
+  phoneEl.style.display = phone ? "" : "none";
   updateMatBtn();
 }
 function updateMatBtn(state2) {
@@ -1110,7 +1117,7 @@ async function sm8Search(q) {
       $("clientHint").textContent = "";
       return;
     }
-    dd.innerHTML = items.map((c) => `<div class="item" data-uuid="${escapeHtml(c.uuid)}" data-name="${escapeHtml(c.name)}" data-addr="${escapeHtml(c.address||"")}">
+    dd.innerHTML = items.map((c) => `<div class="item" data-uuid="${escapeHtml(c.uuid)}" data-name="${escapeHtml(c.name)}" data-addr="${escapeHtml(c.address||"")}" data-email="${escapeHtml(c.email||"")}">
       <i class="ti ti-user" style="color:var(--rf-ocean);margin-top:1px;"></i>
       <div><div class="name">${escapeHtml(c.name)}</div>${c.address ? `<div class="addr">${escapeHtml(c.address)}</div>` : ""}</div>
     </div>`).join("");
@@ -1124,6 +1131,10 @@ async function sm8Search(q) {
         if (row.dataset.addr && !state.siteAddress) {
           state.siteAddress = row.dataset.addr;
           $("siteAddress").value = state.siteAddress;
+        }
+        if (row.dataset.email) {
+          state.customerEmail = row.dataset.email;
+          $("customerEmail").value = state.customerEmail;
         }
         dd.style.display = "none";
         $("clientHint").textContent = "Existing ServiceM8 client";
@@ -1550,7 +1561,7 @@ function renderTotals() {
 }
 
 // ===== PAYLOAD =====
-function buildPayload(mode) {
+function buildPayload(mode, sendEmail) {
   const { sub, gst, total } = calcTotals();
   const sched = paymentSchedule(total);
 
@@ -1579,6 +1590,8 @@ function buildPayload(mode) {
   return {
     mode,
     client_uuid: state.clientUuid,
+    customer_email: state.customerEmail || $("customerEmail").value.trim(),
+    send_email: sendEmail === true,
     quote_ref: state.quoteRef,
     proposal_type: state.proposalType,
     client_name: state.clientName || $("clientName").value,
@@ -1656,6 +1669,9 @@ function returnToQuote() {
 }
 
 function showSuccess(payload) {
+  $("successMsg").textContent = payload.send_email && payload.customer_email
+    ? `Quote submitted and sent to ${payload.customer_email}`
+    : "Quote submitted to ServiceM8";
   $("successRef").textContent = payload.quote_ref || state.quoteRef || "";
   const rows = [];
   if (payload.client_name) rows.push({ lbl: "Client", val: payload.client_name });
@@ -1670,26 +1686,21 @@ function showSuccess(payload) {
   ss.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
-async function submitQuote() {
+async function doSubmit(sendEmail) {
   if (!state.sections.length) return toast("Add at least one section before submitting.", "err");
-  const btn = $("submitBtn");
+  const btn = sendEmail ? $("submitEmailBtn") : $("submitJobBtn");
   if (btn.disabled) return;
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Submitting…';
   try {
-    const payload = buildPayload("submit");
-    console.log("[rafter] submit payload", JSON.stringify(payload, null, 2));
+    const payload = buildPayload("submit", sendEmail);
     const r = await fetch(`${PDF_API}/generate?mode=submit`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     const data = await r.json().catch(() => ({}));
-    if (r.status === 501) {
-      toast("Submit not yet wired — T1-E1 pending (Make → SM8 Inbox).", "err");
-      return;
-    }
     if (!r.ok) throw new Error(data.error || `submit_${r.status}`);
     showSuccess(payload);
   } catch (e) {
@@ -1698,6 +1709,24 @@ async function submitQuote() {
     btn.disabled = false;
     btn.innerHTML = originalHtml;
   }
+}
+
+function submitJobOnly() {
+  $("emailError").style.display = "none";
+  doSubmit(false);
+}
+
+function submitWithEmail() {
+  const email = ($("customerEmail").value || "").trim();
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!valid) {
+    $("emailError").style.display = "";
+    $("customerEmail").focus();
+    return;
+  }
+  $("emailError").style.display = "none";
+  state.customerEmail = email;
+  doSubmit(true);
 }
 
 async function refreshMaterials() {
@@ -1738,6 +1767,10 @@ function bindEvents() {
   $("clientName").addEventListener("blur", () => {
     setTimeout(() => { $("clientDropdown").style.display = "none"; }, 150);
   });
+  $("customerEmail").addEventListener("input", (e) => {
+    state.customerEmail = e.target.value.trim();
+    if (state.customerEmail) $("emailError").style.display = "none";
+  });
   $("proposalToggle").querySelectorAll("button").forEach((b) => {
     b.addEventListener("click", () => {
       state.proposalType = b.dataset.val;
@@ -1747,7 +1780,8 @@ function bindEvents() {
   $("siteAddress").addEventListener("input", (e) => { state.siteAddress = e.target.value; });
   $("notes").addEventListener("input", (e) => { state.notes = e.target.value; });
   $("previewBtn").addEventListener("click", previewPdf);
-  $("submitBtn").addEventListener("click", submitQuote);
+  $("submitJobBtn").addEventListener("click", submitJobOnly);
+  $("submitEmailBtn").addEventListener("click", submitWithEmail);
   $("matBtn").addEventListener("click", refreshMaterials);
 }
 

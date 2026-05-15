@@ -124,6 +124,8 @@ async function handleGenerate(request, env, url) {
   form.append("notes",            payload.notes            || "");
   form.append("job_description",  buildJobDescription(payload));
   form.append("lineItems",        JSON.stringify(payload.lineItems || []));
+  form.append("customer_email",   payload.customer_email   || "");
+  form.append("send_email",       String(payload.send_email === true));
 
   const makeRes = await fetch(MAKE_RAFTER_FORM_WEBHOOK, { method: "POST", body: form });
   if (!makeRes.ok) {
@@ -676,6 +678,7 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     <div class="right">
       ${businessAddress ? `<span class="line">${escapeHtml(businessAddress).replace(/\n/g, "<br>")}</span>` : ""}
       ${businessEmail ? `<span class="line">${escapeHtml(businessEmail)}</span>` : ""}
+      ${phone ? `<span class="line">${escapeHtml(phone)}</span>` : ""}
       ${businessAbn ? `<span class="line">ABN ${escapeHtml(businessAbn)}</span>` : ""}
     </div>
   </div>

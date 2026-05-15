@@ -78,7 +78,11 @@ The KV record for the trial UUID contains:
 - `proposal_types`: `["LC", "GM"]`
 - `job_categories`, `job_queues`, `templates` (26 items)
 - `phone`, `business_address`, `abn`, `business_email`, `credentials[]`, `terms_and_conditions[]`
+- `staff_uuid` — SM8 staff UUID for the account owner (used as `x-impersonate-uuid` in email API calls). Trial: Will Thurlow `5ba57e76-53c0-4340-86ce-24244cfa725b`. Andy's live: Andrew Little — must be set when Andy's KV record is created (T1-F2).
+- `email_template` — HTML email body with merge fields `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. Make substitutes before sending.
 - `access_token`, `refresh_token`, `expires_at`, `token_updated_at`
+
+**KV write tooling note:** `wrangler kv key put "key" $value` from PowerShell corrupts JSON (strips quotes). Always use `--path <file>` with a UTF-8 file written by Python or similar. Example: `npx wrangler kv key put "key" --path file.json --binding=RAFTER_CLIENTS --remote`
 
 ---
 
@@ -94,7 +98,17 @@ The KV record for the trial UUID contains:
 | `/health` | GET | None | Status check |
 | `/refresh-materials?uuid={uuid}` | GET | None | Sync materials from SM8 to KV |
 | `/store-token` | POST | Bearer `RAFTER_WORKER_SECRET` | Write OAuth tokens to KV |
+| `/resolve-slug/{slug}` | GET | None | Resolve URL slug → client UUID |
+| `/brand/{key}` | GET | None | Serve brand assets from R2 `brand/` prefix publicly |
+| `/sm8-staff?uuid={uuid}` | GET | None | List active SM8 staff for a client (for UUID lookup) |
+| `/sm8-search?uuid={uuid}&q={q}` | GET | None | Search SM8 companies (min 3 chars) |
+| `/client/{uuid}` | GET | None | Read sanitised client KV record |
+| `/materials/{uuid}` | GET | None | Read cached materials from KV |
+| `/photos/{uuid}` | GET | None | List photo categories from R2 |
+| `/photo?uuid={uuid}&key={key}` | GET | None | Proxy photo from R2 |
 | Cron `0 10 * * * UTC` | — | — | Nightly materials sync |
+
+**Brand assets:** R2 bucket `rafter-assets`, prefix `brand/`. Rafter logo: `brand/rafter-logo.png`. URL: `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png`
 
 **SM8 materials:** 117 items. Fields: uuid, name, price, active, cost, quantity_in_stock,
 item_description, unit.
@@ -173,6 +187,35 @@ Note: Inbox write scope status unverified (VER-02). May need additional scope + 
 
 **Make is UI-only** — Claude Code cannot modify Make scenarios. Document the required Make
 changes and hand them to Will for manual configuration.
+
+### Rafter Form scenario — email delivery step (PENDING — Will to configure)
+
+After the existing job creation and PDF attachment upload steps, add a conditional branch:
+
+**Condition:** `send_email = true` AND `customer_email` is not empty
+
+**If true, add an HTTP module:**
+```
+POST https://api.servicem8.com/platform_service_email
+Authorization: Bearer {access_token from KV/Make Data Store}
+x-impersonate-uuid: {staff_uuid from KV client record}
+Content-Type: application/json
+
+{
+  "to": "{customer_email}",
+  "subject": "Your quote from 2 Men and a Shovel – {quote_ref}",
+  "htmlBody": "{email_template from KV with merge fields substituted}",
+  "regardingJobUUID": "{job_uuid from job creation step}",
+  "attachments": ["{attachment_uuid from PDF upload step}"]
+}
+```
+
+**Critical:** `attachments` must be a JSON array. The attachment UUID must be captured from
+the `x-record-uuid` response header of the SM8 attachment creation call. Verify this header
+is being captured — it is the most likely point of failure.
+
+**Merge fields** (Make substitutes before sending): `{client_name}`, `{job_address}`,
+`{quote_ref}`, `{total}` — all supplied as individual form fields in the webhook payload.
 
 ---
 
