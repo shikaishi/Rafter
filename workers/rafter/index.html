@@ -640,6 +640,23 @@
   .footer .summary .ti { color: var(--rf-ocean); }
   .footer-actions { display: flex; gap: 10px; }
 
+  /* ===== ERROR STATE ===== */
+  #errorState {
+    display: none;
+    min-height: 100vh;
+    align-items: center;
+    justify-content: center;
+    padding: 32px 16px;
+  }
+  .error-icon {
+    width: 64px; height: 64px;
+    background: var(--rf-danger);
+    border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    margin: 0 auto 20px auto;
+  }
+  .error-icon .ti { font-size: 32px; color: #fff; }
+
   /* ===== SUCCESS STATE ===== */
   #successState {
     display: none;
@@ -832,6 +849,14 @@
 
 </main>
 
+<div id="errorState">
+  <div class="success-card">
+    <div class="error-icon"><i class="ti ti-alert-triangle"></i></div>
+    <h2 style="color:var(--rf-danger);">Operator not found</h2>
+    <p id="errorMsg" style="color:var(--rf-muted);font-size:14px;margin:8px 0 0;">No operator found. Please check your URL.</p>
+  </div>
+</div>
+
 <div id="successState">
   <div class="success-card">
     <div class="success-check"><i class="ti ti-check"></i></div>
@@ -854,7 +879,6 @@
 <script>
 const API = "https://rafter-materials-sync.will-8e8.workers.dev";
 const PDF_API = "https://rafter-pdf.will-8e8.workers.dev";
-const CLIENT_UUID = "448e12a8-f7d9-4ace-b8c6-242bf678db3b";
 const CHIP_VISIBLE_LIMIT = 14;
 
 const AUD = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
@@ -891,6 +915,7 @@ const SCOPE_MAP = {
 
 // ===== STATE =====
 const state = {
+  clientUuid: null,
   client: null,
   materials: [],
   photos: [],          // categories
@@ -951,7 +976,7 @@ function fmtAgo(iso) {
   return `${days} d ago`;
 }
 function photoUrl(key) {
-  return `${API}/photo?uuid=${CLIENT_UUID}&key=${encodeURIComponent(key)}`;
+  return `${API}/photo?uuid=${state.clientUuid}&key=${encodeURIComponent(key)}`;
 }
 function toast(msg, kind) {
   const t = el(`<div class="toast ${kind || ""}">${escapeHtml(msg)}</div>`);
@@ -960,11 +985,43 @@ function toast(msg, kind) {
   setTimeout(() => t.remove(), 4200);
 }
 
+// ===== SLUG RESOLUTION =====
+function showError(msg) {
+  $("errorMsg").textContent = msg;
+  $("appMain").style.display = "none";
+  $("errorState").style.display = "flex";
+}
+
+async function resolveClientSlug() {
+  const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
+  if (!slug) {
+    showError("No operator found. Please check your URL.");
+    return false;
+  }
+  try {
+    const r = await fetch(`${API}/resolve-slug/${encodeURIComponent(slug)}`);
+    if (r.status === 404) {
+      showError("No operator found. Please check your URL.");
+      return false;
+    }
+    if (!r.ok) throw new Error(`slug_${r.status}`);
+    const data = await r.json();
+    state.clientUuid = data.uuid;
+    return true;
+  } catch (e) {
+    showError("Could not load operator config. Please try again.");
+    return false;
+  }
+}
+
 // ===== BOOT =====
 async function boot() {
   state.quoteRef = generateQuoteRef();
   state.proposalDate = generateProposalDate();
   $("quoteRef").textContent = state.quoteRef;
+
+  const ok = await resolveClientSlug();
+  if (!ok) return;
 
   await Promise.allSettled([loadClient(), loadMaterials(), loadPhotos()]);
 
@@ -980,7 +1037,7 @@ async function boot() {
 
 async function loadClient() {
   try {
-    const r = await fetch(`${API}/client/${CLIENT_UUID}`);
+    const r = await fetch(`${API}/client/${state.clientUuid}`);
     if (!r.ok) throw new Error(`client_${r.status}`);
     const data = await r.json();
     state.client = data.client;
@@ -991,7 +1048,7 @@ async function loadClient() {
 }
 async function loadMaterials() {
   try {
-    const r = await fetch(`${API}/materials/${CLIENT_UUID}`);
+    const r = await fetch(`${API}/materials/${state.clientUuid}`);
     if (r.status === 404) { state.materialsAvailable = false; return; }
     if (!r.ok) throw new Error(`materials_${r.status}`);
     const data = await r.json();
@@ -1004,7 +1061,7 @@ async function loadMaterials() {
 }
 async function loadPhotos() {
   try {
-    const r = await fetch(`${API}/photos/${CLIENT_UUID}`);
+    const r = await fetch(`${API}/photos/${state.clientUuid}`);
     if (!r.ok) throw new Error(`photos_${r.status}`);
     const data = await r.json();
     state.photos = data.categories || [];
@@ -1037,7 +1094,7 @@ async function sm8Search(q) {
   if (!state.sm8SearchAvailable) { dd.style.display = "none"; $("clientHint").textContent = "ServiceM8 search unavailable — token expired"; return; }
   if (!q || q.length < 3) { dd.style.display = "none"; $("clientHint").textContent = ""; return; }
   try {
-    const r = await fetch(`${API}/sm8-search?uuid=${CLIENT_UUID}&q=${encodeURIComponent(q)}`);
+    const r = await fetch(`${API}/sm8-search?uuid=${state.clientUuid}&q=${encodeURIComponent(q)}`);
     if (r.status === 401 || r.status === 412) {
       state.sm8SearchAvailable = false;
       dd.style.display = "none";
@@ -1521,7 +1578,7 @@ function buildPayload(mode) {
 
   return {
     mode,
-    client_uuid: CLIENT_UUID,
+    client_uuid: state.clientUuid,
     quote_ref: state.quoteRef,
     proposal_type: state.proposalType,
     client_name: state.clientName || $("clientName").value,
@@ -1649,7 +1706,7 @@ async function refreshMaterials() {
   const span = btn.querySelector('span');
   if (span) span.textContent = 'Syncing…';
   try {
-    const r = await fetch(`${API}/refresh-materials?uuid=${CLIENT_UUID}`);
+    const r = await fetch(`${API}/refresh-materials?uuid=${state.clientUuid}`);
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       state.materialsAvailable = false;

@@ -328,6 +328,15 @@ function mimeFromKey(key) {
   return ({ jpg: "image/jpeg", jpeg: "image/jpeg", png: "image/png", webp: "image/webp", gif: "image/gif" })[ext] || "application/octet-stream";
 }
 
+async function handleResolveSlug(slug, env) {
+  if (!slug || !/^[a-z0-9-]+$/i.test(slug)) {
+    return json({ error: "invalid_slug" }, { status: 400 });
+  }
+  const uuid = await env.RAFTER_CLIENTS.get(`slug:${slug}`);
+  if (!uuid) return json({ error: "slug_not_found", slug }, { status: 404 });
+  return json({ ok: true, slug, uuid });
+}
+
 async function handleSm8Search(url, env) {
   const uuid = url.searchParams.get("uuid");
   const q = (url.searchParams.get("q") || "").trim();
@@ -409,6 +418,8 @@ async function route(request, env) {
   if (photosMatch) return handleListPhotos(photosMatch[1], env);
   if (method === "GET" && path === "/photo") return handleGetPhoto(url, env);
   if (method === "GET" && path === "/sm8-search") return handleSm8Search(url, env);
+  const slugMatch = method === "GET" && /^\/resolve-slug\/([a-z0-9-]+)$/i.exec(path);
+  if (slugMatch) return handleResolveSlug(slugMatch[1], env);
 
   return json({ error: "not_found", path }, { status: 404 });
 }
