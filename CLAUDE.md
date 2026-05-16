@@ -1,94 +1,115 @@
 # CLAUDE.md — Rafter Platform
 
-> Read this file at the start of every Claude Code session. It contains everything needed to work
-> on Rafter without a context dump. Do not make assumptions about endpoints, UUIDs, or
-> configuration values — they are all here or flagged as requiring verification.
+---
+
+## Session Protocol
+
+This file is the single source of truth for the Rafter project. Read it in full at the start of every session.
+
+**Claude Chat:** Will pastes this file at session start. Claude Chat coordinates all work — writes prompts for Code and Cowork, reviews outputs, decides next actions.
+
+**Claude Code:** Read CLAUDE.md before every task. Update it after completing work — close issues, update status, add new findings. Push to GitHub after updating.
+
+**Cowork:** Maintains CLAUDE.md between sessions. When instructed, edits in place and pushes to GitHub. Does not rewrite the whole file — targeted edits only.
+
+**Never create new tracker or log files. Everything lives in CLAUDE.md. No Google Sheets. No duplicate files.**
+
+---
+
+> Last reconciled: 16 May 2026 (updated post-session — MAKE-01/02/03 closed, DEBT-03 closed)
 
 ---
 
 ## ⚠️ CRITICAL SAFETY RULE
 
-**NEVER use Andy's live ServiceM8 instance UUID during development or testing.**
+**NEVER use Andy's live ServiceM8 UUID during development or testing.**
 
 | Instance | UUID | Use |
 |----------|------|-----|
 | **Trial (DEV/TEST)** | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` | All development and testing |
 | **Andy's live (PRODUCTION)** | `010895db-e06c-465d-bce9-2424477be15b` | T1-F2 only — explicit sign-off required |
 
-If you are about to write code that references the live UUID, stop and confirm with Will first.
+If you are about to write code referencing the live UUID, stop and confirm with Will first.
 
 ---
+
+---
+
+# SECTION 1 — Project Overview
 
 ## What Rafter is
 
 Rafter is an AI-assisted quoting and operations platform for Australian tradespeople, built by
 Deep Green Sea Pty Ltd (Will Thurlow). It generates branded PDF quotes from a web form,
-creates jobs in ServiceM8, and delivers the PDF via the SM8 Inbox.
+creates jobs in ServiceM8, and emails the quote PDF to the customer.
 
-**First client:** Andy — 2 Men and a Shovel, Melbourne landscaper.  
-**Operator email (Andy's SM8):** will@deepgreensea.au  
-**Trial email:** will@thurlow.net  
-**GitHub:** shikaishi/Rafter  
-**Hosting:** Cloudflare Pages at rafter.deepgreensea.au (auto-deploys from main branch push)
-
----
+**First client:** Andy — 2 Men and a Shovel, Melbourne landscaper.
+**Deep Green Sea entity:** Will Thurlow, ABN TBD, deepgreensea.au.
+**GitHub:** shikaishi/Rafter (private)
+**Platform URL:** rafter.deepgreensea.au
+**SM8 operator email (Andy's instance):** will@deepgreensea.au
+**Trial/dev email:** will@thurlow.net
+**SM8 App ID:** 781230
 
 ## Repository structure
 
 ```
-/ (repo root)
-├── index.html          # Quoting form — operator-facing
-├── setup.html          # OAuth initiation
-├── callback.html       # OAuth callback
-├── workers/
-│   ├── materials-sync/ # rafter-materials-sync Worker
-│   │   ├── wrangler.toml
-│   │   └── index.js
-│   └── pdf/            # rafter-pdf Worker
-│       ├── wrangler.toml
-│       └── index.js
+shikaishi/Rafter (local: C:\Users\will\Documents\GitHub\Rafter)
+├── CLAUDE.md                         # This file
+├── rafter-continuation-prompt.md     # Redacted copy of continuation prompt
+├── docs/
+│   └── client-onboarding-template.md # Repeatable onboarding checklist
+└── workers/
+    ├── rafter/                       # Main site — Worker with Assets
+    │   ├── wrangler.toml
+    │   ├── index.html                # Quoting form (operator-facing)
+    │   ├── setup.html                # OAuth initiation
+    │   └── callback.html             # OAuth callback
+    ├── materials-sync/               # rafter-materials-sync Worker
+    │   ├── wrangler.toml
+    │   └── index.js
+    └── pdf/                          # rafter-pdf Worker
+        ├── wrangler.toml
+        └── index.js
 ```
 
-**CRITICAL:** Never put wrangler.toml at repo root. Cloudflare Pages auto-deploys static files
-from root on push to main. Workers deploy manually via `wrangler deploy` from their subdirectory.
-Workers auto-deploy is disabled (build command = `exit 0`).
-
----
+**CRITICAL deployment rules:**
+- Never put `wrangler.toml` at repo root. No HTML files at repo root. The `workers/rafter/`
+  Worker serves the site — deploy manually from that subdirectory.
+- All Workers deploy manually: `cd workers/<name> && npx wrangler deploy`
+- Cloudflare git auto-deploy is disabled (build command = `exit 0`).
 
 ## Cloudflare infrastructure
 
-| Resource | Name / ID |
-|----------|-----------|
-| Pages project | rafter (rafter.deepgreensea.au) |
+| Resource | Value |
+|----------|-------|
+| Site Worker | `rafter` — rafter.deepgreensea.au (custom domain) |
+| materials-sync Worker | `rafter-materials-sync` — rafter-materials-sync.will-8e8.workers.dev |
+| pdf Worker | `rafter-pdf` — rafter-pdf.will-8e8.workers.dev |
 | R2 bucket | `rafter-assets` |
 | KV namespace | `RAFTER_CLIENTS` |
 | KV namespace ID | `7c7ad02d8136452eb6d03d1af89a684f` |
-| wrangler.toml binding | `binding = "RAFTER_CLIENTS", id = "7c7ad02d8136452eb6d03d1af89a684f"` |
+| KV binding in wrangler.toml | `binding = "RAFTER_CLIENTS", id = "7c7ad02d8136452eb6d03d1af89a684f"` |
 
-**KV tooling note:** Wrangler v4 `kv key list` returns `[]` — use Cloudflare REST API directly
-for KV reads during development. Dashboard also works.
+**KV tooling notes:**
+- Wrangler v4 `kv key list` returns `[]` — use Cloudflare dashboard or REST API to browse keys.
+- **Never** use `wrangler kv key put "key" $value` from PowerShell — it corrupts JSON. Always
+  write JSON to a UTF-8 file first, then: `npx wrangler kv key put "key" --path file.json --binding=RAFTER_CLIENTS --remote`
+- Run all `wrangler` commands from `workers/materials-sync/`.
 
-**KV key format:** `client:{uuid}` — e.g. `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b`
+## Worker — rafter (site)
 
-### KV record contents (trial UUID)
+**URL:** https://rafter.deepgreensea.au  
+**Location:** `workers/rafter/`  
+**Type:** Worker with Assets (`not_found_handling = "single-page-application"`)
 
-The KV record for the trial UUID contains:
-- `uuid`, `company_name` ("2 Men and a Shovel"), branding, `r2_photo_path`
-- `payment_thresholds`: `{under_15k: "50/50", between_15k_50k: "20/60/20", over_50k: "5/progress/final"}`
-- `proposal_types`: `["LC", "GM"]`
-- `job_categories`, `job_queues`, `templates` (26 items)
-- `phone`, `business_address`, `abn`, `business_email`, `credentials[]`, `terms_and_conditions[]`
-- `staff_uuid` — SM8 staff UUID for the account owner (used as `x-impersonate-uuid` in email API calls). Trial: Will Thurlow `5ba57e76-53c0-4340-86ce-24244cfa725b`. Andy's live: Andrew Little — must be set when Andy's KV record is created (T1-F2).
-- `email_template` — HTML email body with merge fields `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. Make substitutes before sending.
-- `access_token`, `refresh_token`, `expires_at`, `token_updated_at`
+Serves static HTML files. Slug-based routing: `rafter.deepgreensea.au/{slug}` reads the first URL
+path segment and resolves it to a client UUID via `/resolve-slug/{slug}` on rafter-materials-sync.
 
-**KV write tooling note:** `wrangler kv key put "key" $value` from PowerShell corrupts JSON (strips quotes). Always use `--path <file>` with a UTF-8 file written by Python or similar. Example: `npx wrangler kv key put "key" --path file.json --binding=RAFTER_CLIENTS --remote`
+**Worker secrets:**  
+*(none — site is static HTML)*
 
----
-
-## Workers
-
-### rafter-materials-sync
+## Worker — rafter-materials-sync
 
 **URL:** https://rafter-materials-sync.will-8e8.workers.dev  
 **Location:** `workers/materials-sync/`
@@ -96,206 +117,643 @@ The KV record for the trial UUID contains:
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `/health` | GET | None | Status check |
-| `/refresh-materials?uuid={uuid}` | GET | None | Sync materials from SM8 to KV |
-| `/store-token` | POST | Bearer `RAFTER_WORKER_SECRET` | Write OAuth tokens to KV |
+| `/store-token` | POST | Bearer `RAFTER_WORKER_SECRET` | Write OAuth tokens to KV after Account Discovery |
+| `/client-config?uuid={uuid}` | GET | `x-rafter-secret` header | Live client config for Make scenarios |
+| `/render-email` | POST | `x-rafter-secret` header | Render email template with merge fields |
+| `/refresh-materials?uuid={uuid}` | GET | None | Sync SM8 materials to KV cache |
 | `/resolve-slug/{slug}` | GET | None | Resolve URL slug → client UUID |
-| `/brand/{key}` | GET | None | Serve brand assets from R2 `brand/` prefix publicly |
-| `/sm8-staff?uuid={uuid}` | GET | None | List active SM8 staff for a client (for UUID lookup) |
-| `/sm8-search?uuid={uuid}&q={q}` | GET | None | Search SM8 companies (min 3 chars) |
-| `/client/{uuid}` | GET | None | Read sanitised client KV record |
-| `/materials/{uuid}` | GET | None | Read cached materials from KV |
+| `/client/{uuid}` | GET | None | Sanitised client KV record (no tokens) |
+| `/materials/{uuid}` | GET | None | Cached materials from KV |
 | `/photos/{uuid}` | GET | None | List photo categories from R2 |
 | `/photo?uuid={uuid}&key={key}` | GET | None | Proxy photo from R2 |
-| Cron `0 10 * * * UTC` | — | — | Nightly materials sync |
+| `/logo/{uuid}` | GET | None | Serve `clients/{uuid}/logo.{png,jpg,jpeg}` from R2 |
+| `/brand/{key}` | GET | None | Serve `brand/{key}` from R2 publicly |
+| `/sm8-staff?uuid={uuid}` | GET | None | List active SM8 staff (for UUID lookup) |
+| `/sm8-search?uuid={uuid}&q={q}` | GET | None | Search SM8 companies (min 3 chars) |
+| Cron `0 10 * * *` UTC | — | — | Nightly materials sync for all clients |
 
-**Brand assets:** R2 bucket `rafter-assets`, prefix `brand/`. Rafter logo: `brand/rafter-logo.png`. URL: `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png`
+**Worker secrets** (set via `npx wrangler secret put <NAME> --name rafter-materials-sync`):
 
-**SM8 materials:** 117 items. Fields: uuid, name, price, active, cost, quantity_in_stock,
-item_description, unit.
+| Secret | Purpose |
+|--------|---------|
+| `RAFTER_WORKER_SECRET` | Bearer token auth for `/store-token` (called by Make Account Discovery) |
+| `RAFTER_INTERNAL_SECRET` | Header auth (`x-rafter-secret`) for `/client-config` and `/render-email` (called by Make Rafter Form) |
+| `SERVICEM8_CLIENT_SECRET` | SM8 OAuth client secret — used for token refresh |
 
-**store-token body:**
+**`/store-token` request body:**
+```json
+{ "uuid": "...", "access_token": "...", "refresh_token": "...", "expires_at": "..." }
+```
+
+**`/client-config` response** (8 fields — `refresh_token` and full KV record NOT exposed):
 ```json
 {
-  "uuid": "448e12a8-f7d9-4ace-b8c6-242bf678db3b",
   "access_token": "...",
-  "refresh_token": "...",
-  "expires_at": "..."
+  "staff_uuid": "...",
+  "email_template": "...",
+  "company_name": "...",
+  "phone": "...",
+  "business_email": "...",
+  "operator_email": "...",
+  "logo_url": "..."
 }
 ```
 
-### rafter-pdf
+**`/render-email` request body:**
+```json
+{
+  "uuid": "...",
+  "client_name": "Sandra Dogny",
+  "job_address": "87 Gyrfalcon Way, Doreen VIC 3754",
+  "quote_ref": "Q-20260516-1247",
+  "total": "254.10"
+}
+```
+**`/render-email` response:**
+```json
+{ "html": "<rendered email body with all {merge_fields} substituted>" }
+```
+
+**Token refresh logic:** `refreshTokenIfNeeded()` — proactive, time-based (refreshes if token expires
+within 5 minutes). Calls `https://go.servicem8.com/oauth/access_token` with `grant_type=refresh_token`.
+Writes updated tokens directly to KV. Not reactive to 401s.
+
+## Worker — rafter-pdf
 
 **URL:** https://rafter-pdf.will-8e8.workers.dev  
 **Location:** `workers/pdf/`
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
-| `/generate?mode=preview` | POST | Generate PDF, return binary |
-| `/generate?mode=submit` | POST | Generate PDF + write to SM8 (501 — NOT YET BUILT) |
+| `/generate?mode=preview` | POST | Generate PDF, return binary blob for browser preview |
+| `/generate?mode=submit` | POST | Generate PDF for Make to deliver to SM8 |
 
-**Required wrangler flags:**
+**Required wrangler.toml flags:**
 ```toml
 compatibility_flags = ["nodejs_compat"]
 compatibility_date = "2024-09-23"
 ```
 
-**Font loading:** Google Fonts does NOT load in headless Chromium. All fonts (Mulish 400/700,
-Playfair Display 600) must be inlined as base64 data URIs. Do not reference Google Fonts CDN.
-
----
+**Font loading:** Google Fonts does NOT load in headless Chromium. Mulish 400/700 and Playfair
+Display 600 must be inlined as base64 data URIs. Never reference Google Fonts CDN in PDF HTML.
 
 ## ServiceM8 API
 
 **Base URL:** `https://api.servicem8.com/api_1.0/`  
-**Auth:** `Authorization: Bearer {access_token}` (from KV)  
-**Token endpoint:** `POST https://go.servicem8.com/oauth/access_token` (1-hour access token; refresh implemented in `rafter-materials-sync` Worker — see `workers/materials-sync/index.js`)  
-**App ID:** 781230  
+**Auth:** `Authorization: Bearer {access_token}`  
+**Token endpoint:** `POST https://go.servicem8.com/oauth/access_token`  
+**App ID:** 781230
 
-### Key endpoints used
-
-| Endpoint | Method | Purpose |
-|----------|--------|---------|
-| `/company.json?search={q}` | GET | Client search (min 3 chars, debounced 400ms) |
-| `/job.json` | POST | Create job |
-| `/jobactivity.json` | POST | Create job note |
-| `/staff.json` | GET | List staff (for UUID lookup) |
-| `/api_1.0/inboxmessage.json` | POST | Deliver PDF to SM8 Inbox (V3 not yet verified) |
-
-**ALWAYS use trial UUID** for any API test call. Never the live UUID.
-
-**Trial instance token:** Retrieve from Make Data Store "Rafter Tokens" → key
-`448e12a8-f7d9-4ace-b8c6-242bf678db3b` → `access_token` field.  
-Alternatively: Cloudflare KV → `RAFTER_CLIENTS` → `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b`.
-
-### OAuth scopes (current)
-`vendor, vendor_logo, read_staff, read_inventory, read_job_categories, read_job_queues,
-manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, read_jobs`
-
-Note: Inbox write scope status unverified (VER-02). May need additional scope + re-authorise.
-
----
-
-## Make.com scenarios
-
-| Scenario | Webhook URL | Purpose |
-|----------|-------------|---------|
-| Account Discovery | `hook.eu1.make.com/38k3vwhijsfun40uu3pmk942gdjnvj32` | OAuth token exchange |
-| Data Retrieval | `hook.eu1.make.com/hao3fhj1n2d1il4bhkkabozjwl892ujt` | Pull SM8 data on callback |
-| Rafter Form | (no external webhook) | Quote submission → SM8 job creation |
-
-**Make Data Store:** "Rafter Tokens" — fields: uuid, access_token, refresh_token, expires_at.
-
-**Make is UI-only** — Claude Code cannot modify Make scenarios. Document the required Make
-changes and hand them to Will for manual configuration.
-
-### Rafter Form scenario — email delivery step (PENDING — Will to configure)
-
-After the existing job creation and PDF attachment upload steps, add a conditional branch:
-
-**Condition:** `send_email = true` AND `customer_email` is not empty
-
-**If true, add an HTTP module:**
+**Current OAuth scopes:**
 ```
-POST https://api.servicem8.com/platform_service_email
-Authorization: Bearer {access_token from KV/Make Data Store}
-x-impersonate-uuid: {staff_uuid from KV client record}
-Content-Type: application/json
+vendor vendor_logo read_staff read_inventory read_job_categories read_job_queues
+manage_templates manage_badges read_tax_rates read_forms read_customers read_jobs publish_email
+```
 
+| SM8 Endpoint | Method | Purpose |
+|-------------|--------|---------|
+| `/company.json?search={q}` | GET | Client search (min 3 chars, debounced 400ms) |
+| `/staff.json` | GET | List staff |
+| `/material.json` | GET | List materials |
+| `/job.json` | POST | Create job — native Make module returns Job UUID directly |
+| `/jobactivity.json` | POST | Create job note/activity |
+| `/attachment.json` | POST | Create attachment record (step 1 of PDF delivery) |
+| `/Attachment/{uuid}.file` | POST | Upload PDF binary (step 2 of PDF delivery) |
+| `https://api.servicem8.com/platform_service_email` | POST | Send quote email to customer |
+
+**SM8 email API headers:**
+```
+Authorization: Bearer {access_token}
+x-impersonate-uuid: {staff_uuid}
+Content-Type: application/json
+```
+**SM8 email API body:**
+```json
 {
   "to": "{customer_email}",
   "subject": "Your quote from 2 Men and a Shovel – {quote_ref}",
-  "htmlBody": "{email_template from KV with merge fields substituted}",
-  "regardingJobUUID": "{job_uuid from job creation step}",
-  "attachments": ["{attachment_uuid from PDF upload step}"]
+  "htmlBody": "{rendered HTML from /render-email}",
+  "regardingJobUUID": "{job_uuid}",
+  "attachments": ["{attachment_uuid}"]
 }
 ```
 
-**Critical:** `attachments` must be a JSON array. The attachment UUID must be captured from
-the `x-record-uuid` response header of the SM8 attachment creation call. Verify this header
-is being captured — it is the most likely point of failure.
+**SM8 Inbox API (VER-01 — CLOSED/INVALID):** The Inbox API has no file attachment support at
+the API level. The `inboxmessage.json` schema has no file field. PDF delivery via Inbox is not
+possible. Use the Attachment endpoint (two-step above) instead.
 
-**Merge fields** (Make substitutes before sending): `{client_name}`, `{job_address}`,
-`{quote_ref}`, `{total}` — all supplied as individual form fields in the webhook payload.
-
----
-
-## Andy's branding
-
-| Element | Value |
-|---------|-------|
-| Primary dark green | `#0D2E1C` |
-| Lime accent | `#84B741` |
-| Light background | `#ECF1E8` |
-| Heading font | Playfair Display Semi-Bold (600) |
-| Body font | Mulish Regular (400) / Bold (700) |
-| Logo (R2) | `clients/448e12a8-f7d9-4ace-b8c6-242bf678db3b/logo.png` |
+**Trial instance token:** Read from KV — `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` → `access_token`.  
+Alternatively from Cloudflare dashboard → KV → RAFTER_CLIENTS.  
+**ALWAYS use trial UUID for any test API call. Never the live UUID.**
 
 ---
 
-## Open issues — RESOLVE BEFORE TOUCHING AFFECTED CODE
+---
 
-See **Rafter — Issue Tracker** (Google Sheets) for full detail.
+# SECTION 2 — Client Config Reference
 
-| ID | Title | Priority | Status |
-|----|-------|----------|--------|
-| BUG-01 | Google Maps API key domain restriction | P1 | Open — 5 min operator fix |
-| BUG-02 | Account Discovery Webhook Response returning "Accepted" not JSON | P1 | Open — Make config |
-| BUG-03 | OAuth token refresh logic not built | P1 | Closed — implemented in `rafter-materials-sync` |
-| BUG-04 | Job Note module — staff_uuid empty | P1 | Open — hardcode UUID |
-| BUG-05 | Job Note module — note field not populating | P1 | Open — mapping fix |
-| BUG-06 | PDF not arriving in SM8 on submit | P1 | Open — triage rafter-pdf logs first |
-| BUG-07 | SM8 client search too fuzzy | P2 | Deferred |
-| BUG-08 | Make Rafter Form — filter + ifempty routing unconfirmed | P1 | In Progress |
-| VER-01 | V3 — SM8 Inbox PDF attachment support | P1 | Open — blocks T1-E1 |
-| VER-02 | V5 — SM8 OAuth scope for Inbox write | P1 | Open — blocks T1-E1 |
-| VER-03 | V4 — SM8 job creation returns UUID | P2 | Open |
+## KV record structure
+
+**Key pattern:** `client:{uuid}`  
+**KV namespace:** RAFTER_CLIENTS (`7c7ad02d8136452eb6d03d1af89a684f`)
+
+All fields documented below. Fields marked [OAuth] are populated automatically by the OAuth flow
+via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth completes.
+
+| Field | Type | Source | Returned by | Description |
+|-------|------|--------|-------------|-------------|
+| `uuid` | string | SM8 / Prerequisites | `/client/{uuid}` | SM8 company/operator UUID |
+| `company_name` | string | Client | `/client/{uuid}`, `/client-config` | Display name e.g. "2 Men and a Shovel" |
+| `branding.primary` | string | Client | `/client/{uuid}` | Dark colour hex e.g. `#0D2E1C` |
+| `branding.accent` | string | Client | `/client/{uuid}` | Accent colour hex e.g. `#84B741` |
+| `branding.background` | string | Client | `/client/{uuid}` | Light bg hex e.g. `#ECF1E8` |
+| `branding.heading_font` | string | Client | `/client/{uuid}` | e.g. `"Playfair Display"` |
+| `branding.body_font` | string | Client | `/client/{uuid}` | e.g. `"Mulish"` |
+| `r2_photo_path` | string | Derived | `/client/{uuid}` | Always `"clients/{uuid}/photos/"` |
+| `payment_thresholds` | object | Client | `/client/{uuid}` | Keys: `under_15k`, `between_15k_50k`, `over_50k`. Values: e.g. `"50/50"`, `"20/60/20"`, `"5/progress/final"` |
+| `proposal_types` | string[] | Client | `/client/{uuid}` | e.g. `["LC", "GM"]` — abbreviations used in PDF cover title |
+| `job_categories` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Categories |
+| `job_queues` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Queues |
+| `templates` | object[] | SM8 | `/client/{uuid}` | Array of `{"name": "TEMPLATE NAME"}` — synced from SM8 |
+| `phone` | string | Client | `/client/{uuid}`, `/client-config` | Business phone e.g. `"(03) 9013 6588"` |
+| `business_address` | string | Client | `/client/{uuid}` | Full address, newline between street and suburb line |
+| `business_email` | string | Client | `/client/{uuid}`, `/client-config` | Public contact email |
+| `operator_email` | string | Client | `/client/{uuid}`, `/client-config` | Email for operator notifications (Make Gmail module To field) |
+| `abn` | string | Client | `/client/{uuid}` | e.g. `"18 652 417 171"` |
+| `bank_details` | object | Client | `/client/{uuid}` | Keys: `name`, `bsb`, `account` |
+| `credentials` | object[] | Client | `/client/{uuid}` | Array of `{"name": "...", "detail": "..."}` — printed on PDF appendix |
+| `terms_and_conditions` | string[] | Client | `/client/{uuid}` | Array of strings — printed on PDF appendix |
+| `staff_uuid` | string | SM8 [post-OAuth] | `/client/{uuid}`, `/client-config` | Account owner SM8 UUID — used as `x-impersonate-uuid` in email API. Trial: `5ba57e76-53c0-4340-86ce-24244cfa725b` (Will Thurlow). Andy's live: obtain via `/sm8-staff` endpoint after OAuth. |
+| `email_template` | string | Client | `/client/{uuid}`, `/client-config`, `/render-email` | HTML email body. Merge fields: `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. `/render-email` substitutes these server-side. |
+| `logo_url` | string | Derived | `/client/{uuid}`, `/client-config` | Public URL of client logo for form header and favicon. Trial: `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png`. Andy's live: `https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b` |
+| `access_token` | string | OAuth | `/client-config` only | SM8 Bearer token (NOT in `/client/{uuid}` — sanitised out) |
+| `refresh_token` | string | OAuth | NOT exposed | SM8 refresh token — never returned by any endpoint |
+| `expires_at` | string | OAuth | NOT exposed | ISO 8601 expiry timestamp |
+| `token_updated_at` | string | OAuth | NOT exposed | ISO 8601 timestamp of last token write |
+
+**Sanitised fields** (never returned by `/client/{uuid}`):
+`access_token`, `refresh_token`, `expires_at`, `token_updated_at`
+
+**`/client-config` fields** (returned to Make, auth required):
+`access_token`, `staff_uuid`, `email_template`, `company_name`, `phone`, `business_email`,
+`operator_email`, `logo_url`
+
+## Trial instance known values (448e12a8...)
+
+| Field | Value |
+|-------|-------|
+| `uuid` | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` |
+| `company_name` | `"2 Men and a Shovel"` |
+| `branding.primary` | `#0D2E1C` |
+| `branding.accent` | `#84B741` |
+| `branding.background` | `#ECF1E8` |
+| `phone` | `(03) 9013 6588` |
+| `business_email` | `hello@2menandashovel.com` |
+| `operator_email` | `willthurlow73@gmail.com` |
+| `abn` | `18 652 417 171` |
+| `bank_details` | `{name: "2 Men and a Shovel", bsb: "083-231", account: "958330593"}` |
+| `staff_uuid` | `5ba57e76-53c0-4340-86ce-24244cfa725b` (Will Thurlow) |
+| `logo_url` | `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png` |
+| `templates` | 26 items (see KV record for names) |
+| `proposal_types` | `["LC", "GM"]` |
+
+## Supplementary KV key patterns
+
+| Key pattern | Purpose |
+|-------------|---------|
+| `client:{uuid}` | Full client config record |
+| `materials:{uuid}` | Cached SM8 materials array (86400s TTL) |
+| `slug:{slug}` | Maps URL slug → UUID e.g. `slug:andy` → `448e12a8-...` |
+
+**Slug for trial instance:** `slug:andy` → `448e12a8-f7d9-4ace-b8c6-242bf678db3b`
 
 ---
 
-## Architecture decisions (locked — do not reopen without explicit instruction)
+---
 
-| ID | Decision |
-|----|----------|
-| D1 | Photos: Cloudflare R2, bucket `rafter-assets`, zero egress |
-| D2 | PDF: Browser Rendering API via Cloudflare Worker |
-| D3 | Client deduplication: deferred — SM8 native Merge Clients |
-| D4 | Materials: KV cache 24hr TTL, nightly cron sync |
-| D5 | Amendments: stateless regeneration + SM8 Inbox |
-| D6 | Quote ref: Q-YYYYMMDD-HHMM (Melbourne timezone) |
-| D7 | Template library: per-client KV |
-| D8 | Onboarding: manual checklist Track 1, wizard Track 2 |
-| D9 | PDF preview: new browser tab, non-destructive |
-| D10 | Devices: 768px min, tablet landscape, touch-first |
-| — | Agent lives on Rafter side. SM8 is a dumb REST recipient. |
-| — | job_description is append-only with delimiter markers. Never overwrite. |
-| — | Rafter is stateless — no quote database. |
-| — | No client UUID or credential hardcoded in platform files. All config from KV. |
+# SECTION 3 — Issue Tracker
+
+Status as of 16 May 2026. Owner: Code = Claude Code; Will-Make = Will in Make UI; Will = Will manually.
+
+## Bugs
+
+| ID | Title | Status | Priority | Owner | Notes |
+|----|-------|--------|----------|-------|-------|
+| BUG-01 | Google Maps API key domain restriction | **Closed** | P1 | Will | `rafter.deepgreensea.au/*` added to Google Cloud Console authorised referrers. Also: site_address field mapping fixed in Make (was snake_case rename issue). |
+| BUG-02 | Account Discovery Webhook Response returning "Accepted" not JSON | **Closed** | P1 | Will-Make | Webhook Response module body: `{"access_token": "{{2.body.access_token}}", "expires_in": {{2.body.expires_in}}}`. Content-Type: application/json. Status 200. |
+| BUG-03 | OAuth token refresh logic not built | **Closed** | P1 | Code | `refreshTokenIfNeeded()` at `workers/materials-sync/index.js:83–137`. Proactive time-based refresh (within 5 min of expiry). Writes to KV directly. Not reactive to 401s. |
+| BUG-04 | Job Note module — staff_uuid empty | **Closed** | P1 | Will-Make | Uses `3. Created by Staff UUID` from Create a Job module output dynamically. |
+| BUG-05 | Job Note module — note field not populating | **Closed** | P1 | Will-Make | Mapped to `3. Job Description`. |
+| BUG-06 | PDF not arriving in SM8 on submit | **Closed** | P1 | Code | PDF delivers via two-step Attachment endpoint. Confirmed working. |
+| BUG-07 | SM8 client search too fuzzy | **Closed** | P2 | Code | Fixed in T1-F1. |
+| BUG-08 | Make Rafter Form — existing client routing unconfirmed | **Closed** | P1 | Will-Make | Confirmed working end-to-end in T1-F1 acceptance test. |
+| BUG-09 | Photos not appearing in PDF | **Closed** | P1 | Code | Fixed — R2 paths fetched and embedded. |
+| BUG-10 | No spinner/disabled state on submit buttons | **Closed** | P1 | Code | Spinner + disabled state added. |
+| BUG-11 | SM8 client search dropdown clipped | **Closed** | P1 | Code | Z-index and overflow fixed. |
+| BUG-12 | `lineItems[]` array missing from payload | **Closed** | P1 | Code | Restored. Also fixed compositing regression on material search dropdown. |
+| BUG-13 | PDF credentials block forced to wrong page | **Closed** | P1 | Code | Moved to forced-page-break appendix. |
+| BUG-14 | PDF bank details missing | **Closed** | P1 | Code | Moved to financial summary section in body. |
+| BUG-15 | PDF terms and conditions missing | **Closed** | P1 | Code | Added to appendix page. |
+
+## Tech Debt
+
+| ID | Title | Status | Priority | Owner | Notes |
+|----|-------|--------|----------|-------|-------|
+| DEBT-01 | Make reading tokens from Data Store (stale every hour) | **Closed** | P1 | Code + Will-Make | `/client-config` endpoint built, deployed. Module 35 in Rafter Form scenario calls it. Make Data Store for tokens is redundant. |
+| DEBT-02 | Currency values not formatted to 2dp in payload | **Closed** | P2 | Code | `toFixed(2)` applied to all currency fields in `buildPayload()` in index.html. |
+| DEBT-03 | `operator_email` hardcoded in Make Gmail module | **Closed** | P1 | Code + Will-Make | Code complete: operator_email in KV and /client-config. Make Gmail module To field updated to {{35.data.operator_email}} — confirmed working 16 May 2026. |
+
+## Verifications
+
+| ID | Title | Status | Priority | Notes |
+|----|-------|--------|----------|-------|
+| VER-01 | SM8 Inbox API PDF attachment support | **Closed/Invalid** | — | SM8 Inbox API has no file attachment field at API level. Cannot attach PDFs to Inbox messages. PDF delivery via Attachment endpoint (already working) is the correct approach. |
+| VER-02 | SM8 OAuth scope for Inbox write | **Closed/Invalid** | — | Moot — Inbox delivery abandoned (VER-01). `publish_inbox` scope not needed. |
+| VER-03 | SM8 job creation response includes job UUID | **Closed** | — | Native Make SM8 module returns `Job UUID` directly as output field. Confirmed used by downstream modules. |
+
+## Make UI tasks outstanding (Will-Make)
+
+These cannot be done by Claude Code — they require Make UI configuration:
+
+| Task | Description | Priority |
+|------|-------------|---------|
+| MAKE-01 | **CLOSED** — Gmail module To field updated to {{35.data.operator_email}}. Confirmed working 16 May 2026. | P1 |
+| MAKE-02 | **CLOSED** — /render-email HTTP POST module added as Module 36 in Rafter Form scenario. Confirmed working 16 May 2026. | P1 |
+| MAKE-03 | **CLOSED** — SM8 email module htmlBody updated to use /render-email response via JSON Create module (Module 37). Confirmed working 16 May 2026. | P1 |
 
 ---
+
+---
+
+# SECTION 4 — Decision Log
+
+These are the settled threads from all Rafter conversations. Locked decisions are not reopened
+without explicit Will sign-off.
+
+| # | Workstream | Title | Status | Decision |
+|---|-----------|-------|--------|---------|
+| D1 | Infrastructure | Photo hosting | **Locked** | Cloudflare R2, bucket `rafter-assets`. Zero egress. Path: `clients/{uuid}/photos/{category}/{filename}`. |
+| D2 | Infrastructure | PDF generation | **Locked** | Browser Rendering API via Cloudflare Worker. Fonts inlined as base64 data URIs (Google Fonts doesn't load in headless Chromium). |
+| D3 | Infrastructure | Client deduplication | **Locked (deferred)** | No dedup logic in Rafter. Operational fallback: SM8 dashboard → Merge Clients. |
+| D4 | Infrastructure | Materials sync | **Locked** | KV cache, 24hr TTL (`materials:{uuid}`). Nightly cron 8pm AEST (10:00 UTC). Manual refresh endpoint on form. |
+| D5 | Infrastructure | Quote amendments | **Locked (revised)** | Stateless — operator regenerates quote in Rafter and resubmits. SM8 Inbox API not viable (no attachment support). PDF delivers via Attachment endpoint to SM8 job. |
+| D6 | Platform | Quote reference format | **Locked** | `Q-YYYYMMDD-HHMM` Melbourne timezone, generated at form load. Amendment suffix: `-v2`. |
+| D7 | Platform | Template library | **Locked** | Per-client KV. SM8 `jobtemplate.json` returns name/UUID only — template content extracted manually and stored in KV. |
+| D8 | Platform | Onboarding | **Locked** | Manual checklist (Track 1). Automated wizard deferred (Track 2). |
+| D9 | Platform | PDF preview | **Locked** | "Preview Quote" button → Browser Rendering Worker → PDF in new tab. Non-destructive, no SM8 writes. |
+| D10 | Platform | Supported devices | **Locked** | 768px minimum. Tablet landscape + desktop. Mobile out of scope. Touch-first. |
+| D11 | Platform | HTML forms over Tally | **Locked** | Claude builds HTML forms. Fully customisable, hosted on Cloudflare Workers. No Tally dependency. |
+| D12 | Platform | SM8 OAuth (Public App) | **Locked** | App ID 781230. Authorization code flow. Tokens stored in KV via `/store-token`. App secret never in browser or GitHub — stored in Make. |
+| D13 | Platform | Multi-tenancy model | **Locked** | One Make scenario for all clients. `client_uuid` in webhook payload routes to correct KV config via `/client-config`. No separate scenario per client. |
+| D14 | Platform | Agent architecture | **Locked** | Agent lives on Rafter/Will's side. SM8 is a dumb REST recipient of well-formed API calls. No dependency on SM8's MCP server. |
+| D15 | Platform | Quote email delivery | **Locked** | SM8 `platform_service_email` API. `x-impersonate-uuid` for staff personalisation. From address: SM8's sending infrastructure. Two Way Email active — customer replies log to job diary. |
+| D16 | Andy | Scope text model | **Locked** | Template-fill, not AI generation. SM8 job templates are boilerplate source (confirmed word-for-word in all 11 Andy proposals). AI reserved for site-specific caveats. |
+| D17 | Andy | Proposal format | **Locked** | Section-based. Two types: LC (Landscape Construction) and GM (Garden Maintenance/Makeover). Section order fixed. Photos inline within sections. |
+| D18 | Andy | Delivery as line items | **Locked** | Multiple delivery SKUs in SM8. Form presents contextually relevant options. Not a calculated field. |
+| D19 | Andy | Payment schedule | **Locked** | Auto-calculated from job total. Thresholds from KV `payment_thresholds` field. |
+| D20 | Andy | PDF is client document | **Locked** | Rafter-generated PDF is the client-facing quote artefact. SM8 job created at Quote status for backend record. SM8 Proposals feature not used. |
+| D21 | Platform | `operator_email` config-driven | **Locked** | Per-client KV field. Returned by `/client-config`. Make Gmail module To field must use this, not hardcoded email. |
+| D22 | Platform | SM8 MCP server | **Deferred** | Monitor only. SM8 MCP server at `developer.servicem8.com/mcp` assessed as too early. Not a build dependency. |
+
+---
+
+---
+
+# SECTION 5 — T1-F2 Andy Onboarding Checklist
+
+Switch Andy from trial instance (`448e12a8...`) to live instance (`010895db...`).
+**Do not proceed until T1-F1 acceptance test is confirmed complete on trial instance.**
+
+T1-F1 status: **Complete** (confirmed by Will, May 2026).
+
+## Pre-requisites
+
+- [ ] Will confirms explicit sign-off to proceed with live instance — **WILL**
+- [ ] Andy's SM8 company UUID confirmed: `010895db-e06c-465d-bce9-2424477be15b` — **Will**
+- [ ] Andy's branding assets confirmed (colours, fonts, logo file) — **Will**
+- [ ] Andy's operator notification email confirmed (for `operator_email` field) — **Will**
+- [ ] Andy's ABN confirmed (currently `18 652 417 171` — verify with Andy, one source shows `18 652 417 051`) — **Will**
+
+## Step 1 — Create Andy's KV record
+
+**Owner: Code.** Create `client:010895db-e06c-465d-bce9-2424477be15b` in KV namespace `7c7ad02d8136452eb6d03d1af89a684f`.
+
+Leave token fields (`access_token`, `refresh_token`, `expires_at`, `token_updated_at`) as empty strings — populated by OAuth (Step 3).
+Leave `staff_uuid` as empty string — populated in Step 5.
+Leave `templates` as empty array — populated after materials sync (Step 6).
+
+**Known values for Andy's record:**
+```json
+{
+  "uuid": "010895db-e06c-465d-bce9-2424477be15b",
+  "company_name": "2 Men and a Shovel",
+  "branding": {
+    "primary": "#0D2E1C",
+    "accent": "#84B741",
+    "background": "#ECF1E8",
+    "heading_font": "Playfair Display",
+    "body_font": "Mulish"
+  },
+  "r2_photo_path": "clients/010895db-e06c-465d-bce9-2424477be15b/photos/",
+  "phone": "(03) 9013 6588",
+  "business_address": "61 Aileen Avenue\nCaulfield South, VIC 3162",
+  "business_email": "hello@2menandashovel.com",
+  "abn": "[VERIFY WITH ANDY]",
+  "bank_details": { "name": "2 Men and a Shovel", "bsb": "083-231", "account": "958330593" },
+  "logo_url": "https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b"
+}
+```
+
+**Logo:** The PDF Worker already reads `clients/{uuid}/logo.png` from R2. Verify Andy's logo is uploaded to `clients/010895db-e06c-465d-bce9-2424477be15b/logo.png` in R2.
+
+**Slug:** Write `slug:andy` → `010895db-e06c-465d-bce9-2424477be15b` to KV (replaces trial mapping):
+```
+cd workers/materials-sync
+npx wrangler kv key put "slug:andy" "010895db-e06c-465d-bce9-2424477be15b" --binding=RAFTER_CLIENTS --remote
+```
+
+- [ ] KV record created and verified in Cloudflare dashboard — **Code**
+- [ ] `slug:andy` updated to live UUID — **Code**
+
+## Step 2 — Upload Andy's logo to R2
+
+**Owner: Will.** Upload the 2 Men and a Shovel logo PNG to:
+`rafter-assets` R2 bucket → `clients/010895db-e06c-465d-bce9-2424477be15b/logo.png`
+
+- [ ] Logo uploaded to R2 — **Will**
+- [ ] Verify: `curl https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b` returns image — **Will**
+
+## Step 3 — SM8 OAuth
+
+**Owner: Will.** Andy must complete the OAuth flow, or Will on Andy's behalf using `will@deepgreensea.au`.
+
+1. Navigate to `rafter.deepgreensea.au/setup`
+2. Click **Connect ServiceM8**
+3. Log in with Andy's SM8 credentials (or `will@deepgreensea.au` if Will has access)
+4. SM8 consent screen shows all scopes — click **Allow**
+5. `callback.html` shows "Setup complete"
+
+Behind the scenes: callback.html → Make Account Discovery → SM8 token exchange → `/store-token` → KV updated.
+
+- [ ] OAuth completed without error — **Will**
+- [ ] Verify KV record has `access_token` and `expires_at` populated — **Will** (Cloudflare dashboard)
+
+## Step 4 — Make Data Store record
+
+**Owner: Will-Make.** *(Temporary workaround — DEBT-01 code is done but Make UI still reads from Data Store in some modules. Remove once all Make modules use `/client-config`.)*
+
+Open Make → Data Stores → Rafter Tokens → Add record:
+- `uuid`: `010895db-e06c-465d-bce9-2424477be15b`
+- `access_token`, `refresh_token`, `expires_at`: copy from KV record
+
+- [ ] Data Store record created with Andy's live UUID and tokens — **Will-Make**
+
+## Step 5 — Staff UUID
+
+**Owner: Code.** Obtain Andrew Little's SM8 staff UUID after OAuth.
+
+```
+curl "https://rafter-materials-sync.will-8e8.workers.dev/sm8-staff?uuid=010895db-e06c-465d-bce9-2424477be15b"
+```
+
+Find the record for Andrew Little (Account Owner). Copy the `uuid` field.
+Write `staff_uuid` into Andy's KV record via `--path` method.
+
+Update also the `x-impersonate-uuid` header in the Make SM8 email module from the trial
+staff UUID (`5ba57e76-...`) to Andrew Little's UUID. **Will-Make.**
+
+- [ ] Andrew Little's staff UUID obtained — **Code**
+- [ ] `staff_uuid` written to Andy's KV record — **Code**
+- [ ] Make SM8 email module `x-impersonate-uuid` updated — **Will-Make**
+
+## Step 6 — Materials sync
+
+**Owner: Will.**
+
+```
+curl "https://rafter-materials-sync.will-8e8.workers.dev/refresh-materials?uuid=010895db-e06c-465d-bce9-2424477be15b"
+```
+
+Expected: `{"ok": true, "count": N, ...}` where N > 0.
+
+- [ ] Materials synced with count > 0 — **Will**
+
+## Step 7 — Verification checklist
+
+Work through each test in order. Do not mark passed until personally confirmed.
+
+**Setup and auth**
+- [ ] Form loads at `rafter.deepgreensea.au/andy` with "2 Men and a Shovel" in header — **Will**
+- [ ] 2 Men and a Shovel logo appears in form header and browser tab favicon — **Will**
+- [ ] Setup page loads at `rafter.deepgreensea.au/setup` — **Will**
+
+**Form functionality**
+- [ ] SM8 client search returns real Andy customers (type 3+ chars) — **Will**
+- [ ] Google Maps autocomplete works in site address field — **Will**
+- [ ] Materials load in line item search — **Will**
+- [ ] Payment schedule auto-calculates from total — **Will**
+
+**Submit Job Only** (no customer email)
+- [ ] Job created in Andy's live SM8 with correct client, address, job description — **Will**
+- [ ] PDF arrives in SM8 job diary as attachment — **Will**
+- [ ] Quote reference (Q-YYYYMMDD-HHMM) appears — **Will**
+
+**Submit and Send Quote** (with customer email)
+- [ ] Job created in SM8 — **Will**
+- [ ] PDF in job diary — **Will**
+- [ ] Customer receives email from Andy's SM8 address with PDF attached — **Will**
+- [ ] Operator notification email received at Andy's `operator_email` — **Will**
+
+**Two-way email**
+- [ ] Customer replies to quote email → reply appears in SM8 job diary — **Will**
+
+## Step 8 — Post go-live
+
+- [ ] Delete any test jobs and clients created during verification from Andy's live SM8 — **Will**
+- [ ] Confirm `slug:andy` still resolves to live UUID — **Code**
+- [ ] Update `rafter-continuation-prompt.md` with T1-F2 completion — **Will**
+- [ ] Rotate `RAFTER_WORKER_SECRET` and `RAFTER_INTERNAL_SECRET` if they were ever in the trial environment chat history — **Code**
+
+---
+
+---
+
+# SECTION 6 — Backlog
+
+Items identified but not yet scheduled. All are post-T1-F2 unless noted.
+
+## Make UI tasks (immediate — pre-T1-F2)
+
+| ID | Task | Owner | Notes |
+|----|------|-------|-------|
+| MAKE-01 | Gmail module To field → `operator_email` from /client-config | Will-Make | DEBT-03 code done. Make UI pending. |
+| MAKE-02 | Add `/render-email` HTTP module after Module 35 | Will-Make | Endpoint built and deployed. Module not yet in Make. |
+| MAKE-03 | Update SM8 email module `htmlBody` to use `/render-email` response | Will-Make | Depends on MAKE-02. |
+| MAKE-04 | Account Discovery `/store-token` UUID hardcoded to trial | Will-Make | UUID is hardcoded in Make — change to `{{2.body.company_uuid}}` or equivalent to support multi-client dynamically. |
+
+## Platform backlog
+
+| Item | Description | Priority | Phase |
+|------|-------------|---------|-------|
+| **Rafter Lite** | Rafter without SM8 — form generates PDF, emails to customer and operator, no SM8 job/client creation. Make scenario skips SM8 modules. Commercial model TBD. Architecturally straightforward. | P3 | Post-Andy demo |
+| **Dev/prod Make separation** | Separate Make scenarios or Worker environments for development vs production. Currently one shared scenario, multi-tenant by `client_uuid`. | P3 | Platform |
+| **Automated acceptance test suite** | Weekly cron, 7 assertions across SM8/Make/Rafter, emails Will on failure. Post-change regression + continuous monitoring. Claude Code or lightweight Python harness. | P3 | Track 2 |
+| **Make log extraction** | Export Make execution logs via API for monitoring/debugging. | P3 | Platform |
+| **Onboarding wizard** | Replace manual onboarding checklist with guided wizard in Rafter operator interface. | P3 | Track 2 |
+| **Template editor** | Lightweight admin interface for editing KV templates without raw JSON edits. | P3 | Track 2 |
+| **SM8 MCP server monitoring** | Monitor `https://developer.servicem8.com/mcp` for maturity. Not a build dependency. | Monitor | Platform |
+| **Quote amendment workflow** | Operator regenerates quote and resubmits to SM8. Amendment format: `Q-YYYYMMDD-HHMM-v2`. SM8 Inbox path abandoned (VER-01 closed). | P2 | Post-T1-F2 |
+| **Agentic onboarding** | Agent on Will's side structures SM8 REST API payloads for client onboarding. Iterative autonomy expansion — read-only first. | P3 | Long-term |
+| **Photo gallery labelling** | Andy has ~80 unlabelled plant photos. Decision needed: comfortable scrolling or want labels. Ask before building. | P2 | Post-T1-F2 |
+| **Line item delivery context** | Form presents contextually relevant delivery SKUs based on materials selected. | P2 | Post-T1-F2 |
+| **Deduplication handling** | Client search before create. SM8 Merge Clients as operational fallback. | P3 | Track 2 |
+
+## Andy open questions (ask before T1-F1 or T1-F2)
+
+1. Payment schedule milestone descriptions — editable per quote or fixed?
+2. Materials not in SM8 inventory — add to SM8 first, or ad-hoc line items?
+3. Plants photos (~80, unlabelled) — comfortable scrolling or want labels?
+4. Line item details (materials, quantities, prices) — internal only or show in client PDF?
+5. ABN: `18 652 417 171` or `18 652 417 051` — confirm correct value.
+6. Operator notification email for live instance — which address?
+
+---
+
+---
+
+# SECTION 7 — Make Scenario Reference
+
+**Make is UI-only — Claude Code cannot modify Make scenarios. Document required changes and hand to Will.**
+
+## Scenario 1 — Account Discovery
+
+**Purpose:** OAuth token exchange after SM8 login  
+**Webhook URL:** `https://hook.eu1.make.com/38k3vwhijsfun40uu3pmk942gdjnvj32`
+
+| Module | Type | Description |
+|--------|------|-------------|
+| 1 | Custom Webhook | Trigger. Receives POST `{"code": "..."}` from callback.html |
+| 2 | HTTP → Make a request | POST `https://go.servicem8.com/oauth/access_token` (urlencoded). Body: `grant_type=authorization_code`, `client_id=781230`, `client_secret=[stored in Make]`, `code={{1.code}}`, `redirect_uri=https://rafter.deepgreensea.au/callback`. Returns `body.access_token`, `body.refresh_token`, `body.expires_in`. |
+| 3 | Data Store | Add/Replace record to "Rafter Tokens". Fields: `uuid` (hardcoded `448e12a8-...`), `access_token={{2.body.access_token}}`, `refresh_token={{2.body.refresh_token}}`, `expires_at={{...}}`. **TODO MAKE-04:** Make UUID dynamic. |
+| 4 | HTTP → Make a request | POST `https://rafter-materials-sync.will-8e8.workers.dev/store-token`. Header: `Authorization: Bearer [RAFTER_WORKER_SECRET]`. Body: `{"uuid": "448e12a8-...", "access_token": "{{2.body.access_token}}", "refresh_token": "{{2.body.refresh_token}}", "expires_at": "..."}`. |
+| 5 | Webhooks → Webhook Response | Status 200. Content-Type: application/json. Body: `{"access_token": "{{2.body.access_token}}", "expires_in": {{2.body.expires_in}}}`. **This returns the token to callback.html.** |
+
+## Scenario 2 — Data Retrieval
+
+**Purpose:** Pull SM8 account data immediately after OAuth (sends email to will@deepgreensea.au)  
+**Webhook URL:** `https://hook.eu1.make.com/hao3fhj1n2d1il4bhkkabozjwl892ujt`
+
+| Module | Type | Description |
+|--------|------|-------------|
+| 1 | Custom Webhook | Receives `{"access_token": "..."}` from callback.html |
+| 3 | HTTP GET | `https://api.servicem8.com/api_1.0/vendor.json` (company/vendor info) |
+| 4 | HTTP GET | `https://api.servicem8.com/api_1.0/staff.json` |
+| 5 | HTTP GET | `https://api.servicem8.com/api_1.0/material.json` |
+| 6 | HTTP GET | `https://api.servicem8.com/api_1.0/category.json` |
+| 7 | HTTP GET | `https://api.servicem8.com/api_1.0/queue.json` |
+| 8 | HTTP GET | `https://api.servicem8.com/api_1.0/documenttemplate.json` |
+| 9 | HTTP GET | `https://api.servicem8.com/api_1.0/badge.json` |
+| 10 | HTTP GET | `https://api.servicem8.com/api_1.0/taxrate.json` |
+| 11 | Gmail → Send Email | To: `will@deepgreensea.au`. Subject: `ServiceM8 Account Discovery — {{3.data.name}}`. Body: labelled JSON blocks for all fetched data. |
+
+All HTTP modules use `Authorization: Bearer {{1.access_token}}`.
+
+## Scenario 3 — Rafter Form
+
+**Purpose:** Process form submission — create SM8 job, attach PDF, send email to customer, notify operator
+
+**Webhook payload fields from index.html:**
+`mode`, `client_uuid`, `customer_email`, `send_email`, `quote_ref`, `proposal_type`,
+`client_name`, `client_sm8_uuid`, `site_address`, `proposal_date`, `sections`,
+`form_sections` (with line_items, photos), `lineItems[]`, `notes`, `subtotal`, `gst`,
+`total`, `payment_schedule`, `bank_details`, `include_materials_appendix`, `pdf` (binary)
+
+| Module | Type | Description |
+|--------|------|-------------|
+| 1 | Custom Webhook | Trigger. Receives form submission payload including binary PDF. |
+| [2] | JSON Parse | Parses `1.payload` JSON string to expose `client_uuid` as selectable variable. |
+| [new client branch] | Router / If-Else | If `client_sm8_uuid` is empty → Create a Client in SM8. Merge → Create a Job using new or existing UUID. |
+| 3 | SM8 → Create a Job | Creates SM8 job. Returns `Job UUID`, `Created by Staff UUID`, `Generated Job ID`. Fields: `job_address={{1.site_address}}`, `job_description={{1.job_description}}`, `status=Quote`, `company_uuid={{resolved client uuid}}`. |
+| [4] | SM8 → Create a Job Note | `job_uuid={{3.uuid}}`, `staff_uuid={{3.Created by Staff UUID}}`, `note={{1.job_description}}`. |
+| [5] | SM8 → Create Attachment Record | `related_object=job`, `related_object_uuid={{3.uuid}}`, `attachment_name={{1.pdf.name}}`, `file_type=.pdf`. Returns attachment UUID. |
+| [6] | Tools → Set Variable | Variable name: `attachment_uuid`. Value: `x-record-uuid` header from module [5] response. (`28.attachment_uuid` confirmed.) |
+| [7] | HTTP → Upload PDF binary | POST `https://api.servicem8.com/api_1.0/Attachment/{{attachment_uuid}}.file`. Multipart body: file field with `1.pdf.data`, `fileName={{1.pdf.name}}`. |
+| Router | Router | Splits into Route 1 (main chain) and Route 2 (customer email branch). |
+| **Route 1** | | |
+| [8] | SM8 → Create JobMaterial | Create line items in SM8 billing from `1.lineItems[]`. |
+| [9] | Gmail → Send Email | Operator notification. To: `{{35.data.operator_email}}` (**MAKE-01 pending** — currently hardcoded `willthurlow73@gmail.com`). Subject: `Site Visit Quote - {{1.client_name}} - {{1.proposal_date}}`. Attachment: `{{1.pdf.data}}`. |
+| **Route 2** | | Filter: `send_email == "true"` AND `customer_email` not empty. |
+| 35 | HTTP GET `/client-config` | `https://rafter-materials-sync.will-8e8.workers.dev/client-config?uuid={{client_uuid}}`. Header: `x-rafter-secret: [RAFTER_INTERNAL_SECRET]`. Returns `access_token`, `staff_uuid`, `email_template`, `company_name`, `phone`, `business_email`, `operator_email`, `logo_url`. |
+| [36] | HTTP POST `/render-email` | `https://rafter-materials-sync.will-8e8.workers.dev/render-email`. Header: `x-rafter-secret`. Body: `{uuid, client_name, job_address, quote_ref, total}`. Returns `{"html": "..."}`. **MAKE-02 pending — not yet in Make.** |
+| [37] | HTTP POST SM8 email | POST `https://api.servicem8.com/platform_service_email`. Headers: `Authorization: Bearer {{35.data.access_token}}`, `x-impersonate-uuid: {{35.data.staff_uuid}}`. Body: `{"to": "{{1.customer_email}}", "subject": "Your quote from 2 Men and a Shovel – {{1.quote_ref}}", "htmlBody": "{{36.html}}", "regardingJobUUID": "{{3.uuid}}", "attachments": ["{{28.attachment_uuid}}"]}`. **MAKE-03 pending** — currently `htmlBody` is inline template, not from `/render-email`. |
+
+---
+
+---
+
+# Appendix — Constraints and Toolchain Notes
+
+## Non-negotiable constraints
+
+1. **Trial instance only** until T1-F2 explicit sign-off. Andy's live UUID (`010895db-...`) must not be used in any development or test.
+2. **No client UUID, credential, or client-specific value hardcoded** in platform files. All config from KV.
+3. **Rafter is stateless** — no quote database. Quotes live in SM8 only.
+4. **`job_description` is append-only** with delimiter markers. Never overwrite.
+5. **Agent on Rafter side only.** SM8 is a dumb REST recipient.
+6. **768px minimum.** Touch-first. Mobile phone out of scope.
+7. **No assumptions.** Flag for verification if not confirmed in this file.
+
+## Toolchain notes
+
+- **Wrangler v4 KV list** returns `[]` — use Cloudflare REST API or dashboard for key listing.
+- **KV writes from PowerShell** corrupt JSON. Always use `--path <file>` with a UTF-8 JSON file.
+- **Workers auto-deploy disabled** (build command = `exit 0`). Deploy manually from `workers/<name>/`.
+- **Google Fonts** do not load in headless Chromium (rafter-pdf Worker). All fonts must be inlined as base64 data URIs.
+- **SM8 token endpoint:** `https://go.servicem8.com/oauth/access_token` (not `app.servicem8.com` — that URL is wrong).
+- **RAFTER_INTERNAL_SECRET value:** `R@ftCleanerTetr15Ren` (stored as Wrangler secret on `rafter-materials-sync`). Rotate before T1-F2 if this has appeared in conversation history.
+
+## Claude Chat / Claude Code split
+
+**Claude Code owns:** File reads/writes, Worker deploys, KV reads/writes, API test calls, any task requiring execution.
+
+**Claude Chat owns:** Architecture decisions, Make configuration (UI-only), bug triage and prioritisation, continuation prompt and issue tracker.
+
+**Handoff format** (Chat → Code):
+```
+TASK: [one line]
+FILE: [exact path or N/A]
+ENDPOINT: [if API call]
+INPUT: [exact values]
+SUCCESS CONDITION: [what done looks like]
+CONTEXT: See CLAUDE.md
+```
 
 ## PDF design spec (locked — T1-D1 complete)
 
-**Cover page (Page 1 only):**
-1. Header: phone left (lime `#84B741`) · total right (lime) · thin rule
+**Cover page:**
+1. Header (every page): phone left (lime `#84B741`) · total right (lime) · thin rule
 2. Logo from R2 left · business address/ABN right
 3. "PREPARED FOR" lime uppercase · client name large bold · full address
-4. Meta block right-aligned: Date / Reference / Total — lime label + Mulish 400 value. **No proposal number.**
+4. Meta block right-aligned: Date / Reference / Total — lime label + Mulish 400 value. No proposal number.
 5. Horizontal rule
 6. Job title Playfair lime: `{type} — {street}, {suburb}` — no state, no country, one line
 
-**Sections:** Playfair 600 ALL CAPS dark green heading · item name Mulish 700 + price right-aligned · rule · scope Mulish 400 · asterisk notes `#999`
+**Sections:** Playfair 600 ALL CAPS dark green heading · item name Mulish 700 + price right-aligned · rule · scope Mulish 400 · asterisk notes `#999`. Photos inline within section.
+
+**Financial summary** (after all work sections): 1.5px divider · soft-green box with subtotal/GST/total → payment schedule → bank details.
+
+**Appendix page** (forced page break): "You Can Rely On 2 Men and a Shovel" credentials block + T&Cs. Single A4 page.
 
 **Footer:** page number right only, every page. No URL, no timestamp.
 
-**Typography rules:**
+**Typography:**
 - Playfair Display 600: section headings (ALL CAPS), block headings, job title
-- Mulish 700: item names and prices
+- Mulish 700: item names, prices
 - Mulish 400: everything else
 - All numbers in Mulish — no Playfair numerals
+- Fonts: inlined as base64 data URIs (Google Fonts will NOT load in headless Chromium)
 
----
-
-## Operator form design (index.html) — CSS variables
+## Operator form design — CSS variables (index.html)
 
 ```css
 --rf-navy: #1B4F72;
@@ -314,53 +772,3 @@ See **Rafter — Issue Tracker** (Google Sheets) for full detail.
 --rf-danger-bg: #FFCDD2;
 --rf-danger: #E57373;
 ```
-
----
-
-## Claude Chat / Claude Code split
-
-**Claude Code owns:**
-- File reads and writes (index.html, Workers, scripts)
-- API verification calls (GET /staff.json, test POSTs, etc.)
-- Bulk operations and SM8 cleanup scripts
-- Anything requiring execution and real output
-
-**Claude Chat owns:**
-- Architecture decisions and sequencing
-- Make.com configuration (UI-based — Code cannot touch it)
-- Bug triage and prioritisation
-- The issue tracker and continuation prompt
-
-**Handoff format** (Chat → Code):
-```
-TASK: [one line]
-FILE: [exact path or N/A]
-ENDPOINT: [if API call]
-INPUT: [exact values]
-SUCCESS CONDITION: [what done looks like]
-CONTEXT: See CLAUDE.md
-```
-
----
-
-## Things that require verification before building
-
-1. SM8 Inbox API binary PDF attachment support (VER-01)
-2. SM8 OAuth scope for Inbox write access (VER-02)
-3. SM8 job creation response body includes UUID (VER-03)
-
-Do not build against any of these without verifying first. Check SM8 developer docs at
-https://developer.servicem8.com or test against trial instance.
-
----
-
-## Non-negotiable constraints
-
-1. **Trial instance only** until T1-F2. Andy's live UUID must not be used.
-2. **No client UUID, credential, or client-specific value hardcoded** in platform files.
-3. **Rafter is stateless** — no quote database. Quotes live in SM8 only.
-4. **job_description is append-only** with delimiter markers. Never overwrite.
-5. **Agent on Rafter side only.** SM8 is a dumb REST recipient.
-6. **768px minimum.** Touch-first. Mobile out of scope.
-7. **No assumptions.** Flag for verification if not confirmed in this file.
-8. **Citations required** for any external platform claim (API behaviour, endpoint shape, etc.).
