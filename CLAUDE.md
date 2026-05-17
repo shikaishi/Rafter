@@ -315,6 +315,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `bank_details` | `{name: "2 Men and a Shovel", bsb: "083-231", account: "958330593"}` |
 | `staff_uuid` | `5ba57e76-53c0-4340-86ce-24244cfa725b` (Will Thurlow) |
 | `logo_url` | `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png` |
+| `webhook_url` | `https://hook.eu1.make.com/i8gukma8y3vs1gff7dihku8inotgy7lg` |
 | `templates` | 26 items (see KV record for names) |
 | `proposal_types` | `["LC", "GM"]` |
 
@@ -461,7 +462,8 @@ Leave `templates` as empty array — populated after materials sync (Step 6).
   "business_email": "hello@2menandashovel.com",
   "abn": "[VERIFY WITH ANDY]",
   "bank_details": { "name": "2 Men and a Shovel", "bsb": "083-231", "account": "958330593" },
-  "logo_url": "https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b"
+  "logo_url": "https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b",
+  "webhook_url": "https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4"
 }
 ```
 
