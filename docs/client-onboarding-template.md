@@ -291,6 +291,20 @@ Then read the KV record, populate all four fields, and write back with `--path`.
 
 ---
 
+## Section 6d — Slug
+
+Confirm `slug:{slug}` in KV points to the client's live UUID. This should have been written in Section 3, but verify it is still pointing to the correct live UUID (not trial) after OAuth completes.
+
+```
+curl https://rafter-materials-sync.will-8e8.workers.dev/resolve-slug/{slug}
+```
+
+Expected: `{"ok":true,"slug":"{slug}","uuid":"{live-uuid}"}`
+
+- [ ] Slug verified pointing to live UUID — **Code**
+
+---
+
 ## Section 7 — Materials Sync
 
 This populates `materials:{uuid}` in KV (used by the form line-item search) and also validates that the token is working.
