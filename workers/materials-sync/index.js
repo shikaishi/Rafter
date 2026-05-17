@@ -263,6 +263,47 @@ async function handleRefreshMaterials(url, env) {
   return json({ ok: true, uuid, ...summary, ttl_seconds: MATERIALS_TTL_SECONDS });
 }
 
+async function handleCopyR2Photos(request, url, env) {
+  const secret = env.RAFTER_INTERNAL_SECRET;
+  if (!secret) return json({ error: "server_misconfigured" }, { status: 500 });
+  const provided = request.headers.get("x-rafter-secret") || "";
+  if (!constantTimeEqual(provided, secret)) return json({ error: "unauthorized" }, { status: 401 });
+
+  const from = url.searchParams.get("from");
+  const to = url.searchParams.get("to");
+  if (!from || !to) return json({ error: "missing_param", params: "from,to" }, { status: 400 });
+  if (from === to) return json({ error: "same_uuid" }, { status: 400 });
+  if (!env.RAFTER_ASSETS) return json({ error: "r2_not_bound" }, { status: 500 });
+
+  const srcPrefix = `clients/${from}/photos/`;
+  const dstPrefix = `clients/${to}/photos/`;
+
+  const keys = [];
+  let cursor;
+  do {
+    const page = await env.RAFTER_ASSETS.list({ prefix: srcPrefix, cursor, limit: 1000 });
+    for (const obj of page.objects) keys.push(obj.key);
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+
+  let copied = 0;
+  let failed = 0;
+  const BATCH = 20;
+  for (let i = 0; i < keys.length; i += BATCH) {
+    const batch = keys.slice(i, i + BATCH);
+    const results = await Promise.allSettled(batch.map(async (srcKey) => {
+      const dstKey = dstPrefix + srcKey.slice(srcPrefix.length);
+      const obj = await env.RAFTER_ASSETS.get(srcKey);
+      if (!obj) throw new Error("not_found");
+      const buf = await obj.arrayBuffer();
+      await env.RAFTER_ASSETS.put(dstKey, buf, { httpMetadata: obj.httpMetadata });
+    }));
+    for (const r of results) r.status === "fulfilled" ? copied++ : failed++;
+  }
+
+  return json({ ok: true, from, to, copied, failed, total: keys.length });
+}
+
 async function handleRefreshTemplates(url, env) {
   const uuid = url.searchParams.get("uuid");
   if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
@@ -566,6 +607,7 @@ async function route(request, env) {
   if (method === "GET" && path === "/client-config") return handleClientConfig(request, url, env);
   if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env);
   if (method === "GET" && path === "/refresh-templates") return handleRefreshTemplates(url, env);
+  if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
 
   const clientMatch = method === "GET" && /^\/client\/([0-9a-f-]{36})$/i.exec(path);
