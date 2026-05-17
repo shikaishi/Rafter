@@ -502,7 +502,7 @@ async function handleSm8Search(url, env) {
     .map((c) => ({
       uuid: c.uuid,
       name: c.name,
-      address: c.address || [c.address_street, c.address_city, c.address_state, c.address_postcode].filter(Boolean).join(", "),
+      address: (c.address || [c.address_street, c.address_city, c.address_state, c.address_postcode].filter(Boolean).join(", ")).replace(/\n/g, ", "),
       email: c.email || c.billing_email || "",
       phone: c.mobile_phone || c.phone || "",
     }));
