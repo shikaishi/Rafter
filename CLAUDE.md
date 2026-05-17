@@ -698,7 +698,7 @@ All HTTP modules use `Authorization: Bearer {{1.access_token}}`.
 
 ## Non-negotiable constraints
 
-1. **Trial instance only** until T1-F2 explicit sign-off. Andy's live UUID (`010895db-...`) must not be used in any development or test.
+1. **Trial instance only** until T1-F2 explicit sign-off. Andy's live UUID (`0e604a45-...`) must not be used in any development or test.
 2. **No client UUID, credential, or client-specific value hardcoded** in platform files. All config from KV.
 3. **Rafter is stateless** — no quote database. Quotes live in SM8 only.
 4. **`job_description` is append-only** with delimiter markers. Never overwrite.
@@ -714,6 +714,7 @@ All HTTP modules use `Authorization: Bearer {{1.access_token}}`.
 - **Google Fonts** do not load in headless Chromium (rafter-pdf Worker). All fonts must be inlined as base64 data URIs.
 - **SM8 token endpoint:** `https://go.servicem8.com/oauth/access_token` (not `app.servicem8.com` — that URL is wrong).
 - **RAFTER_INTERNAL_SECRET value:** `R@ftCleanerTetr15Ren` (stored as Wrangler secret on `rafter-materials-sync`). Rotate before T1-F2 if this has appeared in conversation history.
+- **RAFTER_WORKER_SECRET:** Rotated 17 May 2026 — old value exposed in session. New value set via wrangler; Will must update Make Account Discovery Module 5 Bearer token to match.
 
 ## Claude Chat / Claude Code split
 
