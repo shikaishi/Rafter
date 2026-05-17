@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 17 May 2026 (T1-F2 **COMPLETE** — end-to-end confirmed on Andy's live instance. DEBT-04 closed. Make scenarios fully HTTP Bearer auth. SM8 company.json finding: no phone/email fields. Steps 5b/5c/5d added to onboarding. MAKE-05 still outstanding.)
+> Last reconciled: 17 May 2026 (T1-F2 **COMPLETE** — end-to-end confirmed on Andy's live instance. DEBT-04 closed. Make scenarios fully HTTP Bearer auth. SM8 company.json finding: no phone/email fields. Steps 5b/5c/5d added to onboarding. MAKE-05 closed.)
 
 ---
 
@@ -407,7 +407,7 @@ Claude Code manages Make scenarios via the Make API. See `.env` for token and sc
 | MAKE-02 | Add `/render-email` HTTP POST as Module 36 | P1 | **Closed** — confirmed in blueprint (Module 36 present and wired) |
 | MAKE-03 | SM8 email module `htmlBody` → `/render-email` response | P1 | **Closed** — confirmed in blueprint (Module 37 uses `{{36.data.html}}`) |
 | MAKE-04 | Account Discovery — make `/store-token` UUID dynamic | P2 | **Open** — module 4 body hardcodes `448e12a8-...`; change to `{{6.data[].uuid}}` (vendor UUID from module 6 fetch) |
-| MAKE-05 | Account Discovery Module 2 — fix `client_id` and `client_secret` | P1 | **Open** — `client_id` is `782214` (wrong, must be `781230`); `client_secret` must be updated to current value from SM8 Partner Portal |
+| MAKE-05 | Account Discovery Module 2 — fix `client_id` and `client_secret` | P1 | **Closed** — `client_id` corrected to `781230`; `client_secret` updated in Make |
 | MAKE-06 | Account Discovery Module 5 — remove double space in Bearer token | P3 | **Open** — `"Bearer  Kf..."` has two spaces |
 | MAKE-07 | Account Discovery — `expires_at` should use `{{2.data.expires_in}}` | P3 | **Open** — modules 4 and 5 hardcode 3600s (see BUG-20) |
 | MAKE-08 | Rafter Form module 37 — subject use `{{35.data.company_name}}` | P2 | **Open** — both prod and dev (see BUG-18) |
@@ -695,7 +695,7 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 |----|------|-------|-------|
 | MAKE-01–03 | **CLOSED** | Code | All done and confirmed in blueprint. |
 | MAKE-04 | Account Discovery — make `/store-token` UUID dynamic | Code | Open — module 4 hardcodes `448e12a8-...` |
-| MAKE-05 | Account Discovery Module 2 — fix `client_id` (`782214` → `781230`) and update `client_secret` | Will-Make | **P1** — OAuth broken for all new clients until fixed. Must be done in Make UI (credentials stored there). |
+| MAKE-05 | Account Discovery Module 2 — fix `client_id` and `client_secret` | Will-Make | **Closed** — `client_id` corrected to `781230`; `client_secret` updated. |
 | MAKE-06 through MAKE-10 | Blueprint audit fixes from 17 May | Code | See issue tracker for individual items. |
 
 ## SM8 API findings
@@ -710,7 +710,7 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 
 | Item | Description | Priority | Phase |
 |------|-------------|---------|-------|
-| **Account Discovery MAKE-05** | Fix Module 2 `client_id`/`client_secret` in Make UI — blocks all new client OAuth | P1 | Immediate |
+| **Account Discovery MAKE-05** | ~~Fix Module 2 `client_id`/`client_secret`~~ | ~~P1~~ | **Closed** |
 | **Client name split for new client creation** | M2 currently sends full name as one field. SM8 `company` accepts `name` as a single field (no first/last split for companies). Verify this is correct for Andy's use case. | P2 | Post-T1-F2 |
 | **callback.html icon** | Still shows Rafter brand SVG icon, not client logo. Minor cosmetic. | P3 | Post-T1-F2 |
 | **Account Discovery cron/scheduled run errors** | Investigate whether Account Discovery scenario has errors on scheduled runs vs manual trigger. Token refresh timing may be an issue. | P2 | Post-T1-F2 |
@@ -757,7 +757,7 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 | Module | Type | Description |
 |--------|------|-------------|
 | 1 | Custom Webhook | Trigger. Receives POST `{"code": "..."}` from callback.html |
-| 2 | HTTP → Make a request | POST `https://go.servicem8.com/oauth/access_token` (urlencoded). Body: `grant_type=authorization_code`, `client_id=781230`, `client_secret=[stored in Make]`, `code={{1.code}}`, `redirect_uri=https://rafter.deepgreensea.au/callback`. Returns `body.access_token`, `body.refresh_token`, `body.expires_in`. **⚠️ MAKE-05: current blueprint has client_id `782214` (wrong, must be `781230`) and stale client_secret — pending Code fix via API.** |
+| 2 | HTTP → Make a request | POST `https://go.servicem8.com/oauth/access_token` (urlencoded). Body: `grant_type=authorization_code`, `client_id=781230`, `client_secret=[stored in Make]`, `code={{1.code}}`, `redirect_uri=https://rafter.deepgreensea.au/callback`. Returns `body.access_token`, `body.refresh_token`, `body.expires_in`. |
 | 6 | HTTP GET | `https://api.servicem8.com/api_1.0/vendor.json` using new access_token — returns the SM8 account UUID. Used by modules 4 and 5 to identify which client completed OAuth. **MAKE-04:** module 4 still hardcodes trial UUID `448e12a8-...` instead of using `{{6.data[].uuid}}`. |
 | 3 | Data Store | Add/Replace record to "Rafter Tokens". Fields: `uuid` (hardcoded `448e12a8-...`), `access_token={{2.body.access_token}}`, `refresh_token={{2.body.refresh_token}}`, `expires_at={{...}}`. **TODO MAKE-04:** Make UUID dynamic. |
 | 4 | HTTP → Make a request | POST `https://rafter-materials-sync.will-8e8.workers.dev/store-token`. Header: `Authorization: Bearer [RAFTER_WORKER_SECRET]`. Body: `{"uuid": "448e12a8-...", "access_token": "{{2.body.access_token}}", "refresh_token": "{{2.body.refresh_token}}", "expires_at": "..."}`. |
