@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 17 May 2026 (T1-F2 Steps 1–6 complete; Step 7 verification in progress)
+> Last reconciled: 17 May 2026 (T1-F2 Step 7 verification in progress; MAKE-05 raised for Account Discovery Module 2 credentials)
 
 ---
 
@@ -245,6 +245,21 @@ possible. Use the Attachment endpoint (two-step above) instead.
 **Trial instance token:** Read from KV — `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` → `access_token`.  
 Alternatively from Cloudflare dashboard → KV → RAFTER_CLIENTS.  
 **ALWAYS use trial UUID for any test API call. Never the live UUID.**
+
+## SM8 Developer Account
+
+| Field | Value |
+|-------|-------|
+| Account email | will@thurlow.net |
+| Account type | Partner (upgraded from trial May 2026) |
+| App name | Rafter Setup |
+| App ID | 781230 |
+| App Secret | [stored in Make Account Discovery Module 2 — do not record here] |
+| Trial UUID | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` |
+
+This is the dev/trial SM8 instance used for all Rafter development and testing.
+The Rafter OAuth app is registered under this account and must remain active (paid)
+for OAuth to work for any client.
 
 ---
 
@@ -592,6 +607,7 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 | MAKE-02 | Add `/render-email` HTTP module after Module 35 | Will-Make | Endpoint built and deployed. Module not yet in Make. |
 | MAKE-03 | Update SM8 email module `htmlBody` to use `/render-email` response | Will-Make | Depends on MAKE-02. |
 | MAKE-04 | Account Discovery `/store-token` UUID hardcoded to trial | Will-Make | UUID is hardcoded in Make — change to `{{2.body.company_uuid}}` or equivalent to support multi-client dynamically. |
+| MAKE-05 | **Account Discovery Module 2 — wrong client_id and client_secret** | Will-Make | Current `client_id` in Module 2 is `782214` (wrong). Must be `781230`. App Secret must also be updated to the value from SM8 Partner Portal (App ID 781230). Both wrong = OAuth broken for all clients. |
 
 ## Platform backlog
 
@@ -635,7 +651,7 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 | Module | Type | Description |
 |--------|------|-------------|
 | 1 | Custom Webhook | Trigger. Receives POST `{"code": "..."}` from callback.html |
-| 2 | HTTP → Make a request | POST `https://go.servicem8.com/oauth/access_token` (urlencoded). Body: `grant_type=authorization_code`, `client_id=781230`, `client_secret=[stored in Make]`, `code={{1.code}}`, `redirect_uri=https://rafter.deepgreensea.au/callback`. Returns `body.access_token`, `body.refresh_token`, `body.expires_in`. |
+| 2 | HTTP → Make a request | POST `https://go.servicem8.com/oauth/access_token` (urlencoded). Body: `grant_type=authorization_code`, `client_id=781230`, `client_secret=[stored in Make]`, `code={{1.code}}`, `redirect_uri=https://rafter.deepgreensea.au/callback`. Returns `body.access_token`, `body.refresh_token`, `body.expires_in`. **⚠️ MAKE-05: current client_id is `782214` (wrong) and client_secret is stale — both must be corrected to App ID 781230 values from SM8 Partner Portal.** |
 | 3 | Data Store | Add/Replace record to "Rafter Tokens". Fields: `uuid` (hardcoded `448e12a8-...`), `access_token={{2.body.access_token}}`, `refresh_token={{2.body.refresh_token}}`, `expires_at={{...}}`. **TODO MAKE-04:** Make UUID dynamic. |
 | 4 | HTTP → Make a request | POST `https://rafter-materials-sync.will-8e8.workers.dev/store-token`. Header: `Authorization: Bearer [RAFTER_WORKER_SECRET]`. Body: `{"uuid": "448e12a8-...", "access_token": "{{2.body.access_token}}", "refresh_token": "{{2.body.refresh_token}}", "expires_at": "..."}`. |
 | 5 | Webhooks → Webhook Response | Status 200. Content-Type: application/json. Body: `{"access_token": "{{2.body.access_token}}", "expires_in": {{2.body.expires_in}}}`. **This returns the token to callback.html.** |
