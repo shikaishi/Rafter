@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 17 May 2026 (T1-F2 Step 7 verification in progress; blueprint audit complete; BUG-16–20, DEBT-04–06, MAKE-04–10 raised; Make now managed via API by Claude Code)
+> Last reconciled: 17 May 2026 (DEBT-04 closed — SM8 native modules replaced with HTTP Bearer auth; BUG-16/17, MAKE-09/10 closed; OAuth scopes updated; re-run setup.html OAuth required)
 
 ---
 
@@ -208,6 +208,7 @@ Display 600 must be inlined as base64 data URIs. Never reference Google Fonts CD
 ```
 vendor vendor_logo read_staff read_inventory read_job_categories read_job_queues
 manage_templates manage_badges read_tax_rates read_forms read_customers read_jobs publish_email
+create_jobs manage_customers
 ```
 
 | SM8 Endpoint | Method | Purpose |
@@ -371,8 +372,8 @@ Status as of 17 May 2026. Owner: Code = Claude Code (includes Make API changes);
 | BUG-13 | PDF credentials block forced to wrong page | **Closed** | P1 | Code | Moved to forced-page-break appendix. |
 | BUG-14 | PDF bank details missing | **Closed** | P1 | Code | Moved to financial summary section in body. |
 | BUG-15 | PDF terms and conditions missing | **Closed** | P1 | Code | Added to appendix page. |
-| BUG-16 | Rafter Form module 8 — orphaned duplicate attachment record | **Open** | P2 | Code | Module 8 (`servicem8:makeApiCall`) in route 2 creates a second attachment record on every submission using `{{1.pdfName}}` (field does not exist — should be `{{1.pdf.name}}`). The actual PDF is already attached correctly by modules 14/15 which run unconditionally before the router. Module 8 creates an empty-filename ghost record in SM8 on every submission. Remove module 8. |
-| BUG-17 | `tax_rate_uuid` hardcoded in createclient module — breaks multi-tenant | **Open** | P2 | Code | Module 2 (`servicem8:createclient`) has `tax_rate_uuid: 1643d783-b682-4ddf-aa7b-24244abe149b` hardcoded. This is Andy's SM8 tax rate UUID. Passing it to a second client's SM8 account will error or apply wrong tax rate. Remove the field — SM8 will apply the account default. |
+| BUG-16 | Rafter Form module 8 — orphaned duplicate attachment record | **Closed** | P2 | Code | Module 8 (`servicem8:makeApiCall`) in route 2 creates a second attachment record on every submission using `{{1.pdfName}}` (field does not exist — should be `{{1.pdf.name}}`). The actual PDF is already attached correctly by modules 14/15 which run unconditionally before the router. Module 8 creates an empty-filename ghost record in SM8 on every submission. Remove module 8. |
+| BUG-17 | `tax_rate_uuid` hardcoded in createclient module — breaks multi-tenant | **Closed** | P2 | Code | Module 2 (`servicem8:createclient`) has `tax_rate_uuid: 1643d783-b682-4ddf-aa7b-24244abe149b` hardcoded. This is Andy's SM8 tax rate UUID. Passing it to a second client's SM8 account will error or apply wrong tax rate. Remove the field — SM8 will apply the account default. |
 | BUG-18 | Email subject hardcodes "2 Men and a Shovel" | **Open** | P2 | Code | Rafter Form module 37 (`json:CreateJSON`) subject field: `"Your quote from 2 Men and a Shovel – {{1.quote_ref}}"`. Should use `{{35.data.company_name}}` from `/client-config`. Affects both prod and dev scenarios. |
 | BUG-19 | Operator notification email body hardcodes "Two Men and a Shovel" | **Open** | P2 | Code | Rafter Form module 12 (Gmail) HTML body has "Two Men and a Shovel" and company-specific branding baked in. Should use `/render-email` or at minimum pull company name dynamically. Affects both prod and dev. |
 | BUG-20 | `expires_at` hardcoded as 3600s in Account Discovery | **Open** | P3 | Code | Account Discovery modules 4 and 5 use `addSeconds(now; 3600)`. Should use `addSeconds(now; {{2.data.expires_in}})` so actual SM8 token expiry is respected. Currently matches SM8's 3600s default but will silently break if SM8 changes it. |
@@ -384,8 +385,8 @@ Status as of 17 May 2026. Owner: Code = Claude Code (includes Make API changes);
 | DEBT-01 | Make reading tokens from Data Store (stale every hour) | **Closed** | P1 | Code + Will-Make | `/client-config` endpoint built, deployed. Module 35 in Rafter Form scenario calls it. Make Data Store for tokens is redundant. |
 | DEBT-02 | Currency values not formatted to 2dp in payload | **Closed** | P2 | Code | `toFixed(2)` applied to all currency fields in `buildPayload()` in index.html. |
 | DEBT-03 | `operator_email` hardcoded in Make Gmail module | **Closed** | P1 | Code + Will-Make | Code complete: operator_email in KV and /client-config. Make Gmail module To field updated to {{35.data.operator_email}} — confirmed working 16 May 2026. |
-| DEBT-04 | SM8 native modules use hardcoded Make OAuth connection — multi-tenant limitation | **Open** | P2 | Code | Rafter Form modules 2 (`servicem8:createclient`) and 3 (`servicem8:createjob`) use a hardcoded Make OAuth connection (`7467476` prod, `7090648` dev). Make native SM8 modules cannot accept a dynamic Bearer token — they use a stored connection tied to one SM8 account. For client 2, scenario must either clone with a new connection, or convert modules 2/3 to raw `http:MakeRequest` calls using `Authorization: Bearer {{35.data.access_token}}` (same pattern as module 33). This is the core multi-tenancy architectural gap in Make. |
-| DEBT-05 | Make Data Store write still present in Account Discovery despite DEBT-01 closure | **Open** | P3 | Code | Account Discovery module 4 (`datastore:AddRecord`) still writes tokens to Make datastore 122745 ("Rafter Tokens") on every OAuth. No downstream scenario reads from this datastore — all token reads go via `/client-config`. Module 4 is dead weight and should be removed. |
+| DEBT-04 | SM8 native modules use hardcoded Make OAuth connection — multi-tenant limitation | **Closed** | P2 | Code | Modules 2 and 3 converted to `http:MakeRequest` using `{{35.data.access_token}}` from `/client-config`. Module 35 moved before the router so token is available for all SM8 calls. Modules 13/14/15/17 also converted to Bearer auth. Make connection 7467476 no longer referenced in any blueprint module. |
+| DEBT-05 | Make Data Store write still present in Account Discovery despite DEBT-01 closure | **Open** | P3 | Code | Account Discovery module 4 (`datastore:AddRecord`) still writes tokens to Make datastore 122745 on every OAuth. No downstream scenario reads from this datastore. Module 4 is dead weight — remove from Account Discovery blueprint. |
 | DEBT-06 | Secrets hardcoded in Make blueprint plaintext | **Open** | P2 | Code | `RAFTER_INTERNAL_SECRET` hardcoded in Rafter Form module 35 `x-rafter-secret` header. SM8 `client_secret` hardcoded in Account Discovery module 2. `RAFTER_WORKER_SECRET` hardcoded in Account Discovery module 5 (with extra leading space). Should be stored in Make variables/keychain, not mapper values. |
 
 ## Verifications
@@ -410,8 +411,8 @@ Claude Code manages Make scenarios via the Make API. See `.env` for token and sc
 | MAKE-06 | Account Discovery Module 5 — remove double space in Bearer token | P3 | **Open** — `"Bearer  Kf..."` has two spaces |
 | MAKE-07 | Account Discovery — `expires_at` should use `{{2.data.expires_in}}` | P3 | **Open** — modules 4 and 5 hardcode 3600s (see BUG-20) |
 | MAKE-08 | Rafter Form module 37 — subject use `{{35.data.company_name}}` | P2 | **Open** — both prod and dev (see BUG-18) |
-| MAKE-09 | Rafter Form — remove module 8 (duplicate/broken attachment) | P2 | **Open** — both prod and dev (see BUG-16) |
-| MAKE-10 | Rafter Form module 2 — remove hardcoded `tax_rate_uuid` | P2 | **Open** — both prod and dev (see BUG-17) |
+| MAKE-09 | Rafter Form — remove module 8 (duplicate/broken attachment) | P2 | **Closed** — removed from both blueprints |
+| MAKE-10 | Rafter Form module 2 — remove hardcoded `tax_rate_uuid` | P2 | **Closed** — module 2 fully replaced (DEBT-04) |
 
 ---
 
