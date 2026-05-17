@@ -121,6 +121,7 @@ path segment and resolves it to a client UUID via `/resolve-slug/{slug}` on raft
 | `/client-config?uuid={uuid}` | GET | `x-rafter-secret` header | Live client config for Make scenarios |
 | `/render-email` | POST | `x-rafter-secret` header | Render email template with merge fields |
 | `/refresh-materials?uuid={uuid}` | GET | None | Sync SM8 materials to KV cache |
+| `/refresh-templates?uuid={uuid}` | GET | None | Sync SM8 document templates to `client:{uuid}.templates` in KV |
 | `/resolve-slug/{slug}` | GET | None | Resolve URL slug → client UUID |
 | `/client/{uuid}` | GET | None | Sanitised client KV record (no tokens) |
 | `/materials/{uuid}` | GET | None | Cached materials from KV |
