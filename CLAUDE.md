@@ -559,6 +559,43 @@ Make Module 33 `x-impersonate-uuid` confirmed already set to `{{35.data.staff_uu
 - [x] `staff_uuid` written to Andy's KV record — **Code**
 - [x] Make SM8 email module `x-impersonate-uuid` confirmed using `{{35.data.staff_uuid}}` — **Will-Make**
 
+## Step 5b — Email template
+
+**Owner: Code.** Write the client's email template to their KV record. Must contain all four merge fields: `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. Read the existing template from the trial KV record and copy across, updating branding as needed.
+
+**Template (2 Men and a Shovel — confirmed working):**
+```html
+<img src="https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png" alt="Rafter" style="height:60px;width:auto;display:block;margin-bottom:20px;">
+<p>Hi {client_name},</p>
+
+<p>Please find attached your quote from 2 Men and a Shovel for the work at {job_address}.</p>
+
+<p><strong>Quote reference:</strong> {quote_ref}<br>
+<strong>Total (inc. GST):</strong> ${total}</p>
+
+<p>To accept this quote, simply reply to this email or call us on (03) 9013 6588 and we'll confirm the schedule and get started.</p>
+
+<p>If you have any questions about the quote, we're happy to talk it through.</p>
+
+<p>Thanks,<br>
+Andy<br>
+2 Men and a Shovel<br>
+(03) 9013 6588<br>
+hello@2menandashovel.com</p>
+```
+
+Write using `--path` method. Then verify via `/render-email`:
+```
+curl -X POST https://rafter-materials-sync.will-8e8.workers.dev/render-email \
+  -H "x-rafter-secret: [RAFTER_INTERNAL_SECRET]" \
+  -H "Content-Type: application/json" \
+  -d '{"uuid":"{uuid}","client_name":"Test Client","job_address":"1 Test St","quote_ref":"Q-TEST","total":"1234.56"}'
+```
+Expected: `{"html": "..."}` with all merge fields substituted.
+
+- [x] `email_template` written to KV — **Code** (17 May 2026)
+- [x] `/render-email` verified with test values — **Code**
+
 ## Step 6 — Materials sync
 
 **Owner: Will.**
