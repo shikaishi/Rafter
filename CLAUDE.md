@@ -641,7 +641,16 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 
 # SECTION 7 — Make Scenario Reference
 
-**Make is UI-only — Claude Code cannot modify Make scenarios. Document required changes and hand to Will.**
+**Make scenarios are managed by Claude Code via the Make API.** Blueprint workflow: `GET /api/v2/scenarios/{id}/blueprint` → edit JSON → `PUT /api/v2/scenarios/{id}/blueprint`. API token and scenario IDs in `Rafter/.env` (gitignored — never commit). OAuth connections (Gmail, ServiceM8) must be created once via UI; thereafter referenced by connectionId in blueprints.
+
+**Base URL:** `https://eu1.make.com/api/v2` · **Team ID:** `1602740` · **Org ID:** `7501187`
+
+| Scenario | ID |
+|----------|-----|
+| ServiceM8 Account Discovery | `5612449` |
+| ServiceM8 Data Retrieval | `5612520` |
+| Rafter Form (prod) | `5537814` |
+| Rafter Form (dev) | `5761732` |
 
 ## Scenario 1 — Account Discovery
 
