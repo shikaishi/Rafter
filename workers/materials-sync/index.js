@@ -504,6 +504,7 @@ async function handleSm8Search(url, env) {
       name: c.name,
       address: c.address || [c.address_street, c.address_city, c.address_state, c.address_postcode].filter(Boolean).join(", "),
       email: c.email || c.billing_email || "",
+      phone: c.mobile_phone || c.phone || "",
     }));
   return json({ ok: true, results });
 }

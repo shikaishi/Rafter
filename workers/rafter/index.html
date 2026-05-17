@@ -785,13 +785,20 @@
           <button type="button" data-val="GM"><i class="ti ti-leaf"></i>Maintenance</button>
         </div>
       </div>
-      <div class="full">
+      <div>
         <label class="field-label" for="customerEmail">Customer email</label>
         <div class="input-wrap">
           <i class="ti ti-mail"></i>
           <input class="input with-icon" id="customerEmail" type="email" autocomplete="off" placeholder="Customer email address…">
         </div>
         <div id="emailError" class="hint" style="color:var(--rf-danger);display:none;">Please enter a valid email address to send the quote.</div>
+      </div>
+      <div>
+        <label class="field-label" for="customerPhone">Customer phone</label>
+        <div class="input-wrap">
+          <i class="ti ti-phone"></i>
+          <input class="input with-icon" id="customerPhone" type="tel" autocomplete="off" placeholder="Customer phone number…">
+        </div>
       </div>
       <div class="full">
         <label class="field-label" for="siteAddress">Site address</label>
@@ -930,6 +937,7 @@ const state = {
   clientName: "",
   clientSm8Uuid: null,
   customerEmail: "",
+  customerPhone: "",
   siteAddress: "",
   sections: [],        // { id, name, scope, price, priceManual, lineItems[], photos[], collapsed, photoPanelOpen, photoCat }
   notes: "",
@@ -1123,7 +1131,7 @@ async function sm8Search(q) {
       $("clientHint").textContent = "";
       return;
     }
-    dd.innerHTML = items.map((c) => `<div class="item" data-uuid="${escapeHtml(c.uuid)}" data-name="${escapeHtml(c.name)}" data-addr="${escapeHtml(c.address||"")}" data-email="${escapeHtml(c.email||"")}">
+    dd.innerHTML = items.map((c) => `<div class="item" data-uuid="${escapeHtml(c.uuid)}" data-name="${escapeHtml(c.name)}" data-addr="${escapeHtml(c.address||"")}" data-email="${escapeHtml(c.email||"")}" data-phone="${escapeHtml(c.phone||"")}">
       <i class="ti ti-user" style="color:var(--rf-ocean);margin-top:1px;"></i>
       <div><div class="name">${escapeHtml(c.name)}</div>${c.address ? `<div class="addr">${escapeHtml(c.address)}</div>` : ""}</div>
     </div>`).join("");
@@ -1141,6 +1149,10 @@ async function sm8Search(q) {
         if (row.dataset.email) {
           state.customerEmail = row.dataset.email;
           $("customerEmail").value = state.customerEmail;
+        }
+        if (row.dataset.phone) {
+          state.customerPhone = row.dataset.phone;
+          $("customerPhone").value = state.customerPhone;
         }
         dd.style.display = "none";
         $("clientHint").textContent = "Existing ServiceM8 client";
@@ -1597,6 +1609,7 @@ function buildPayload(mode, sendEmail) {
     mode,
     client_uuid: state.clientUuid,
     customer_email: state.customerEmail || $("customerEmail").value.trim(),
+    customer_phone: state.customerPhone || $("customerPhone").value.trim(),
     send_email: sendEmail === true,
     quote_ref: state.quoteRef,
     proposal_type: state.proposalType,
@@ -1783,6 +1796,7 @@ function bindEvents() {
       $("proposalToggle").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
     });
   });
+  $("customerPhone").addEventListener("input", (e) => { state.customerPhone = e.target.value; });
   $("siteAddress").addEventListener("input", (e) => { state.siteAddress = e.target.value; });
   $("notes").addEventListener("input", (e) => { state.notes = e.target.value; });
   $("previewBtn").addEventListener("click", previewPdf);
