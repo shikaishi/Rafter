@@ -385,7 +385,7 @@ Status as of 17 May 2026. Owner: Code = Claude Code (includes Make API changes);
 | DEBT-01 | Make reading tokens from Data Store (stale every hour) | **Closed** | P1 | Code + Will-Make | `/client-config` endpoint built, deployed. Module 35 in Rafter Form scenario calls it. Make Data Store for tokens is redundant. |
 | DEBT-02 | Currency values not formatted to 2dp in payload | **Closed** | P2 | Code | `toFixed(2)` applied to all currency fields in `buildPayload()` in index.html. |
 | DEBT-03 | `operator_email` hardcoded in Make Gmail module | **Closed** | P1 | Code + Will-Make | Code complete: operator_email in KV and /client-config. Make Gmail module To field updated to {{35.data.operator_email}} — confirmed working 16 May 2026. |
-| DEBT-04 | SM8 native modules use hardcoded Make OAuth connection — multi-tenant limitation | **Closed** | P2 | Code | Modules 2 and 3 converted to `http:MakeRequest` using `{{35.data.access_token}}` from `/client-config`. Module 35 moved before the router so token is available for all SM8 calls. Modules 13/14/15/17 also converted to Bearer auth. Make connection 7467476 no longer referenced in any blueprint module. |
+| DEBT-04 | SM8 native modules use hardcoded Make OAuth connection — multi-tenant limitation | **Closed** | P2 | Code | Modules 2 and 3 converted to `http:MakeRequest` using `{{35.data.access_token}}` from `/client-config`. Module 35 moved before the router so token is available for all SM8 calls. Modules 13/14/15/17 also converted to Bearer auth. Make connection "ServiceM8 — Production" (7467476) deleted by Will — no longer needed. |
 | DEBT-05 | Make Data Store write still present in Account Discovery despite DEBT-01 closure | **Open** | P3 | Code | Account Discovery module 4 (`datastore:AddRecord`) still writes tokens to Make datastore 122745 on every OAuth. No downstream scenario reads from this datastore. Module 4 is dead weight — remove from Account Discovery blueprint. |
 | DEBT-06 | Secrets hardcoded in Make blueprint plaintext | **Open** | P2 | Code | `RAFTER_INTERNAL_SECRET` hardcoded in Rafter Form module 35 `x-rafter-secret` header. SM8 `client_secret` hardcoded in Account Discovery module 2. `RAFTER_WORKER_SECRET` hardcoded in Account Discovery module 5 (with extra leading space). Should be stored in Make variables/keychain, not mapper values. |
 
@@ -658,7 +658,7 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 
 # SECTION 7 — Make Scenario Reference
 
-**Make scenarios are managed by Claude Code via the Make API.** Blueprint workflow: `GET /api/v2/scenarios/{id}/blueprint` → edit JSON → `PUT /api/v2/scenarios/{id}/blueprint`. API token and scenario IDs in `Rafter/.env` (gitignored — never commit). OAuth connections (Gmail, ServiceM8) must be created once via UI; thereafter referenced by connectionId in blueprints.
+**Make scenarios are managed by Claude Code via the Make API.** Blueprint workflow: `GET /api/v2/scenarios/{id}/blueprint` → edit JSON → `PUT /api/v2/scenarios/{id}/blueprint`. API token and scenario IDs in `Rafter/.env` (gitignored — never commit). Only the Gmail connection requires UI setup — the ServiceM8 connection was deleted (17 May 2026) as all SM8 calls now use per-client Bearer tokens from `/client-config`.
 
 **Base URL:** `https://eu1.make.com/api/v2` · **Team ID:** `1602740` · **Org ID:** `7501187`
 
