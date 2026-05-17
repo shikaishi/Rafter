@@ -27,7 +27,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 | Instance | UUID | Use |
 |----------|------|-----|
 | **Trial (DEV/TEST)** | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` | All development and testing |
-| **Andy's live (PRODUCTION)** | `010895db-e06c-465d-bce9-2424477be15b` | T1-F2 only — explicit sign-off required |
+| **Andy's live (PRODUCTION)** | `0e604a45-84fd-4789-a2cb-662bcba51a8b` | T1-F2 only — explicit sign-off required |
 
 If you are about to write code referencing the live UUID, stop and confirm with Will first.
 
@@ -285,7 +285,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `terms_and_conditions` | string[] | Client | `/client/{uuid}` | Array of strings — printed on PDF appendix |
 | `staff_uuid` | string | SM8 [post-OAuth] | `/client/{uuid}`, `/client-config` | Account owner SM8 UUID — used as `x-impersonate-uuid` in email API. Trial: `5ba57e76-53c0-4340-86ce-24244cfa725b` (Will Thurlow). Andy's live: obtain via `/sm8-staff` endpoint after OAuth. |
 | `email_template` | string | Client | `/client/{uuid}`, `/client-config`, `/render-email` | HTML email body. Merge fields: `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. `/render-email` substitutes these server-side. |
-| `logo_url` | string | Derived | `/client/{uuid}`, `/client-config` | Public URL of client logo for form header and favicon. Trial: `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png`. Andy's live: `https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b` |
+| `logo_url` | string | Derived | `/client/{uuid}`, `/client-config` | Public URL of client logo for form header and favicon. Trial: `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png`. Andy's live: `https://rafter-materials-sync.will-8e8.workers.dev/logo/0e604a45-84fd-4789-a2cb-662bcba51a8b` |
 | `webhook_url` | string | Client | `/client-config` | Make Scenario 3 (Rafter Form) webhook URL. Required for submit mode — rafter-pdf reads this from KV; returns 400 if missing. Per-client, must be written to KV for each instance. |
 | `access_token` | string | OAuth | `/client-config` only | SM8 Bearer token (NOT in `/client/{uuid}` — sanitised out) |
 | `refresh_token` | string | OAuth | NOT exposed | SM8 refresh token — never returned by any endpoint |
@@ -431,14 +431,14 @@ T1-F1 status: **Complete** (confirmed by Will, May 2026).
 ## Pre-requisites
 
 - [ ] Will confirms explicit sign-off to proceed with live instance — **WILL**
-- [ ] Andy's SM8 company UUID confirmed: `010895db-e06c-465d-bce9-2424477be15b` — **Will**
+- [ ] Andy's SM8 company UUID confirmed: `0e604a45-84fd-4789-a2cb-662bcba51a8b` — **Will**
 - [ ] Andy's branding assets confirmed (colours, fonts, logo file) — **Will**
 - [ ] Andy's operator notification email confirmed (for `operator_email` field) — **Will**
 - [ ] Andy's ABN confirmed (currently `18 652 417 171` — verify with Andy, one source shows `18 652 417 051`) — **Will**
 
 ## Step 1 — Create Andy's KV record
 
-**Owner: Code.** Create `client:010895db-e06c-465d-bce9-2424477be15b` in KV namespace `7c7ad02d8136452eb6d03d1af89a684f`.
+**Owner: Code.** Create `client:0e604a45-84fd-4789-a2cb-662bcba51a8b` in KV namespace `7c7ad02d8136452eb6d03d1af89a684f`.
 
 Leave token fields (`access_token`, `refresh_token`, `expires_at`, `token_updated_at`) as empty strings — populated by OAuth (Step 3).
 Leave `staff_uuid` as empty string — populated in Step 5.
@@ -447,7 +447,7 @@ Leave `templates` as empty array — populated after materials sync (Step 6).
 **Known values for Andy's record:**
 ```json
 {
-  "uuid": "010895db-e06c-465d-bce9-2424477be15b",
+  "uuid": "0e604a45-84fd-4789-a2cb-662bcba51a8b",
   "company_name": "2 Men and a Shovel",
   "branding": {
     "primary": "#0D2E1C",
@@ -456,23 +456,23 @@ Leave `templates` as empty array — populated after materials sync (Step 6).
     "heading_font": "Playfair Display",
     "body_font": "Mulish"
   },
-  "r2_photo_path": "clients/010895db-e06c-465d-bce9-2424477be15b/photos/",
+  "r2_photo_path": "clients/0e604a45-84fd-4789-a2cb-662bcba51a8b/photos/",
   "phone": "(03) 9013 6588",
   "business_address": "61 Aileen Avenue\nCaulfield South, VIC 3162",
   "business_email": "hello@2menandashovel.com",
   "abn": "[VERIFY WITH ANDY]",
   "bank_details": { "name": "2 Men and a Shovel", "bsb": "083-231", "account": "958330593" },
-  "logo_url": "https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b",
+  "logo_url": "https://rafter-materials-sync.will-8e8.workers.dev/logo/0e604a45-84fd-4789-a2cb-662bcba51a8b",
   "webhook_url": "https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4"
 }
 ```
 
-**Logo:** The PDF Worker already reads `clients/{uuid}/logo.png` from R2. Verify Andy's logo is uploaded to `clients/010895db-e06c-465d-bce9-2424477be15b/logo.png` in R2.
+**Logo:** The PDF Worker already reads `clients/{uuid}/logo.png` from R2. Verify Andy's logo is uploaded to `clients/0e604a45-84fd-4789-a2cb-662bcba51a8b/logo.png` in R2.
 
-**Slug:** Write `slug:andy` → `010895db-e06c-465d-bce9-2424477be15b` to KV (replaces trial mapping):
+**Slug:** Write `slug:andy` → `0e604a45-84fd-4789-a2cb-662bcba51a8b` to KV (replaces trial mapping):
 ```
 cd workers/materials-sync
-npx wrangler kv key put "slug:andy" "010895db-e06c-465d-bce9-2424477be15b" --binding=RAFTER_CLIENTS --remote
+npx wrangler kv key put "slug:andy" "0e604a45-84fd-4789-a2cb-662bcba51a8b" --binding=RAFTER_CLIENTS --remote
 ```
 
 - [ ] KV record created and verified in Cloudflare dashboard — **Code**
@@ -481,10 +481,10 @@ npx wrangler kv key put "slug:andy" "010895db-e06c-465d-bce9-2424477be15b" --bin
 ## Step 2 — Upload Andy's logo to R2
 
 **Owner: Will.** Upload the 2 Men and a Shovel logo PNG to:
-`rafter-assets` R2 bucket → `clients/010895db-e06c-465d-bce9-2424477be15b/logo.png`
+`rafter-assets` R2 bucket → `clients/0e604a45-84fd-4789-a2cb-662bcba51a8b/logo.png`
 
 - [ ] Logo uploaded to R2 — **Will**
-- [ ] Verify: `curl https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b` returns image — **Will**
+- [ ] Verify: `curl https://rafter-materials-sync.will-8e8.workers.dev/logo/0e604a45-84fd-4789-a2cb-662bcba51a8b` returns image — **Will**
 
 ## Step 3 — SM8 OAuth
 
@@ -506,7 +506,7 @@ Behind the scenes: callback.html → Make Account Discovery → SM8 token exchan
 **Owner: Will-Make.** *(Temporary workaround — DEBT-01 code is done but Make UI still reads from Data Store in some modules. Remove once all Make modules use `/client-config`.)*
 
 Open Make → Data Stores → Rafter Tokens → Add record:
-- `uuid`: `010895db-e06c-465d-bce9-2424477be15b`
+- `uuid`: `0e604a45-84fd-4789-a2cb-662bcba51a8b`
 - `access_token`, `refresh_token`, `expires_at`: copy from KV record
 
 - [ ] Data Store record created with Andy's live UUID and tokens — **Will-Make**
@@ -516,7 +516,7 @@ Open Make → Data Stores → Rafter Tokens → Add record:
 **Owner: Code.** Obtain Andrew Little's SM8 staff UUID after OAuth.
 
 ```
-curl "https://rafter-materials-sync.will-8e8.workers.dev/sm8-staff?uuid=010895db-e06c-465d-bce9-2424477be15b"
+curl "https://rafter-materials-sync.will-8e8.workers.dev/sm8-staff?uuid=0e604a45-84fd-4789-a2cb-662bcba51a8b"
 ```
 
 Find the record for Andrew Little (Account Owner). Copy the `uuid` field.
@@ -534,7 +534,7 @@ staff UUID (`5ba57e76-...`) to Andrew Little's UUID. **Will-Make.**
 **Owner: Will.**
 
 ```
-curl "https://rafter-materials-sync.will-8e8.workers.dev/refresh-materials?uuid=010895db-e06c-465d-bce9-2424477be15b"
+curl "https://rafter-materials-sync.will-8e8.workers.dev/refresh-materials?uuid=0e604a45-84fd-4789-a2cb-662bcba51a8b"
 ```
 
 Expected: `{"ok": true, "count": N, ...}` where N > 0.
