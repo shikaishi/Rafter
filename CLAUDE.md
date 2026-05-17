@@ -56,7 +56,6 @@ creates jobs in ServiceM8, and emails the quote PDF to the customer.
 ```
 shikaishi/Rafter (local: C:\Users\will\Documents\GitHub\Rafter)
 ├── CLAUDE.md                         # This file
-├── rafter-continuation-prompt.md     # Redacted copy of continuation prompt
 ├── docs/
 │   └── client-onboarding-template.md # Repeatable onboarding checklist
 └── workers/
@@ -675,11 +674,10 @@ Expected: `{"ok": true, "count": N, ...}` where N > 0.
 **Two-way email**
 - [x] Customer replies to quote email → reply appears in SM8 job diary — **Will**
 
-## Step 8 — Post go-live
+## Step 8 — Post go-live ✓ Complete
 
 - [x] Delete any test jobs and clients created during verification from Andy's live SM8 — **Will** (17 May 2026 — jobs 18794–18805 deleted via API)
 - [x] Confirm `slug:andy` still resolves to live UUID — **Code**
-- [ ] Update `rafter-continuation-prompt.md` with T1-F2 completion — **Will**
 - [x] Rotate `RAFTER_WORKER_SECRET` — rotated 17 May 2026. `RAFTER_INTERNAL_SECRET` not rotated (decision: not required) — **Code**
 
 ---
