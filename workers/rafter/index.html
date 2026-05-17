@@ -1142,7 +1142,7 @@ async function sm8Search(q) {
         state.clientSm8Uuid = row.dataset.uuid;
         state.clientName = row.dataset.name;
         $("clientName").value = state.clientName;
-        if (row.dataset.addr && !state.siteAddress) {
+        if (row.dataset.addr) {
           state.siteAddress = row.dataset.addr;
           $("siteAddress").value = state.siteAddress;
         }
@@ -1780,6 +1780,12 @@ function bindEvents() {
   $("clientName").addEventListener("input", (e) => {
     state.clientName = e.target.value;
     state.clientSm8Uuid = null;
+    state.siteAddress = "";
+    state.customerEmail = "";
+    state.customerPhone = "";
+    $("siteAddress").value = "";
+    $("customerEmail").value = "";
+    $("customerPhone").value = "";
     $("clientHint").textContent = "";
     sm8SearchDebounced(e.target.value.trim());
   });
