@@ -22,7 +22,7 @@ function corsHeaders(request) {
   return {
     "access-control-allow-origin": allow,
     "access-control-allow-methods": "GET, POST, OPTIONS",
-    "access-control-allow-headers": "Content-Type, Authorization",
+    "access-control-allow-headers": "Content-Type, Authorization, x-rafter-secret",
     "vary": "Origin",
   };
 }
@@ -204,6 +204,38 @@ async function handleStoreToken(request, env) {
   return json({ ok: true, uuid, token_updated_at: config.token_updated_at });
 }
 
+async function handleRenderEmail(request, env) {
+  const secret = env.RAFTER_INTERNAL_SECRET;
+  if (!secret) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_INTERNAL_SECRET not set" }, { status: 500 });
+  }
+  const provided = request.headers.get("x-rafter-secret") || "";
+  if (!constantTimeEqual(provided, secret)) {
+    return json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "invalid_json" }, { status: 400 }); }
+
+  const { uuid, client_name, job_address, quote_ref, total } = body || {};
+  if (!uuid || typeof uuid !== "string") {
+    return json({ error: "missing_field", field: "uuid" }, { status: 400 });
+  }
+
+  const config = await readClient(env, uuid);
+  if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
+
+  const template = config.email_template || "";
+  const html = template
+    .replace(/\{client_name\}/g, client_name || "")
+    .replace(/\{job_address\}/g, job_address || "")
+    .replace(/\{quote_ref\}/g, quote_ref || "")
+    .replace(/\{total\}/g, total || "");
+
+  return json({ html });
+}
+
 async function handleRefreshMaterials(url, env) {
   const uuid = url.searchParams.get("uuid");
   if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
@@ -343,6 +375,21 @@ async function handleBrandAsset(key, env) {
   });
 }
 
+async function handleClientLogo(uuid, env) {
+  if (!env.RAFTER_ASSETS) return new Response("r2_not_bound", { status: 500 });
+  for (const ext of ["png", "jpg", "jpeg"]) {
+    const obj = await env.RAFTER_ASSETS.get(`clients/${uuid}/logo.${ext}`);
+    if (obj) {
+      const mime = obj.httpMetadata?.contentType || mimeFromKey(`logo.${ext}`);
+      return new Response(obj.body, {
+        status: 200,
+        headers: { "content-type": mime, "cache-control": "public, max-age=3600" },
+      });
+    }
+  }
+  return new Response("not_found", { status: 404 });
+}
+
 async function handleSm8Staff(url, env) {
   const uuid = url.searchParams.get("uuid");
   if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
@@ -443,6 +490,35 @@ async function runScheduledSync(env) {
   return { total: uuids.length, ok, skipped, failed };
 }
 
+async function handleClientConfig(request, url, env) {
+  const secret = env.RAFTER_INTERNAL_SECRET;
+  if (!secret) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_INTERNAL_SECRET not set" }, { status: 500 });
+  }
+  const provided = request.headers.get("x-rafter-secret") || "";
+  if (!constantTimeEqual(provided, secret)) {
+    return json({ error: "unauthorized" }, { status: 401 });
+  }
+
+  const uuid = url.searchParams.get("uuid");
+  if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
+
+  const config = await readClient(env, uuid);
+  if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
+
+  return json({
+    access_token: config.access_token || null,
+    staff_uuid: config.staff_uuid || null,
+    email_template: config.email_template || null,
+    company_name: config.company_name || null,
+    phone: config.phone || null,
+    business_email: config.business_email || null,
+    operator_email: config.operator_email || null,
+    logo_url: config.logo_url || null,
+    webhook_url: config.webhook_url || null,
+  });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -450,6 +526,8 @@ async function route(request, env) {
 
   if (method === "OPTIONS") return new Response(null, { status: 204 });
   if (method === "POST" && path === "/store-token") return handleStoreToken(request, env);
+  if (method === "POST" && path === "/render-email") return handleRenderEmail(request, env);
+  if (method === "GET" && path === "/client-config") return handleClientConfig(request, url, env);
   if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
 
@@ -464,6 +542,8 @@ async function route(request, env) {
   if (method === "GET" && path === "/sm8-staff") return handleSm8Staff(url, env);
   const brandMatch = method === "GET" && /^\/brand\/([a-z0-9_.-]+)$/i.exec(path);
   if (brandMatch) return handleBrandAsset(brandMatch[1], env);
+  const logoMatch = method === "GET" && /^\/logo\/([0-9a-f-]{36})$/i.exec(path);
+  if (logoMatch) return handleClientLogo(logoMatch[1], env);
   const slugMatch = method === "GET" && /^\/resolve-slug\/([a-z0-9-]+)$/i.exec(path);
   if (slugMatch) return handleResolveSlug(slugMatch[1], env);
 

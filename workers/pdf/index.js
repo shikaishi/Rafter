@@ -20,7 +20,6 @@ const AUD = new Intl.NumberFormat("en-AU", {
   maximumFractionDigits: 2,
 });
 
-const MAKE_RAFTER_FORM_WEBHOOK = "https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4";
 
 const PROPOSAL_TYPE_LABEL = {
   LC: "Landscape Construction",
@@ -89,6 +88,11 @@ async function handleGenerate(request, env, url) {
   if (!client_uuid) return json({ error: "missing_client_uuid" }, 400);
 
   const client = await loadClient(env, client_uuid);
+
+  if (mode === "submit" && !client.webhook_url) {
+    return json({ error: "webhook_url_not_configured", client_uuid }, 400);
+  }
+
   const [logoDataUrl, photoMap] = await Promise.all([
     fetchLogo(env, client_uuid),
     fetchPhotos(env, collectPhotoKeys(payload)),
@@ -127,7 +131,7 @@ async function handleGenerate(request, env, url) {
   form.append("customer_email",   payload.customer_email   || "");
   form.append("send_email",       String(payload.send_email === true));
 
-  const makeRes = await fetch(MAKE_RAFTER_FORM_WEBHOOK, { method: "POST", body: form });
+  const makeRes = await fetch(client.webhook_url, { method: "POST", body: form });
   if (!makeRes.ok) {
     const detail = await makeRes.text().catch(() => "");
     return json({ error: "make_webhook_failed", status: makeRes.status, detail: detail.slice(0, 500) }, 502);

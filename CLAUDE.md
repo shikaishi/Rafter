@@ -286,6 +286,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `staff_uuid` | string | SM8 [post-OAuth] | `/client/{uuid}`, `/client-config` | Account owner SM8 UUID — used as `x-impersonate-uuid` in email API. Trial: `5ba57e76-53c0-4340-86ce-24244cfa725b` (Will Thurlow). Andy's live: obtain via `/sm8-staff` endpoint after OAuth. |
 | `email_template` | string | Client | `/client/{uuid}`, `/client-config`, `/render-email` | HTML email body. Merge fields: `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. `/render-email` substitutes these server-side. |
 | `logo_url` | string | Derived | `/client/{uuid}`, `/client-config` | Public URL of client logo for form header and favicon. Trial: `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png`. Andy's live: `https://rafter-materials-sync.will-8e8.workers.dev/logo/010895db-e06c-465d-bce9-2424477be15b` |
+| `webhook_url` | string | Client | `/client-config` | Make Scenario 3 (Rafter Form) webhook URL. Required for submit mode — rafter-pdf reads this from KV; returns 400 if missing. Per-client, must be written to KV for each instance. |
 | `access_token` | string | OAuth | `/client-config` only | SM8 Bearer token (NOT in `/client/{uuid}` — sanitised out) |
 | `refresh_token` | string | OAuth | NOT exposed | SM8 refresh token — never returned by any endpoint |
 | `expires_at` | string | OAuth | NOT exposed | ISO 8601 expiry timestamp |
@@ -296,7 +297,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 
 **`/client-config` fields** (returned to Make, auth required):
 `access_token`, `staff_uuid`, `email_template`, `company_name`, `phone`, `business_email`,
-`operator_email`, `logo_url`
+`operator_email`, `logo_url`, `webhook_url`
 
 ## Trial instance known values (448e12a8...)
 
