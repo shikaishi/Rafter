@@ -121,7 +121,6 @@ path segment and resolves it to a client UUID via `/resolve-slug/{slug}` on raft
 | `/client-config?uuid={uuid}` | GET | `x-rafter-secret` header | Live client config for Make scenarios |
 | `/render-email` | POST | `x-rafter-secret` header | Render email template with merge fields |
 | `/refresh-materials?uuid={uuid}` | GET | None | Sync SM8 materials to KV cache |
-| `/refresh-templates?uuid={uuid}` | GET | None | Sync SM8 document templates to `client:{uuid}.templates` in KV |
 | `/resolve-slug/{slug}` | GET | None | Resolve URL slug → client UUID |
 | `/client/{uuid}` | GET | None | Sanitised client KV record (no tokens) |
 | `/materials/{uuid}` | GET | None | Cached materials from KV |
@@ -275,7 +274,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `proposal_types` | string[] | Client | `/client/{uuid}` | e.g. `["LC", "GM"]` — abbreviations used in PDF cover title |
 | `job_categories` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Categories |
 | `job_queues` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Queues |
-| `templates` | object[] | SM8 | `/client/{uuid}` | Array of `{"name": "TEMPLATE NAME"}` — synced from SM8 |
+| `templates` | object[] | Manual | `/client/{uuid}` | Array of `{"name": "TEMPLATE NAME"}` — must match SCOPE_MAP keys in index.html. 26 fixed landscaping categories (BRICK EDGING, CONCRETING, etc.). NOT sourced from SM8 document templates. Write manually at onboarding. |
 | `phone` | string | Client | `/client/{uuid}`, `/client-config` | Business phone e.g. `"(03) 9013 6588"` |
 | `business_address` | string | Client | `/client/{uuid}` | Full address, newline between street and suburb line |
 | `business_email` | string | Client | `/client/{uuid}`, `/client-config` | Public contact email |

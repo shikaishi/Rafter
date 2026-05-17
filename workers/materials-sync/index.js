@@ -304,41 +304,6 @@ async function handleCopyR2Photos(request, url, env) {
   return json({ ok: true, from, to, copied, failed, total: keys.length });
 }
 
-async function handleRefreshTemplates(url, env) {
-  const uuid = url.searchParams.get("uuid");
-  if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
-
-  const config = await readClient(env, uuid);
-  if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
-
-  let accessToken;
-  try {
-    accessToken = await refreshTokenIfNeeded(uuid, env);
-  } catch (e) {
-    return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 });
-  }
-
-  const res = await fetch("https://api.servicem8.com/api_1.0/documenttemplate.json", {
-    headers: { "authorization": `Bearer ${accessToken}`, "accept": "application/json" },
-  });
-  if (!res.ok) {
-    const detail = await res.text().catch(() => "");
-    return json({ error: "sm8_error", status: res.status, body: detail.slice(0, 500) }, { status: 502 });
-  }
-
-  let data;
-  try { data = await res.json(); } catch { return json({ error: "sm8_invalid_json" }, { status: 502 }); }
-
-  const list = Array.isArray(data) ? data : [];
-  const templates = list
-    .filter((t) => t && t.name)
-    .map((t) => ({ name: t.name }));
-
-  config.templates = templates;
-  await writeClient(env, uuid, config);
-
-  return json({ ok: true, uuid, count: templates.length });
-}
 
 async function listClientUuids(env) {
   const uuids = [];
@@ -606,7 +571,6 @@ async function route(request, env) {
   if (method === "POST" && path === "/render-email") return handleRenderEmail(request, env);
   if (method === "GET" && path === "/client-config") return handleClientConfig(request, url, env);
   if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env);
-  if (method === "GET" && path === "/refresh-templates") return handleRefreshTemplates(url, env);
   if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
 
