@@ -596,6 +596,30 @@ Expected: `{"html": "..."}` with all merge fields substituted.
 - [x] `email_template` written to KV — **Code** (17 May 2026)
 - [x] `/render-email` verified with test values — **Code**
 
+## Step 5c — Credentials and T&Cs
+
+**Owner: Code.** Copy `credentials` and `terms_and_conditions` arrays from the client's template into their KV record. These populate the PDF appendix page ("You Can Rely On..." credentials block + T&Cs). If omitted, the appendix page is silently absent from the PDF.
+
+Read the current KV record, update both fields, and write back using `--path`:
+
+```
+cd workers/materials-sync
+npx wrangler kv key get "client:{uuid}" --binding=RAFTER_CLIENTS --remote > client.json
+# populate credentials and terms_and_conditions in client.json
+npx wrangler kv key put "client:{uuid}" --path client.json --binding=RAFTER_CLIENTS --remote
+rm client.json
+```
+
+**Verify:** Generate a PDF preview from the form and confirm the appendix page renders with the credentials block and T&C text.
+
+**Note:** Also check `job_categories` and `job_queues` — fetch these from Andy's live SM8 account directly (`/api_1.0/category.json` and `/api_1.0/queue.json`) rather than copying from the trial instance, which has placeholder dev data.
+
+- [x] `credentials` written to KV (16 items) — **Code** (17 May 2026)
+- [x] `terms_and_conditions` written to KV (10 items) — **Code** (17 May 2026)
+- [x] `job_categories` written from live SM8 — **Code** (17 May 2026)
+- [x] `job_queues` written from live SM8 — **Code** (17 May 2026)
+- [ ] PDF appendix page verified — **Will**
+
 ## Step 6 — Materials sync
 
 **Owner: Will.**

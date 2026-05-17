@@ -262,6 +262,35 @@ Expected: `{"html":"..."}` with all four merge fields replaced. No literal `{...
 
 ---
 
+## Section 6c — Credentials and T&Cs
+
+Copy `credentials` and `terms_and_conditions` into the client's KV record. Without these the PDF appendix page ("You Can Rely On..." + T&Cs) is silently absent from every quote.
+
+Use the `--path` method as usual. Also populate `job_categories` and `job_queues` at this step — fetch these directly from the client's SM8 account rather than copying from another instance.
+
+```
+# Fetch real job categories and queues from SM8
+curl -H "Authorization: Bearer {access_token}" \
+  https://api.servicem8.com/api_1.0/category.json
+curl -H "Authorization: Bearer {access_token}" \
+  https://api.servicem8.com/api_1.0/queue.json
+```
+
+Then read the KV record, populate all four fields, and write back with `--path`.
+
+**Verify:** Generate a PDF preview from the form and confirm:
+- Appendix page is present
+- Credentials block ("You Can Rely On...") lists all entries
+- T&Cs text appears below
+
+- [ ] `credentials` written to KV — **Code**
+- [ ] `terms_and_conditions` written to KV — **Code**
+- [ ] `job_categories` written from live SM8 (not copied from trial) — **Code**
+- [ ] `job_queues` written from live SM8 (not copied from trial) — **Code**
+- [ ] PDF appendix page verified in preview — **Will**
+
+---
+
 ## Section 7 — Materials Sync
 
 This populates `materials:{uuid}` in KV (used by the form line-item search) and also validates that the token is working.
