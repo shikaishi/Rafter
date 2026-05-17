@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rafter — Quote builder</title>
-<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
+<link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
 <style>
   :root {
@@ -747,7 +747,7 @@
   <header class="card header">
     <div class="brand">
       <div class="logo-mark">
-        <img src="https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png" alt="Rafter">
+        <img id="headerLogo" src="https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png" alt="Rafter">
       </div>
       <div class="brand-text">
         <div class="brand-company" id="brandCompany">—</div>
@@ -1075,6 +1075,7 @@ async function loadPhotos() {
 }
 
 // ===== HEADER =====
+const FALLBACK_LOGO_URL = "https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png";
 function renderHeader() {
   const company = state.client && state.client.company_name ? state.client.company_name : "Rafter";
   $("brandCompany").textContent = company;
@@ -1082,6 +1083,11 @@ function renderHeader() {
   const phoneEl = $("brandPhone");
   phoneEl.textContent = phone;
   phoneEl.style.display = phone ? "" : "none";
+  const logoUrl = (state.client && state.client.logo_url) || FALLBACK_LOGO_URL;
+  const logoEl = $("headerLogo");
+  if (logoEl) logoEl.src = logoUrl;
+  const faviconEl = $("favicon");
+  if (faviconEl) { faviconEl.href = logoUrl; faviconEl.type = "image/png"; }
   updateMatBtn();
 }
 function updateMatBtn(state2) {
@@ -1570,7 +1576,7 @@ function buildPayload(mode, sendEmail) {
     heading: s.name,
     items: [{
       name: s.name,
-      price: Number(s.price) || 0,
+      price: Number((Number(s.price) || 0).toFixed(2)),
       scope: s.scope,
       asterisk_notes: [],
     }],
@@ -1583,7 +1589,7 @@ function buildPayload(mode, sendEmail) {
     itemCode: "",
     name: li.name,
     qty: Number(li.qty) || 0,
-    unit_price: Number(li.unitPrice) || 0,
+    unit_price: Number((Number(li.unitPrice) || 0).toFixed(2)),
     material_uuid: li.sm8_uuid || "",
   })));
 
@@ -1604,22 +1610,22 @@ function buildPayload(mode, sendEmail) {
     // through for future template work (line items, photos, notes in PDF).
     form_sections: state.sections.map((s) => ({
       name: s.name,
-      price: Number(s.price) || 0,
+      price: Number((Number(s.price) || 0).toFixed(2)),
       scope: s.scope,
       line_items: s.lineItems.map((li) => ({
         name: li.name,
         quantity: Number(li.qty) || 0,
         unit: li.unit || "",
-        unit_price: Number(li.unitPrice) || 0,
-        total: (Number(li.qty) || 0) * (Number(li.unitPrice) || 0),
+        unit_price: Number((Number(li.unitPrice) || 0).toFixed(2)),
+        total: Number(((Number(li.qty) || 0) * (Number(li.unitPrice) || 0)).toFixed(2)),
         sm8_uuid: li.sm8_uuid || null,
       })),
       photos: s.photos.slice(),
     })),
     notes: state.notes,
-    subtotal: sub,
-    gst,
-    total,
+    subtotal: Number(sub.toFixed(2)),
+    gst: Number(gst.toFixed(2)),
+    total: Number(total.toFixed(2)),
     payment_schedule: sched.rows.map((r) => ({ percentage: r.pct, description: r.desc, amount: Number(r.amt.toFixed(2)) })),
     bank_details: state.client?.bank_details || null,
     include_materials_appendix: false,
