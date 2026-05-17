@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 16 May 2026 (updated post-session — MAKE-01/02/03 closed, DEBT-03 closed)
+> Last reconciled: 17 May 2026 (T1-F2 Steps 1–6 complete; Step 7 verification in progress)
 
 ---
 
@@ -475,16 +475,16 @@ cd workers/materials-sync
 npx wrangler kv key put "slug:andy" "0e604a45-84fd-4789-a2cb-662bcba51a8b" --binding=RAFTER_CLIENTS --remote
 ```
 
-- [ ] KV record created and verified in Cloudflare dashboard — **Code**
-- [ ] `slug:andy` updated to live UUID — **Code**
+- [x] KV record created and verified in Cloudflare dashboard — **Code**
+- [x] `slug:andy` updated to live UUID — **Code**
 
 ## Step 2 — Upload Andy's logo to R2
 
 **Owner: Will.** Upload the 2 Men and a Shovel logo PNG to:
 `rafter-assets` R2 bucket → `clients/0e604a45-84fd-4789-a2cb-662bcba51a8b/logo.png`
 
-- [ ] Logo uploaded to R2 — **Will**
-- [ ] Verify: `curl https://rafter-materials-sync.will-8e8.workers.dev/logo/0e604a45-84fd-4789-a2cb-662bcba51a8b` returns image — **Will**
+- [x] Logo uploaded to R2 — **Will**
+- [x] Verify: `curl https://rafter-materials-sync.will-8e8.workers.dev/logo/0e604a45-84fd-4789-a2cb-662bcba51a8b` returns image — **Will**
 
 ## Step 3 — SM8 OAuth
 
@@ -498,8 +498,8 @@ npx wrangler kv key put "slug:andy" "0e604a45-84fd-4789-a2cb-662bcba51a8b" --bin
 
 Behind the scenes: callback.html → Make Account Discovery → SM8 token exchange → `/store-token` → KV updated.
 
-- [ ] OAuth completed without error — **Will**
-- [ ] Verify KV record has `access_token` and `expires_at` populated — **Will** (Cloudflare dashboard)
+- [x] OAuth completed without error — **Will**
+- [x] Verify KV record has `access_token` and `expires_at` populated — **Will** (Cloudflare dashboard)
 
 ## Step 4 — Make Data Store record
 
@@ -509,7 +509,7 @@ Open Make → Data Stores → Rafter Tokens → Add record:
 - `uuid`: `0e604a45-84fd-4789-a2cb-662bcba51a8b`
 - `access_token`, `refresh_token`, `expires_at`: copy from KV record
 
-- [ ] Data Store record created with Andy's live UUID and tokens — **Will-Make**
+- [x] Data Store record created with Andy's live UUID and tokens — **Will-Make**
 
 ## Step 5 — Staff UUID
 
@@ -522,12 +522,11 @@ curl "https://rafter-materials-sync.will-8e8.workers.dev/sm8-staff?uuid=0e604a45
 Find the record for Andrew Little (Account Owner). Copy the `uuid` field.
 Write `staff_uuid` into Andy's KV record via `--path` method.
 
-Update also the `x-impersonate-uuid` header in the Make SM8 email module from the trial
-staff UUID (`5ba57e76-...`) to Andrew Little's UUID. **Will-Make.**
+Make Module 33 `x-impersonate-uuid` confirmed already set to `{{35.data.staff_uuid}}` — no change needed.
 
-- [ ] Andrew Little's staff UUID obtained — **Code**
-- [ ] `staff_uuid` written to Andy's KV record — **Code**
-- [ ] Make SM8 email module `x-impersonate-uuid` updated — **Will-Make**
+- [x] Andrew Little's staff UUID obtained (`fe62e877-7a15-4a31-aac7-f670c78ef0ab`) — **Code**
+- [x] `staff_uuid` written to Andy's KV record — **Code**
+- [x] Make SM8 email module `x-impersonate-uuid` confirmed using `{{35.data.staff_uuid}}` — **Will-Make**
 
 ## Step 6 — Materials sync
 
@@ -539,7 +538,7 @@ curl "https://rafter-materials-sync.will-8e8.workers.dev/refresh-materials?uuid=
 
 Expected: `{"ok": true, "count": N, ...}` where N > 0.
 
-- [ ] Materials synced with count > 0 — **Will**
+- [x] Materials synced — 453 materials — **Will**
 
 ## Step 7 — Verification checklist
 
