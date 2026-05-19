@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 19 May 2026 (T1-F2 **COMPLETE** — end-to-end confirmed on Andy's live instance. DEBT-04 closed. Make scenarios fully HTTP Bearer auth. SM8 company.json finding: no phone/email fields. Steps 5b/5c/5d added to onboarding. MAKE-04 and MAKE-05 closed. BUG-21 closed — inactive materials fix. Template materials/scope split complete. MAKE-11 closed.)
+> Last reconciled: 19 May 2026 (T1-F2 **COMPLETE** — end-to-end confirmed on Andy's live instance. DEBT-04 closed. Make scenarios fully HTTP Bearer auth. SM8 company.json finding: no phone/email fields. Steps 5b/5c/5d added to onboarding. MAKE-04 and MAKE-05 closed. BUG-21 closed — inactive materials fix. Template materials/scope split complete. MAKE-11 closed. Form+PDF session: proposal type toggle removed, field order updated, section cards get Materials+Scope text areas, price display read-only; PDF banner removed, meta Date-only, section header redesigned, payment note added.)
 
 ---
 
@@ -877,7 +877,7 @@ CONTEXT: See CLAUDE.md
 5. Horizontal rule
 6. Job title Playfair lime: `{type} — {street}, {suburb}` — no state, no country, one line
 
-**Sections:** Section header: Playfair lime title left + price right on one line, horizontal rule above and below, scope text beneath. No duplicate Mulish bold title. Asterisk notes `#999`. Photos inline within section.
+**Sections:** Section header: Playfair 600 dark green (`#0D2E1C`) ALL CAPS title left + Mulish 700 price right on one line, horizontal rule above and below the header row. Scope text beneath. Asterisk notes `#999`. Photos inline within section.
 
 **Financial summary** (after all work sections): 1.5px divider · soft-green box with subtotal/GST/total → payment schedule → bank details. Payment note appears below payment schedule on all quotes regardless of tier: "All completed variations are to be paid at completion of the next progress payment stage. All progress invoices are due within 1 day of completion." Style: Mulish 400, muted colour, left-aligned.
 
@@ -891,6 +891,23 @@ CONTEXT: See CLAUDE.md
 - Mulish 400: everything else
 - All numbers in Mulish — no Playfair numerals
 - Fonts: inlined as base64 data URIs (Google Fonts will NOT load in headless Chromium)
+
+## Operator form design
+
+**Section 1 — Client & Job Details (2-column grid):**
+- Row 1: Customer Name (left) | Site Address (right)
+- Row 2: Customer Phone (left) | Customer Email (right)
+- Label is "Customer name"; payload field remains `client_name` for Make compatibility.
+
+**Section 2 — Works — section card layout:**
+- Header row: section name (left) + calculated price read-only display (right)
+- Price is always computed from line items; direct editing removed
+- Materials text area (auto-resize) — pre-filled from `template.materials`, editable, sent to SM8 job note only
+- Scope of Works text area (auto-resize) — pre-filled from `template.scope`, editable, PDF only
+- Line items, photo picker below
+- Reset button resets both Materials and Scope to KV originals
+- `job_description` payload field: one block per section (`SECTION NAME\n[materials text]`), sections joined by blank line. Scope text excluded from SM8 job note.
+- Proposal type fixed to `"LC"` — toggle removed from form. PDF cover title still reads "Landscape Construction — …"
 
 ## Operator form design — CSS variables (index.html)
 
