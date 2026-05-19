@@ -354,6 +354,7 @@
   .ws-price-wrap { display: flex; align-items: center; gap: 4px; }
   .ws-price-wrap .dollar { color: var(--rf-muted); font-size: 13px; }
   .ws-price-input {
+    display: inline-block;
     width: 90px;
     border: 0.5px solid var(--rf-border);
     border-radius: 6px;
@@ -362,13 +363,9 @@
     font-size: 13px;
     font-weight: 500;
     color: var(--rf-text);
-    box-shadow: var(--shadow-input);
-    background: #fff;
+    background: var(--rf-row-bg);
     font-family: inherit;
-    outline: none;
   }
-  .ws-price-input.calc { color: var(--rf-muted); }
-  .ws-price-input:focus { border-color: var(--rf-ocean); }
   .ws-icon-btn {
     background: transparent;
     border: none;
@@ -403,6 +400,25 @@
     text-align: left;
   }
   .ws-scope textarea:focus { border-color: var(--rf-ocean); }
+
+  .ws-field-block { display: flex; flex-direction: column; gap: 6px; }
+  .ws-field-header { display: flex; justify-content: space-between; align-items: center; }
+  .ws-textarea {
+    width: 100%;
+    min-height: 72px;
+    border: 0.5px solid var(--rf-border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    font-size: 13px;
+    font-family: inherit;
+    box-shadow: var(--shadow-input);
+    resize: none;
+    overflow: hidden;
+    outline: none;
+    line-height: 1.5;
+    color: var(--rf-text);
+  }
+  .ws-textarea:focus { border-color: var(--rf-ocean); box-shadow: var(--shadow-input), 0 0 0 3px rgba(168,213,226,0.5); }
 
   .lineitems { background: var(--rf-row-bg); border-radius: 8px; padding: 10px 12px; }
   .lineitems .li-head {
@@ -771,18 +787,25 @@
     <div class="section-bar"><div class="num">1</div><div class="title">Client &amp; Job Details</div></div>
     <div class="section1-body">
       <div>
-        <label class="field-label" for="clientName">Client name</label>
+        <label class="field-label" for="clientName">Customer name</label>
         <div class="input-wrap" style="position:relative;">
           <input class="input" id="clientName" type="text" autocomplete="off" placeholder="Type to search ServiceM8…">
           <div id="clientDropdown" class="dropdown" style="display:none;"></div>
         </div>
         <div id="clientHint" class="hint"></div>
       </div>
-      <div class="pill-row">
-        <label class="field-label">Proposal type</label>
-        <div class="pill-toggle" id="proposalToggle">
-          <button type="button" data-val="LC" class="active"><i class="ti ti-hammer"></i>Construction</button>
-          <button type="button" data-val="GM"><i class="ti ti-leaf"></i>Maintenance</button>
+      <div>
+        <label class="field-label" for="siteAddress">Site address</label>
+        <div class="input-wrap">
+          <i class="ti ti-map-pin"></i>
+          <input class="input with-icon" id="siteAddress" type="text" autocomplete="off" placeholder="Start typing an address…">
+        </div>
+      </div>
+      <div>
+        <label class="field-label" for="customerPhone">Customer phone</label>
+        <div class="input-wrap">
+          <i class="ti ti-phone"></i>
+          <input class="input with-icon" id="customerPhone" type="tel" autocomplete="off" placeholder="Customer phone number…">
         </div>
       </div>
       <div>
@@ -792,20 +815,6 @@
           <input class="input with-icon" id="customerEmail" type="email" autocomplete="off" placeholder="Customer email address…">
         </div>
         <div id="emailError" class="hint" style="color:var(--rf-danger);display:none;">Please enter a valid email address to send the quote.</div>
-      </div>
-      <div>
-        <label class="field-label" for="customerPhone">Customer phone</label>
-        <div class="input-wrap">
-          <i class="ti ti-phone"></i>
-          <input class="input with-icon" id="customerPhone" type="tel" autocomplete="off" placeholder="Customer phone number…">
-        </div>
-      </div>
-      <div class="full">
-        <label class="field-label" for="siteAddress">Site address</label>
-        <div class="input-wrap">
-          <i class="ti ti-map-pin"></i>
-          <input class="input with-icon" id="siteAddress" type="text" autocomplete="off" placeholder="Start typing an address…">
-        </div>
       </div>
     </div>
   </section>
@@ -954,6 +963,7 @@ function escapeHtml(s) {
   return String(s).replace(/[&<>"']/g, (c) => ({ "&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;","'":"&#39;" }[c]));
 }
 function fmtMoney(n) { return AUD.format(n || 0); }
+function autoResize(ta) { ta.style.height = 'auto'; ta.style.height = ta.scrollHeight + 'px'; }
 function debounce(fn, ms) {
   let t;
   return function () { clearTimeout(t); const args = arguments; t = setTimeout(() => fn.apply(null, args), ms); };
@@ -1218,8 +1228,9 @@ function toggleSection(key, name) {
       name,
       scopeOriginal: tpl.scope || tpl.text || scopeLookup(name) || "",
       scope: tpl.scope || tpl.text || scopeLookup(name) || "",
+      materialsOriginal: tpl.materials || "",
+      materials: tpl.materials || "",
       price: 0,
-      priceManual: false,
       lineItems: [],
       photos: [],
       collapsed: false,
@@ -1254,7 +1265,6 @@ function defaultCategoryFor(sectionName) {
 }
 
 function recomputeSectionPrice(s) {
-  if (s.priceManual) return;
   s.price = s.lineItems.reduce((acc, li) => acc + (Number(li.qty || 0) * Number(li.unitPrice || 0)), 0);
 }
 
@@ -1263,6 +1273,7 @@ function renderSections() {
   $("section2Empty").style.display = state.sections.length ? "none" : "block";
   list.innerHTML = "";
   state.sections.forEach((s) => list.appendChild(renderOneSection(s)));
+  list.querySelectorAll('.ws-textarea').forEach(autoResize);
 }
 
 function renderOneSection(s) {
@@ -1273,7 +1284,7 @@ function renderOneSection(s) {
       <div class="ws-name">${escapeHtml(s.name)}</div>
       <div class="ws-price-wrap">
         <span class="dollar">$</span>
-        <input class="ws-price-input ${s.priceManual ? "" : "calc"}" type="number" min="0" step="0.01" value="${s.price.toFixed(2)}" data-role="price">
+        <span class="ws-price-input" data-role="price">${s.price.toFixed(2)}</span>
       </div>
       <button class="ws-icon-btn" data-role="toggle" title="Collapse"><i class="ti ti-chevron-${s.collapsed ? "down" : "up"}"></i></button>
       <button class="ws-icon-btn danger" data-role="remove" title="Remove"><i class="ti ti-x"></i></button>
@@ -1283,24 +1294,27 @@ function renderOneSection(s) {
 
   const body = node.querySelector(".ws-body");
 
+  // Materials textarea
+  const matWrap = el(`<div class="ws-field-block">
+    <label class="field-label" style="margin-bottom:0;">Materials</label>
+    <textarea class="ws-textarea" data-role="materials" placeholder="Materials…">${escapeHtml(s.materials || "")}</textarea>
+  </div>`);
+  body.appendChild(matWrap);
+
   // Scope textarea
-  const scopeWrap = el(`<div class="ws-scope">
-    <textarea data-role="scope" placeholder="Scope of works…">${escapeHtml(s.scope || "")}</textarea>
-    <button class="btn btn-outline btn-sm" data-role="reset-text"
-      title="Reset to default text" style="flex-shrink:0;">
-      <i class="ti ti-rotate"></i>Reset
-    </button>
+  const scopeWrap = el(`<div class="ws-field-block">
+    <div class="ws-field-header">
+      <label class="field-label" style="margin-bottom:0;">Scope of works</label>
+      <button class="btn btn-outline" data-role="reset-text" title="Reset to default text" style="padding:4px 8px;font-size:11px;flex-shrink:0;">
+        <i class="ti ti-rotate"></i>Reset
+      </button>
+    </div>
+    <textarea class="ws-textarea" data-role="scope" placeholder="Scope of works…">${escapeHtml(s.scope || "")}</textarea>
   </div>`);
   body.appendChild(scopeWrap);
 
   // Line items
   body.appendChild(renderLineItems(s));
-
-  // Manual badge / reset
-  if (s.priceManual) {
-    const mr = el(`<div class="manual-row"><span class="manual-badge">Manual price</span><button class="manual-reset" data-role="reset-price">Reset to calculated</button></div>`);
-    body.appendChild(mr);
-  }
 
   // Action buttons
   const actions = el(`<div class="ws-actions">
@@ -1326,13 +1340,6 @@ function renderOneSection(s) {
   }
 
   // ===== Wire events for this section =====
-  const priceInput = node.querySelector('[data-role="price"]');
-  priceInput.addEventListener("input", () => {
-    s.priceManual = true;
-    s.price = parseFloat(priceInput.value) || 0;
-    priceInput.classList.remove("calc");
-    renderTotals();
-  });
   node.querySelector('[data-role="toggle"]').addEventListener("click", () => {
     s.collapsed = !s.collapsed;
     renderSections();
@@ -1343,15 +1350,13 @@ function renderOneSection(s) {
     renderSections();
     renderTotals();
   });
+  node.querySelector('[data-role="materials"]').addEventListener("input", (e) => {
+    s.materials = e.target.value;
+    autoResize(e.target);
+  });
   node.querySelector('[data-role="scope"]').addEventListener("input", (e) => {
     s.scope = e.target.value;
-  });
-  const reset = node.querySelector('[data-role="reset-price"]');
-  if (reset) reset.addEventListener("click", () => {
-    s.priceManual = false;
-    recomputeSectionPrice(s);
-    renderSections();
-    renderTotals();
+    autoResize(e.target);
   });
   node.querySelector('[data-role="photos"]').addEventListener("click", () => {
     s.photoPanelOpen = !s.photoPanelOpen;
@@ -1359,6 +1364,7 @@ function renderOneSection(s) {
   });
   node.querySelector('[data-role="reset-text"]').addEventListener("click", () => {
     s.scope = s.scopeOriginal || "";
+    s.materials = s.materialsOriginal || "";
     renderSections();
   });
   node.querySelectorAll(".photo-thumb .x").forEach((x) => {
@@ -1431,12 +1437,10 @@ function renderLineItems(s) {
       if (totalCell) totalCell.textContent = fmtMoney(total);
       const sub = s.lineItems.reduce((acc, x) => acc + (Number(x.qty || 0) * Number(x.unitPrice || 0)), 0);
       wrap.querySelector(".li-head .subtotal").textContent = fmtMoney(sub);
-      if (!s.priceManual) {
-        recomputeSectionPrice(s);
-        const pi = inp.closest(".work-section").querySelector('[data-role="price"]');
-        if (pi) pi.value = s.price.toFixed(2);
-        renderTotals();
-      }
+      recomputeSectionPrice(s);
+      const pi = inp.closest(".work-section").querySelector('[data-role="price"]');
+      if (pi) pi.textContent = s.price.toFixed(2);
+      renderTotals();
     });
   });
   wrap.querySelectorAll("button[data-li][data-f='remove']").forEach((b) => {
@@ -1605,6 +1609,11 @@ function buildPayload(mode, sendEmail) {
     material_uuid: li.sm8_uuid || "",
   })));
 
+  // SM8 job note: materials only, one block per section. Scope text not included.
+  const job_description = state.sections
+    .map((s) => `${s.name}\n${(s.materials || "").trim()}`)
+    .join("\n\n");
+
   return {
     mode,
     client_uuid: state.clientUuid,
@@ -1619,12 +1628,14 @@ function buildPayload(mode, sendEmail) {
     proposal_date: state.proposalDate,
     sections: pdfSections,
     lineItems,
+    job_description,
     // Extended fields — current PDF worker ignores these but they are passed
     // through for future template work (line items, photos, notes in PDF).
     form_sections: state.sections.map((s) => ({
       name: s.name,
       price: Number((Number(s.price) || 0).toFixed(2)),
       scope: s.scope,
+      materials: s.materials || "",
       line_items: s.lineItems.map((li) => ({
         name: li.name,
         quantity: Number(li.qty) || 0,
@@ -1795,12 +1806,6 @@ function bindEvents() {
   $("customerEmail").addEventListener("input", (e) => {
     state.customerEmail = e.target.value.trim();
     if (state.customerEmail) $("emailError").style.display = "none";
-  });
-  $("proposalToggle").querySelectorAll("button").forEach((b) => {
-    b.addEventListener("click", () => {
-      state.proposalType = b.dataset.val;
-      $("proposalToggle").querySelectorAll("button").forEach((x) => x.classList.toggle("active", x === b));
-    });
   });
   $("customerPhone").addEventListener("input", (e) => { state.customerPhone = e.target.value; });
   $("siteAddress").addEventListener("input", (e) => { state.siteAddress = e.target.value; });

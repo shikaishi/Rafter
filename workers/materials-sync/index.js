@@ -1,4 +1,4 @@
-const SM8_MATERIALS_URL = "https://api.servicem8.com/api_1.0/material.json";
+const SM8_MATERIALS_URL = "https://api.servicem8.com/api_1.0/material.json?$filter=active%20eq%201";
 const SM8_COMPANY_SEARCH_URL = "https://api.servicem8.com/api_1.0/company.json";
 // https://developer.servicem8.com/docs/authentication
 const SM8_TOKEN_URL = "https://go.servicem8.com/oauth/access_token";

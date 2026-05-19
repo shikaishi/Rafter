@@ -242,13 +242,10 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     ? client.terms_and_conditions
     : (client.terms_and_conditions ? [client.terms_and_conditions] : []);
 
-  const proposalNumber = payload.proposal_number || "";
   const proposalDate = payload.proposal_date || "";
   const quoteRef = payload.quote_ref || "";
   const clientName = payload.client_name || "";
   const siteAddress = formatSiteAddress(payload.site_address);
-  const totalStr = payload.total != null ? AUD.format(payload.total) : "";
-
   const jobTitle = buildJobTitle(payload);
 
   const heroLogo = logoDataUrl
@@ -307,22 +304,8 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   }
   .page { padding: 0 15mm; }
 
-  /* ---------- Page 1 banner (phone + total) ---------- */
-  .page1-banner {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    padding-top: 2mm;
-    padding-bottom: 3mm;
-    border-bottom: 0.5px solid var(--rule);
-    color: var(--lime);
-    font-family: 'Mulish', sans-serif;
-    font-weight: 400;
-    font-size: 10pt;
-  }
-
   /* ---------- Cover page ---------- */
-  .cover-top { padding-top: 7mm; display: flex; justify-content: space-between; align-items: flex-start; gap: 12mm; }
+  .cover-top { padding-top: 10mm; display: flex; justify-content: space-between; align-items: flex-start; gap: 12mm; }
   .cover-top .left { flex: 0 0 auto; }
   .cover-top .right { text-align: right; font-family: 'Mulish', sans-serif; font-weight: 400; font-size: 9.5pt; line-height: 1.55; color: var(--muted); }
   .cover-top .right .line { display: block; }
@@ -402,37 +385,31 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   .work { margin-top: 8mm; }
   .section { margin-top: 8mm; }
   .section-h {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 6mm;
+    padding: 2.5mm 0;
+    border-top: 1px solid var(--rule);
+    border-bottom: 1px solid var(--rule);
+  }
+  .section-h-title {
     font-family: 'Playfair Display', serif;
     font-weight: 600;
     font-size: 14pt;
     text-transform: uppercase;
     letter-spacing: 0.04em;
     color: var(--dark);
-    padding-bottom: 2.5mm;
-    border-bottom: 1px solid var(--rule);
   }
-  .item { margin-top: 4mm; }
-  .item-head {
-    display: flex;
-    justify-content: space-between;
-    align-items: baseline;
-    gap: 6mm;
-    padding-bottom: 2mm;
-    border-bottom: 0.5px solid var(--rule);
-  }
-  .item-name {
-    font-family: 'Mulish', sans-serif;
-    font-weight: 700;
-    font-size: 11pt;
-    color: var(--ink);
-  }
-  .item-price {
+  .section-h-price {
     font-family: 'Mulish', sans-serif;
     font-weight: 700;
     font-size: 11pt;
     color: var(--ink);
     white-space: nowrap;
+    flex-shrink: 0;
   }
+  .item { margin-top: 4mm; }
   .item-scope {
     margin-top: 2.5mm;
     font-family: 'Mulish', sans-serif;
@@ -670,12 +647,6 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
 
 <div class="page">
 
-  <!-- Page 1 banner: phone + total (cover only — natural content flow keeps this off pages 2+) -->
-  <div class="page1-banner">
-    <span>${escapeHtml(phone)}</span>
-    <span>${escapeHtml(totalStr)}</span>
-  </div>
-
   <!-- Cover header -->
   <div class="cover-top">
     <div class="left">${heroLogo}</div>
@@ -696,8 +667,6 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     </div>
     <div class="meta">
       ${proposalDate ? metaPair("Date", proposalDate) : ""}
-      ${quoteRef ? metaPair("Reference", quoteRef) : ""}
-      ${totalStr ? metaPair("Total", totalStr) : ""}
     </div>
   </div>
 
@@ -769,8 +738,12 @@ function renderSections(sections, formSections, photoMap) {
 function renderSection(section, photoKeys, photoMap) {
   const items = (section.items || []).map(renderItem).join("");
   const photos = renderSectionPhotos(photoKeys, photoMap);
+  const price = section.items?.[0]?.price != null ? AUD.format(section.items[0].price) : "";
   return `<div class="section">
-    <div class="section-h">${escapeHtml(section.heading || "")}</div>
+    <div class="section-h">
+      <span class="section-h-title">${escapeHtml(section.heading || "")}</span>
+      ${price ? `<span class="section-h-price">${escapeHtml(price)}</span>` : ""}
+    </div>
     ${items}
     ${photos}
   </div>`;
@@ -788,19 +761,11 @@ function renderSectionPhotos(keys, photoMap) {
 }
 
 function renderItem(item) {
-  const price = item.price != null ? AUD.format(item.price) : "";
   const scope = item.scope ? paragraphs(item.scope, "item-scope") : "";
   const notes = Array.isArray(item.asterisk_notes) && item.asterisk_notes.length
     ? `<div class="asterisk-notes">${item.asterisk_notes.map((n) => `<p>${escapeHtml(n)}</p>`).join("")}</div>`
     : "";
-  return `<div class="item">
-    <div class="item-head">
-      <div class="item-name">${escapeHtml(item.name || "")}</div>
-      <div class="item-price">${escapeHtml(price)}</div>
-    </div>
-    ${scope}
-    ${notes}
-  </div>`;
+  return `<div class="item">${scope}${notes}</div>`;
 }
 
 function paragraphs(text, className) {
@@ -854,10 +819,12 @@ function renderPaymentSchedule(schedule, notes) {
   const notesHtml = Array.isArray(notes) && notes.length
     ? `<div class="pay-notes">${notes.slice(0, 2).map((n) => `<p>${escapeHtml(n)}</p>`).join("")}</div>`
     : "";
+  const paymentNote = `<div class="pay-notes" style="margin-top:3mm;">All completed variations are to be paid at completion of the next progress payment stage. All progress invoices are due within 1 day of completion.</div>`;
   return `<section class="block">
     <h2 class="block-h">Payment Schedule</h2>
     ${rows}
     ${notesHtml}
+    ${paymentNote}
   </section>`;
 }
 
