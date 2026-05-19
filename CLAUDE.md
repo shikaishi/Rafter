@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 17 May 2026 (T1-F2 **COMPLETE** — end-to-end confirmed on Andy's live instance. DEBT-04 closed. Make scenarios fully HTTP Bearer auth. SM8 company.json finding: no phone/email fields. Steps 5b/5c/5d added to onboarding. MAKE-04 and MAKE-05 closed.)
+> Last reconciled: 19 May 2026 (T1-F2 **COMPLETE** — end-to-end confirmed on Andy's live instance. DEBT-04 closed. Make scenarios fully HTTP Bearer auth. SM8 company.json finding: no phone/email fields. Steps 5b/5c/5d added to onboarding. MAKE-04 and MAKE-05 closed. BUG-21 closed — inactive materials fix. Template materials/scope split complete. MAKE-11 closed.)
 
 ---
 
@@ -290,7 +290,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `proposal_types` | string[] | Client | `/client/{uuid}` | e.g. `["LC", "GM"]` — abbreviations used in PDF cover title |
 | `job_categories` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Categories |
 | `job_queues` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Queues |
-| `templates` | object[] | Manual | `/client/{uuid}` | Array of `{"name": "TEMPLATE NAME"}` — must match SCOPE_MAP keys in index.html. 26 fixed landscaping categories (BRICK EDGING, CONCRETING, etc.). NOT sourced from SM8 document templates. Write manually at onboarding. |
+| `templates` | object[] | Manual | `/client/{uuid}` | Array of objects with three fields: name (display label, no BH-/$/BH: suffixes), materials (operator-facing text for SM8 job note — editable in form, sent to SM8 only), scope (client-facing scope of works — editable in form, PDF only). 26 items for Andy. Written to KV 19 May 2026 from rewritten template library. |
 | `phone` | string | Client | `/client/{uuid}`, `/client-config` | Business phone e.g. `"(03) 9013 6588"` |
 | `business_address` | string | Client | `/client/{uuid}` | Full address, newline between street and suburb line |
 | `business_email` | string | Client | `/client/{uuid}`, `/client-config` | Public contact email |
@@ -351,7 +351,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 
 # SECTION 3 — Issue Tracker
 
-Status as of 17 May 2026. Owner: Code = Claude Code (includes Make API changes); Will = Will manually.
+Status as of 19 May 2026. Owner: Code = Claude Code (includes Make API changes); Will = Will manually.
 
 ## Bugs
 
@@ -377,6 +377,7 @@ Status as of 17 May 2026. Owner: Code = Claude Code (includes Make API changes);
 | BUG-18 | Email subject hardcodes "2 Men and a Shovel" | **Open** | P2 | Code | Rafter Form module 37 (`json:CreateJSON`) subject field: `"Your quote from 2 Men and a Shovel – {{1.quote_ref}}"`. Should use `{{35.data.company_name}}` from `/client-config`. Affects both prod and dev scenarios. |
 | BUG-19 | Operator notification email body hardcodes "Two Men and a Shovel" | **Open** | P2 | Code | Rafter Form module 12 (Gmail) HTML body has "Two Men and a Shovel" and company-specific branding baked in. Should use `/render-email` or at minimum pull company name dynamically. Affects both prod and dev. |
 | BUG-20 | `expires_at` hardcoded as 3600s in Account Discovery | **Open** | P3 | Code | Account Discovery modules 4 and 5 use `addSeconds(now; 3600)`. Should use `addSeconds(now; {{2.data.expires_in}})` so actual SM8 token expiry is respected. Currently matches SM8's 3600s default but will silently break if SM8 changes it. |
+| BUG-21 | Materials sync returning inactive materials | **Closed** | P1 | Code | Fixed by adding `?$filter=active eq 1` to `/api_1.0/material.json` fetch in refresh-materials handler. Verified: live instance returns 200 materials. |
 
 ## Tech Debt
 
@@ -413,6 +414,7 @@ Claude Code manages Make scenarios via the Make API. See `.env` for token and sc
 | MAKE-08 | Rafter Form module 37 — subject use `{{35.data.company_name}}` | P2 | **Open** — both prod and dev (see BUG-18) |
 | MAKE-09 | Rafter Form — remove module 8 (duplicate/broken attachment) | P2 | **Closed** — removed from both blueprints |
 | MAKE-10 | Rafter Form module 2 — remove hardcoded `tax_rate_uuid` | P2 | **Closed** — module 2 fully replaced (DEBT-04) |
+| MAKE-11 | Rafter Form Module 13 — update job note body field to `{{34.job_description}}` to use materials-only block | P1 | **Closed** — done by Will 19 May 2026 |
 
 ---
 
@@ -704,11 +706,14 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 | `/company.json` search returns no `phone` or `email` fields | Auto-population of customer phone/email from SM8 client selection is not possible. Fields are manual entry only. |
 | `DELETE /api_1.0/job/{uuid}.json` sets `active=0` but does not remove from Dispatch Board | Must also set `status=Completed` to remove from Dispatch Board view. |
 | SM8 `active=0` jobs still appear on Dispatch Board until status changed | Use `PUT` with `{"status":"Completed"}` after `DELETE`. |
+| `/material.json` returns all materials including inactive (`active=0`) | Use `?$filter=active eq 1` on all material fetches to return only active materials. |
+| `andrew@2menandashovel.com` has an unsubscribe flag in SM8's sending infrastructure | SM8 returns 406 error when attempting to send to this address via `platform_service_email`. Fix: clear unsubscribe flag in SM8 dashboard or via SM8 support. Use a different test email during development. |
 
 ## Platform backlog
 
 | Item | Description | Priority | Phase |
 |------|-------------|---------|-------|
+| **Template materials/scope split** | Templates now have three fields: name, materials (SM8 job note), scope (customer PDF). Both KV records updated. Form renders both fields per section, pre-filled and editable. | P1 | Complete |
 | **Account Discovery MAKE-05** | ~~Fix Module 2 `client_id`/`client_secret`~~ | ~~P1~~ | **Closed** |
 | **Client name split for new client creation** | M2 currently sends full name as one field. SM8 `company` accepts `name` as a single field (no first/last split for companies). Verify this is correct for Andy's use case. | P2 | Post-T1-F2 |
 | **callback.html icon** | Still shows Rafter brand SVG icon, not client logo. Minor cosmetic. | P3 | Post-T1-F2 |
@@ -727,9 +732,14 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 
 ## Andy open questions
 
-1. Client name split — when creating a new SM8 client from the form, is `name` (full name as one field) the right approach, or does Andy want first/last split?
-2. Photo gallery labelling — comfortable scrolling through ~80 unlabelled photos, or want category labels?
-3. Line item details — internal-only or show materials/quantities/prices in client PDF?
+**Resolved:**
+- Client name split — full name as one field confirmed correct for Andy's use case.
+- Staff attribution — all jobs created as Andrew Little regardless of who submits. Confirmed acceptable.
+
+**Open:**
+1. Payment schedule — Andy wants to update thresholds/percentages. Awaiting his specifics.
+2. Photo subsections — Andy will split ~80 plant photos into labelled groups. Each group becomes a photo pill in the form. Awaiting groupings from Andy.
+3. Photo and work section pill order — Andy's preferred sequence to be confirmed.
 
 ---
 
@@ -839,6 +849,7 @@ All HTTP modules use `Authorization: Bearer {{1.access_token}}`.
 - **RAFTER_WORKER_SECRET:** Rotated 17 May 2026. Make Account Discovery Module 5 Bearer token updated.
 - **SM8 DELETE jobs:** `DELETE /api_1.0/job/{uuid}.json` sets `active=0` but does NOT remove from Dispatch Board. Also `PUT` `{"status":"Completed"}` to hide from board.
 - **SM8 company.json:** Does not return `email` or `phone` fields. Customer contact auto-population from SM8 search is not possible via this endpoint.
+- **SM8 active filter:** Always append `?$filter=active eq 1` to `/api_1.0/material.json` fetches. Without it, inactive (archived) materials are returned alongside active ones.
 
 ## Claude Chat / Claude Code split
 
@@ -859,16 +870,16 @@ CONTEXT: See CLAUDE.md
 ## PDF design spec (locked — T1-D1 complete)
 
 **Cover page:**
-1. Header (every page): phone left (lime `#84B741`) · total right (lime) · thin rule
+1. ~~Page header bar (phone + total, lime) — removed from all pages.~~
 2. Logo from R2 left · business address/ABN right
 3. "PREPARED FOR" lime uppercase · client name large bold · full address
-4. Meta block right-aligned: Date / Reference / Total — lime label + Mulish 400 value. No proposal number.
+4. Meta block right-aligned: Date only — lime label + Mulish 400 value. Reference and Total rows removed.
 5. Horizontal rule
 6. Job title Playfair lime: `{type} — {street}, {suburb}` — no state, no country, one line
 
-**Sections:** Playfair 600 ALL CAPS dark green heading · item name Mulish 700 + price right-aligned · rule · scope Mulish 400 · asterisk notes `#999`. Photos inline within section.
+**Sections:** Section header: Playfair lime title left + price right on one line, horizontal rule above and below, scope text beneath. No duplicate Mulish bold title. Asterisk notes `#999`. Photos inline within section.
 
-**Financial summary** (after all work sections): 1.5px divider · soft-green box with subtotal/GST/total → payment schedule → bank details.
+**Financial summary** (after all work sections): 1.5px divider · soft-green box with subtotal/GST/total → payment schedule → bank details. Payment note appears below payment schedule on all quotes regardless of tier: "All completed variations are to be paid at completion of the next progress payment stage. All progress invoices are due within 1 day of completion." Style: Mulish 400, muted colour, left-aligned.
 
 **Appendix page** (forced page break): "You Can Rely On 2 Men and a Shovel" credentials block + T&Cs. Single A4 page.
 
