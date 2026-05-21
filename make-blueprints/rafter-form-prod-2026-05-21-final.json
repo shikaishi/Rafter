@@ -3232,7 +3232,7 @@
                     "bodyDataStructure": 419987,
                     "dataStructureBodyContent": {
                       "to": "{{1.customer_email}}",
-                      "subject": "Your quote from {{35.data.company_name}} â€“ {{1.quote_ref}}",
+                      "subject": "Your quote from {{35.data.company_name}}",
                       "htmlBody": "{{36.data.html}}",
                       "attachments": [
                         "{{28.attachment_uuid}}"
@@ -4617,7 +4617,7 @@
     },
     "concept": false,
     "created": "2026-05-02T06:02:06.952Z",
-    "last_edit": "2026-05-21T13:04:44.622Z",
+    "last_edit": "2026-05-21T13:11:54.480Z",
     "metadata": {
       "input_spec": [],
       "output_spec": []
