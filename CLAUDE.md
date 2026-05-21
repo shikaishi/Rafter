@@ -286,11 +286,11 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `branding.heading_font` | string | Client | `/client/{uuid}` | e.g. `"Playfair Display"` |
 | `branding.body_font` | string | Client | `/client/{uuid}` | e.g. `"Mulish"` |
 | `r2_photo_path` | string | Derived | `/client/{uuid}` | Always `"clients/{uuid}/photos/"` |
-| `payment_thresholds` | object | Client | `/client/{uuid}` | Keys: `under_20k`, `20k_to_35k`, `35k_to_50k`, `50k_to_100k`, `100k_to_200k`, `over_200k`. Dead data — logic lives in `paymentSchedule()` in index.html. Updated 21 May 2026 to six-tier structure. |
+| `payment_thresholds` | object | Client | `/client/{uuid}` | Six-tier structure updated 21 May 2026. Reflects Andy's current payment schedule. Currently dead data — `paymentSchedule()` in index.html drives the live logic. Tiers: `under_20k` 50/50, `20k_to_35k` 20/60/20, `35k_to_50k` 5/45/45/5, `50k_to_100k` 5/31/31/31/2, `100k_to_200k` 5/27/22/22/22/2, `over_200k` 5/21/18/18/18/18/2. Boundary comparisons use `<=` so $20,000 lands in tier 1, $20,001 in tier 2, etc. |
 | `proposal_types` | string[] | Client | `/client/{uuid}` | e.g. `["LC", "GM"]` — abbreviations used in PDF cover title |
 | `job_categories` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Categories |
 | `job_queues` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Queues |
-| `templates` | object[] | Manual | `/client/{uuid}` | Array of objects with two fields: name (display label), text (single works description — editable in form, used for both SM8 job note and customer PDF). 24 items for Andy. Updated 21 May 2026. |
+| `templates` | object[] | Manual | `/client/{uuid}` | Array of 24 objects with two fields: name (display label, no BH-/$/BH: suffixes) and text (single merged field containing Materials and Scope content — verbatim from Andy's SM8 templates, lightly formatted). Single text field drives both the customer PDF and the SM8 job note. Written to both KV records 21 May 2026. Previous three-field structure (name/materials/scope) is superseded. |
 | `phone` | string | Client | `/client/{uuid}`, `/client-config` | Business phone e.g. `"(03) 9013 6588"` |
 | `business_address` | string | Client | `/client/{uuid}` | Full address, newline between street and suburb line |
 | `business_email` | string | Client | `/client/{uuid}`, `/client-config` | Public contact email |
@@ -377,7 +377,8 @@ Status as of 19 May 2026. Owner: Code = Claude Code (includes Make API changes);
 | BUG-18 | Email subject hardcodes "2 Men and a Shovel" | **Open** | P2 | Code | Rafter Form module 37 (`json:CreateJSON`) subject field: `"Your quote from 2 Men and a Shovel – {{1.quote_ref}}"`. Should use `{{35.data.company_name}}` from `/client-config`. Affects both prod and dev scenarios. |
 | BUG-19 | Operator notification email body hardcodes "Two Men and a Shovel" | **Open** | P2 | Code | Rafter Form module 12 (Gmail) HTML body has "Two Men and a Shovel" and company-specific branding baked in. Should use `/render-email` or at minimum pull company name dynamically. Affects both prod and dev. |
 | BUG-20 | `expires_at` hardcoded as 3600s in Account Discovery | **Open** | P3 | Code | Account Discovery modules 4 and 5 use `addSeconds(now; 3600)`. Should use `addSeconds(now; {{2.data.expires_in}})` so actual SM8 token expiry is respected. Currently matches SM8's 3600s default but will silently break if SM8 changes it. |
-| BUG-21 | Materials sync returning inactive materials | **Closed** | P1 | Code | Fixed by adding `?$filter=active eq 1` to `/api_1.0/material.json` fetch in refresh-materials handler. Verified: live instance returns 200 materials. |
+| BUG-21 | Materials sync returning inactive materials | **Closed** | P1 | Code | Fixed by appending `?$filter=active eq 1` to `/api_1.0/material.json` fetch in refresh-materials handler. Verified: live instance returns 201 active materials. |
+| BUG-22 | SM8 406 error sending to andrew@2menandashovel.com | **Closed** | P2 | Will | SM8's sending infrastructure has an unsubscribe flag against this address. Returns errorCode 406 "Email cannot be delivered." Resolution: use a different test email during development. Andy to clear unsubscribe flag in SM8 dashboard or via SM8 support if needed for production sends. |
 
 ## Tech Debt
 
@@ -414,7 +415,7 @@ Claude Code manages Make scenarios via the Make API. See `.env` for token and sc
 | MAKE-08 | Rafter Form module 37 — subject use `{{35.data.company_name}}` | P2 | **Open** — both prod and dev (see BUG-18) |
 | MAKE-09 | Rafter Form — remove module 8 (duplicate/broken attachment) | P2 | **Closed** — removed from both blueprints |
 | MAKE-10 | Rafter Form module 2 — remove hardcoded `tax_rate_uuid` | P2 | **Closed** — module 2 fully replaced (DEBT-04) |
-| MAKE-11 | Rafter Form Module 13 — update job note body field to `{{34.job_description}}` to use materials-only block | P1 | **Closed** — done by Will 19 May 2026 |
+| MAKE-11 | Rafter Form Module 13 — job note body field updated to `{{34.job_description}}` | P1 | **Closed** — done by Will 21 May 2026 |
 
 ---
 
@@ -713,7 +714,7 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 
 | Item | Description | Priority | Phase |
 |------|-------------|---------|-------|
-| **Template materials/scope split** | Templates now have three fields: name, materials (SM8 job note), scope (customer PDF). Both KV records updated. Form renders both fields per section, pre-filled and editable. | P1 | Complete |
+| **Template v2 — merged text field** | Templates updated to 24 items with single `text` field (Materials + Scope merged). Both KV records updated 21 May 2026. Form uses single Works Description textarea per section. | P1 | Complete |
 | **Account Discovery MAKE-05** | ~~Fix Module 2 `client_id`/`client_secret`~~ | ~~P1~~ | **Closed** |
 | **Client name split for new client creation** | M2 currently sends full name as one field. SM8 `company` accepts `name` as a single field (no first/last split for companies). Verify this is correct for Andy's use case. | P2 | Post-T1-F2 |
 | **callback.html icon** | Still shows Rafter brand SVG icon, not client logo. Minor cosmetic. | P3 | Post-T1-F2 |
@@ -723,10 +724,10 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 | **Dev/prod Make separation** | Separate Make scenarios or Worker environments for development vs production. Currently one shared scenario, multi-tenant by `client_uuid`. | P3 | Platform |
 | **Automated acceptance test suite** | Weekly cron, 7 assertions across SM8/Make/Rafter, emails Will on failure. | P3 | Track 2 |
 | **Quote amendment workflow** | Operator regenerates quote and resubmits. Amendment format: `Q-YYYYMMDD-HHMM-v2`. | P2 | Post-T1-F2 |
-| **Photo gallery labelling** | Andy has ~80 unlabelled plant photos. Ask Andy before building. | P2 | Post-T1-F2 |
+| **Photo subsections** | Restructure R2 photo folder and form pill bar to support Andy's labelled photo groups once he provides the groupings. | P2 | Awaiting Andy |
 | **Line item delivery context** | Form presents contextually relevant delivery SKUs based on materials selected. | P2 | Post-T1-F2 |
 | **Onboarding wizard** | Replace manual checklist with guided wizard. | P3 | Track 2 |
-| **Template editor** | Admin interface for editing KV templates without raw JSON edits. | P3 | Track 2 |
+| **Template editor** | Allow Andy to maintain template text in KV directly via a simple admin interface, bypassing SM8 entirely. | P3 | Post-demo |
 | **Deduplication handling** | Client search before create. SM8 Merge Clients as fallback. | P3 | Track 2 |
 | **SM8 MCP server monitoring** | Monitor `developer.servicem8.com/mcp` for maturity. | Monitor | Platform |
 
@@ -735,11 +736,11 @@ Items identified but not yet scheduled. All are post-T1-F2 unless noted.
 **Resolved:**
 - Client name split — full name as one field confirmed correct for Andy's use case.
 - Staff attribution — all jobs created as Andrew Little regardless of who submits. Confirmed acceptable.
+- Photo and work section pill order — pill order now matches Andy's specified list, locked in KV array order. Confirmed 21 May 2026.
+- Payment schedule — updated to six-tier structure 21 May 2026.
 
 **Open:**
-1. Payment schedule — Andy wants to update thresholds/percentages. Awaiting his specifics.
-2. Photo subsections — Andy will split ~80 plant photos into labelled groups. Each group becomes a photo pill in the form. Awaiting groupings from Andy.
-3. Photo and work section pill order — Andy's preferred sequence to be confirmed.
+1. Photo subsections — Andy will split ~80 plant photos into labelled groups. Each group becomes a photo pill in the form. Awaiting groupings from Andy.
 
 ---
 
@@ -849,7 +850,9 @@ All HTTP modules use `Authorization: Bearer {{1.access_token}}`.
 - **RAFTER_WORKER_SECRET:** Rotated 17 May 2026. Make Account Discovery Module 5 Bearer token updated.
 - **SM8 DELETE jobs:** `DELETE /api_1.0/job/{uuid}.json` sets `active=0` but does NOT remove from Dispatch Board. Also `PUT` `{"status":"Completed"}` to hide from board.
 - **SM8 company.json:** Does not return `email` or `phone` fields. Customer contact auto-population from SM8 search is not possible via this endpoint.
-- **SM8 active filter:** Always append `?$filter=active eq 1` to `/api_1.0/material.json` fetches. Without it, inactive (archived) materials are returned alongside active ones.
+- **SM8 active filter:** Always append `?$filter=active eq 1` to `/api_1.0/material.json` fetches. Without it, inactive (archived) materials are returned alongside active ones. Andy's live instance returns 201 active materials as of 21 May 2026.
+- **SM8 unsubscribe suppression:** SM8 returns `errorCode 406` when attempting to send email to an address with an unsubscribe flag. Fix is in SM8 dashboard or via SM8 support — not fixable from Rafter side.
+- **SM8 document templates API:** `/api_1.0/documenttemplate.json` returns name and UUID only — does not expose template body text. No bulk export available from SM8 UI either. Template text must be maintained in KV directly.
 
 ## Claude Chat / Claude Code split
 
@@ -877,7 +880,7 @@ CONTEXT: See CLAUDE.md
 5. Horizontal rule
 6. Job title Playfair lime: `{type} — {street}, {suburb}` — no state, no country, one line
 
-**Sections:** Section header: Playfair 600 dark green (`#0D2E1C`) ALL CAPS title left + Mulish 700 price right on one line, horizontal rule above and below the header row. Scope text beneath. Asterisk notes `#999`. Photos inline within section.
+**Sections:** Section header: Playfair 600 lime (`#84B741`) ALL CAPS title left + price right on one line, horizontal rule above and below the header row. Scope text beneath. No duplicate Mulish bold title below header. Asterisk notes `#999`. Photos inline within section.
 
 **Financial summary** (after all work sections): 1.5px divider · soft-green box with subtotal/GST/total → payment schedule → bank details. Payment note appears below payment schedule on all quotes regardless of tier: "All completed variations are to be paid at completion of the next progress payment stage. All progress invoices are due within 1 day of completion." Style: Mulish 400, muted colour, left-aligned.
 
@@ -905,12 +908,46 @@ CONTEXT: See CLAUDE.md
 - Works Description text area (auto-resize) — pre-filled from `template.text`, editable — goes to BOTH SM8 job note and customer PDF
 - Reset button resets Works Description to KV original
 - Line items, photo picker below
-- Labour line item auto-populated on section add (exact name match "Labour", qty 1, price from materials list). Not added for MISC sections.
-- MISC pill: hardcoded, always visible at end of pill bar, no text pre-fill, no Labour default line item
-- All 25 pills always visible (24 templates + MISC) — no overflow button
+- Labour line item auto-populated on section add (exact name match "Labour", qty 1, $80 from materials list). Not added for MISC sections.
+- MISC pill: hardcoded as last pill — empty text, no Labour default, participates normally in PDF and SM8 job note payload
+- All 25 pills (24 templates + MISC) visible at all times, wrap freely — no overflow/show more button
 - `job_description` payload field: one block per section (`SECTION NAME\n[text]`), sections joined by blank line
 - `pdfSections[].items[].scope` uses text field
 - Proposal type fixed to `"LC"` — toggle removed from form. PDF cover title still reads "Landscape Construction — …"
+
+## Template library
+
+Templates reduced from 26 to 24 items on 21 May 2026. Removed: Formboss Steel Edging, Plant Establishment Care, Pool Coping (standalone), Pressure Clean (standalone), Retainer Wall Blocks, Retainer Wall Sleepers, Soil Testing, Timber Edging, Trellis (was separate), Turf Establishment Care. Consolidated or replaced by new entries. New sections added: Plumbing, Sleeper Wall, Block Wall, Carpentry, Painting. MISC is hardcoded in the form — no KV entry.
+
+**Canonical template order** (matches pill bar and KV array order):
+
+| # | Name |
+|---|------|
+| 1 | SITE SETUP AND CLEANUP |
+| 2 | EXCAVATION |
+| 3 | PLUMBING |
+| 4 | SLEEPER WALL |
+| 5 | BLOCK WALL |
+| 6 | BRICK EDGING |
+| 7 | CONCRETING |
+| 8 | PAVING — FIXED |
+| 9 | PAVING — SAND |
+| 10 | STEPPERS |
+| 11 | POOL COPING |
+| 12 | PAVING SEALER |
+| 13 | FENCING — TIMBER PALING |
+| 14 | CARPENTRY |
+| 15 | PAINTING |
+| 16 | GARDEN EDGING |
+| 17 | TRELLIS |
+| 18 | SOIL PREP AND PLANTING |
+| 19 | IRRIGATION |
+| 20 | MULCHING |
+| 21 | INSTANT TURF |
+| 22 | SYNTHETIC TURF |
+| 23 | GRAVEL + STONE |
+| 24 | PRESSURE CLEANING |
+| 25 | MISC (hardcoded — no KV entry) |
 
 ## Operator form design — CSS variables (index.html)
 
