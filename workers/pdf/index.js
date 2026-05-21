@@ -119,7 +119,9 @@ async function handleGenerate(request, env, url) {
   form.append("payload", JSON.stringify(payload));
   // Individual fields so Make can map without JSON parsing
   form.append("client_name",      payload.client_name      || "");
-  form.append("client_sm8_uuid",  payload.client_sm8_uuid  || "");
+  // Only send client_sm8_uuid when set — empty string would defeat Make's
+  // `notexist` branch routing in M21 (existing-vs-new client check).
+  if (payload.client_sm8_uuid) form.append("client_sm8_uuid", payload.client_sm8_uuid);
   form.append("quote_ref",        payload.quote_ref        || "");
   form.append("site_address",     payload.site_address     || "");
   form.append("proposal_type",    payload.proposal_type    || "");
