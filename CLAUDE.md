@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 19 May 2026 (T1-F2 **COMPLETE** — end-to-end confirmed on Andy's live instance. DEBT-04 closed. Make scenarios fully HTTP Bearer auth. SM8 company.json finding: no phone/email fields. Steps 5b/5c/5d added to onboarding. MAKE-04 and MAKE-05 closed. BUG-21 closed — inactive materials fix. Template materials/scope split complete. MAKE-11 closed. Form+PDF session: proposal type toggle removed, field order updated, section cards get Materials+Scope text areas, price display read-only; PDF banner removed, meta Date-only, section header redesigned, payment note added.)
+> Last reconciled: 21 May 2026 (Template v2 update: 24 templates replacing 26, merged into single `text` field. Form: Materials+Scope replaced with single "Works Description" textarea per section. Job note and PDF payload both use text field. Labour line item pre-populated on section add (exact match "Labour" at $80). MISC pill added — hardcoded, always visible, no text pre-fill, no Labour default. All 25 pills always visible — overflow "+ N more" button removed. KV updated on both trial and live instances.)
 
 ---
 
@@ -290,7 +290,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `proposal_types` | string[] | Client | `/client/{uuid}` | e.g. `["LC", "GM"]` — abbreviations used in PDF cover title |
 | `job_categories` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Categories |
 | `job_queues` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Queues |
-| `templates` | object[] | Manual | `/client/{uuid}` | Array of objects with three fields: name (display label, no BH-/$/BH: suffixes), materials (operator-facing text for SM8 job note — editable in form, sent to SM8 only), scope (client-facing scope of works — editable in form, PDF only). 26 items for Andy. Written to KV 19 May 2026 from rewritten template library. |
+| `templates` | object[] | Manual | `/client/{uuid}` | Array of objects with two fields: name (display label), text (single works description — editable in form, used for both SM8 job note and customer PDF). 24 items for Andy. Updated 21 May 2026. |
 | `phone` | string | Client | `/client/{uuid}`, `/client-config` | Business phone e.g. `"(03) 9013 6588"` |
 | `business_address` | string | Client | `/client/{uuid}` | Full address, newline between street and suburb line |
 | `business_email` | string | Client | `/client/{uuid}`, `/client-config` | Public contact email |
@@ -332,7 +332,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `staff_uuid` | `5ba57e76-53c0-4340-86ce-24244cfa725b` (Will Thurlow) |
 | `logo_url` | `https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png` |
 | `webhook_url` | `https://hook.eu1.make.com/i8gukma8y3vs1gff7dihku8inotgy7lg` |
-| `templates` | 26 items (see KV record for names) |
+| `templates` | 24 items (name + text fields — updated 21 May 2026) |
 | `proposal_types` | `["LC", "GM"]` |
 
 ## Supplementary KV key patterns
@@ -902,11 +902,14 @@ CONTEXT: See CLAUDE.md
 **Section 2 — Works — section card layout:**
 - Header row: section name (left) + calculated price read-only display (right)
 - Price is always computed from line items; direct editing removed
-- Materials text area (auto-resize) — pre-filled from `template.materials`, editable, sent to SM8 job note only
-- Scope of Works text area (auto-resize) — pre-filled from `template.scope`, editable, PDF only
+- Works Description text area (auto-resize) — pre-filled from `template.text`, editable — goes to BOTH SM8 job note and customer PDF
+- Reset button resets Works Description to KV original
 - Line items, photo picker below
-- Reset button resets both Materials and Scope to KV originals
-- `job_description` payload field: one block per section (`SECTION NAME\n[materials text]`), sections joined by blank line. Scope text excluded from SM8 job note.
+- Labour line item auto-populated on section add (exact name match "Labour", qty 1, price from materials list). Not added for MISC sections.
+- MISC pill: hardcoded, always visible at end of pill bar, no text pre-fill, no Labour default line item
+- All 25 pills always visible (24 templates + MISC) — no overflow button
+- `job_description` payload field: one block per section (`SECTION NAME\n[text]`), sections joined by blank line
+- `pdfSections[].items[].scope` uses text field
 - Proposal type fixed to `"LC"` — toggle removed from form. PDF cover title still reads "Landscape Construction — …"
 
 ## Operator form design — CSS variables (index.html)

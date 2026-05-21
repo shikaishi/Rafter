@@ -897,7 +897,6 @@
 <script>
 const API = "https://rafter-materials-sync.will-8e8.workers.dev";
 const PDF_API = "https://rafter-pdf.will-8e8.workers.dev";
-const CHIP_VISIBLE_LIMIT = 14;
 
 const AUD = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const MEL_TZ = "Australia/Melbourne";
@@ -948,7 +947,7 @@ const state = {
   customerEmail: "",
   customerPhone: "",
   siteAddress: "",
-  sections: [],        // { id, name, scope, price, priceManual, lineItems[], photos[], collapsed, photoPanelOpen, photoCat }
+  sections: [],        // { id, name, text, textOriginal, price, lineItems[], photos[], collapsed, photoPanelOpen, photoCat }
   notes: "",
   chipsExpanded: false,
   lastSync: null,
@@ -1182,23 +1181,19 @@ function renderChips() {
   const row = $("chipsRow");
   const tpls = templateList();
   const selectedSet = new Set(state.sections.map((s) => s.templateKey));
-  const visible = state.chipsExpanded ? tpls : tpls.slice(0, CHIP_VISIBLE_LIMIT);
-  row.innerHTML = visible.map((t, i) => {
+  let html = tpls.map((t, i) => {
     const key = t.key || t.name || `tpl-${i}`;
     const name = t.name || key;
     const active = selectedSet.has(key);
     return `<button class="chip ${active ? "active" : ""}" data-key="${escapeHtml(key)}" data-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`;
   }).join("");
-  if (tpls.length > CHIP_VISIBLE_LIMIT) {
-    const remaining = tpls.length - CHIP_VISIBLE_LIMIT;
-    row.insertAdjacentHTML("beforeend",
-      `<button class="chip more" id="chipMore" type="button">${state.chipsExpanded ? "− Show fewer" : `+ ${remaining} more`}</button>`);
-  }
+  // MISC always visible at end
+  const miscActive = selectedSet.has("__misc__");
+  html += `<button class="chip ${miscActive ? "active" : ""}" data-key="__misc__" data-name="MISC">MISC</button>`;
+  row.innerHTML = html;
   row.querySelectorAll(".chip[data-key]").forEach((b) => {
     b.addEventListener("click", () => toggleSection(b.dataset.key, b.dataset.name));
   });
-  const m = $("chipMore");
-  if (m) m.addEventListener("click", () => { state.chipsExpanded = !state.chipsExpanded; renderChips(); });
   $("sectionCountLbl").textContent = `${state.sections.length} section${state.sections.length === 1 ? "" : "s"} selected`;
 }
 function templateByKey(key) {
@@ -1221,17 +1216,29 @@ function toggleSection(key, name) {
   if (idx >= 0) {
     state.sections.splice(idx, 1);
   } else {
+    const isMisc = key === "__misc__";
     const tpl = templateByKey(key) || {};
+    const textVal = isMisc ? "" : (tpl.text || tpl.scope || "");
+    // Pre-populate Labour line item for all sections except MISC
+    const labourMat = (!isMisc && state.materials.length)
+      ? (state.materials.find((m) => /^labour$/i.test((m.name || "").trim())) ||
+         state.materials.find((m) => /^labour/i.test((m.name || "").trim())))
+      : null;
+    const defaultLineItems = labourMat ? [{
+      name: labourMat.name,
+      unit: labourMat.unit || "hr",
+      qty: 1,
+      unitPrice: Number(labourMat.price) || 0,
+      sm8_uuid: labourMat.uuid,
+    }] : [];
     state.sections.push({
       id: uid(),
       templateKey: key,
       name,
-      scopeOriginal: tpl.scope || tpl.text || scopeLookup(name) || "",
-      scope: tpl.scope || tpl.text || scopeLookup(name) || "",
-      materialsOriginal: tpl.materials || "",
-      materials: tpl.materials || "",
+      textOriginal: textVal,
+      text: textVal,
       price: 0,
-      lineItems: [],
+      lineItems: defaultLineItems,
       photos: [],
       collapsed: false,
       photoPanelOpen: false,
@@ -1294,24 +1301,17 @@ function renderOneSection(s) {
 
   const body = node.querySelector(".ws-body");
 
-  // Materials textarea
-  const matWrap = el(`<div class="ws-field-block">
-    <label class="field-label" style="margin-bottom:0;">Materials</label>
-    <textarea class="ws-textarea" data-role="materials" placeholder="Materials…">${escapeHtml(s.materials || "")}</textarea>
-  </div>`);
-  body.appendChild(matWrap);
-
-  // Scope textarea
-  const scopeWrap = el(`<div class="ws-field-block">
+  // Works description textarea (single field — goes to both PDF and SM8 job note)
+  const textWrap = el(`<div class="ws-field-block">
     <div class="ws-field-header">
-      <label class="field-label" style="margin-bottom:0;">Scope of works</label>
+      <label class="field-label" style="margin-bottom:0;">Works description</label>
       <button class="btn btn-outline" data-role="reset-text" title="Reset to default text" style="padding:4px 8px;font-size:11px;flex-shrink:0;">
         <i class="ti ti-rotate"></i>Reset
       </button>
     </div>
-    <textarea class="ws-textarea" data-role="scope" placeholder="Scope of works…">${escapeHtml(s.scope || "")}</textarea>
+    <textarea class="ws-textarea" data-role="text" placeholder="Works description…">${escapeHtml(s.text || "")}</textarea>
   </div>`);
-  body.appendChild(scopeWrap);
+  body.appendChild(textWrap);
 
   // Line items
   body.appendChild(renderLineItems(s));
@@ -1350,12 +1350,8 @@ function renderOneSection(s) {
     renderSections();
     renderTotals();
   });
-  node.querySelector('[data-role="materials"]').addEventListener("input", (e) => {
-    s.materials = e.target.value;
-    autoResize(e.target);
-  });
-  node.querySelector('[data-role="scope"]').addEventListener("input", (e) => {
-    s.scope = e.target.value;
+  node.querySelector('[data-role="text"]').addEventListener("input", (e) => {
+    s.text = e.target.value;
     autoResize(e.target);
   });
   node.querySelector('[data-role="photos"]').addEventListener("click", () => {
@@ -1363,8 +1359,7 @@ function renderOneSection(s) {
     renderSections();
   });
   node.querySelector('[data-role="reset-text"]').addEventListener("click", () => {
-    s.scope = s.scopeOriginal || "";
-    s.materials = s.materialsOriginal || "";
+    s.text = s.textOriginal || "";
     renderSections();
   });
   node.querySelectorAll(".photo-thumb .x").forEach((x) => {
@@ -1593,7 +1588,7 @@ function buildPayload(mode, sendEmail) {
     items: [{
       name: s.name,
       price: Number((Number(s.price) || 0).toFixed(2)),
-      scope: s.scope,
+      scope: s.text,
       asterisk_notes: [],
     }],
   }));
@@ -1609,9 +1604,9 @@ function buildPayload(mode, sendEmail) {
     material_uuid: li.sm8_uuid || "",
   })));
 
-  // SM8 job note: materials only, one block per section. Scope text not included.
+  // SM8 job note: section name + works description, one block per section.
   const job_description = state.sections
-    .map((s) => `${s.name}\n${(s.materials || "").trim()}`)
+    .map((s) => `${s.name}\n${(s.text || "").trim()}`)
     .join("\n\n");
 
   return {
@@ -1634,8 +1629,7 @@ function buildPayload(mode, sendEmail) {
     form_sections: state.sections.map((s) => ({
       name: s.name,
       price: Number((Number(s.price) || 0).toFixed(2)),
-      scope: s.scope,
-      materials: s.materials || "",
+      text: s.text || "",
       line_items: s.lineItems.map((li) => ({
         name: li.name,
         quantity: Number(li.qty) || 0,
