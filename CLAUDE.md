@@ -379,6 +379,7 @@ Status as of 19 May 2026. Owner: Code = Claude Code (includes Make API changes);
 | BUG-20 | `expires_at` hardcoded as 3600s in Account Discovery | **Open** | P3 | Code | Account Discovery modules 4 and 5 use `addSeconds(now; 3600)`. Should use `addSeconds(now; {{2.data.expires_in}})` so actual SM8 token expiry is respected. Currently matches SM8's 3600s default but will silently break if SM8 changes it. |
 | BUG-21 | Materials sync returning inactive materials | **Closed** | P1 | Code | Fixed by appending `?$filter=active eq 1` to `/api_1.0/material.json` fetch in refresh-materials handler. Verified: live instance returns 201 active materials. |
 | BUG-22 | SM8 406 error sending to andrew@2menandashovel.com | **Closed** | P2 | Will | SM8's sending infrastructure has an unsubscribe flag against this address. Returns errorCode 406 "Email cannot be delivered." Resolution: use a different test email during development. Andy to clear unsubscribe flag in SM8 dashboard or via SM8 support if needed for production sends. |
+| BUG-23 | `/client-config` returned stale SM8 token, Make scenario disabled | **Closed** | P1 | Code | Root cause: `handleClientConfig()` read `access_token` straight from KV without calling `refreshTokenIfNeeded()`. All other SM8-calling handlers refresh first, but `/client-config` — which Make uses for every SM8 Bearer in the form scenario — did not. After daily cron's 1hr validity window, any submission got SM8 401 → Make auto-disabled. Fixed by adding `refreshTokenIfNeeded()` call inside `handleClientConfig()` before returning. Verified by force-expiring trial token (expires_at = 2020-01-01), calling `/client-config`, confirming returned access_token differs and KV expires_at jumped to now+1hr. Prod Rafter Form scenario re-enabled via Make API. |
 
 ## Tech Debt
 
@@ -853,6 +854,7 @@ All HTTP modules use `Authorization: Bearer {{1.access_token}}`.
 - **SM8 active filter:** Always append `?$filter=active eq 1` to `/api_1.0/material.json` fetches. Without it, inactive (archived) materials are returned alongside active ones. Andy's live instance returns 201 active materials as of 21 May 2026.
 - **SM8 unsubscribe suppression:** SM8 returns `errorCode 406` when attempting to send email to an address with an unsubscribe flag. Fix is in SM8 dashboard or via SM8 support — not fixable from Rafter side.
 - **SM8 document templates API:** `/api_1.0/documenttemplate.json` returns name and UUID only — does not expose template body text. No bulk export available from SM8 UI either. Template text must be maintained in KV directly.
+- **SM8 token freshness invariant:** Any handler in `workers/materials-sync/index.js` that returns `access_token` OR uses it to call SM8 MUST call `refreshTokenIfNeeded(uuid, env)` first. The daily cron is a safety net, not the primary refresh mechanism — Make calls `/client-config` at the top of every form scenario and relies on it returning a token with ≥5 min validity. Violating this invariant caused BUG-23. Endpoints currently honouring it: `/client-config`, `/refresh-materials`, `/sm8-staff`, `/sm8-search`, `syncOneClient`.
 
 ## Claude Chat / Claude Code split
 

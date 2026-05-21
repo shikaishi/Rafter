@@ -546,6 +546,17 @@ async function handleClientConfig(request, url, env) {
   const uuid = url.searchParams.get("uuid");
   if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
 
+  // INVARIANT: any handler that returns or uses access_token must call
+  // refreshTokenIfNeeded first. /client-config is called by Make at the top
+  // of every form submission and supplies the Bearer token for every
+  // downstream SM8 call — if it returned a stale token, the entire scenario
+  // would fail with SM8 401 (the original BUG-23).
+  try {
+    await refreshTokenIfNeeded(uuid, env);
+  } catch (e) {
+    return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 });
+  }
+
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
 
