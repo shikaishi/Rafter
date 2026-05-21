@@ -1541,24 +1541,54 @@ function calcTotals() {
 }
 function paymentSchedule(total) {
   if (total <= 0) return { tier: "—", rows: [] };
-  if (total < 15000) {
-    return { tier: "Under $15K — 50/50", rows: [
-      { pct: 50, desc: "Deposit — reserve start date", amt: total * 0.5 },
-      { pct: 50, desc: "Final payment at completion", amt: total * 0.5 },
+  if (total <= 20000) {
+    return { tier: "0–$20K — 50/50", rows: [
+      { pct: 50, desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.50 },
+      { pct: 50, desc: "Final payment at completion of quoted works", amt: total * 0.50 },
     ]};
   }
-  if (total < 50000) {
-    return { tier: "$15K–$50K — 20/60/20", rows: [
-      { pct: 20, desc: "Deposit — reserve start date", amt: total * 0.2 },
-      { pct: 60, desc: "Progress payment", amt: total * 0.6 },
-      { pct: 20, desc: "Final payment at completion", amt: total * 0.2 },
+  if (total <= 35000) {
+    return { tier: "$20K–$35K — 20/60/20", rows: [
+      { pct: 20, desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.20 },
+      { pct: 60, desc: "Progress payment — Required to reserve a starting date and pre-order materials", amt: total * 0.60 },
+      { pct: 20, desc: "Final payment at completion of quoted works", amt: total * 0.20 },
     ]};
   }
-  return { tier: "$50K+ — 5/45/45/5", rows: [
-    { pct: 5, desc: "Deposit — reserve start date", amt: total * 0.05 },
-    { pct: 45, desc: "Progress payment 1", amt: total * 0.45 },
-    { pct: 45, desc: "Progress payment 2", amt: total * 0.45 },
-    { pct: 5, desc: "Final payment at completion", amt: total * 0.05 },
+  if (total <= 50000) {
+    return { tier: "$35K–$50K — 5/45/45/5", rows: [
+      { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
+      { pct: 45, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.45 },
+      { pct: 45, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.45 },
+      { pct: 5,  desc: "Final payment at completion of quoted works", amt: total * 0.05 },
+    ]};
+  }
+  if (total <= 100000) {
+    return { tier: "$50K–$100K — 5/31/31/31/2", rows: [
+      { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
+      { pct: 31, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.31 },
+      { pct: 31, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.31 },
+      { pct: 31, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.31 },
+      { pct: 2,  desc: "Final payment at completion of quoted works", amt: total * 0.02 },
+    ]};
+  }
+  if (total <= 200000) {
+    return { tier: "$100K–$200K — 5/27/22/22/22/2", rows: [
+      { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
+      { pct: 27, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.27 },
+      { pct: 22, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.22 },
+      { pct: 22, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.22 },
+      { pct: 22, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.22 },
+      { pct: 2,  desc: "Final payment at completion of quoted works", amt: total * 0.02 },
+    ]};
+  }
+  return { tier: "$200K+ — 5/21/18/18/18/18/2", rows: [
+    { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
+    { pct: 21, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.21 },
+    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
+    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
+    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
+    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
+    { pct: 2,  desc: "Final payment at completion of quoted works", amt: total * 0.02 },
   ]};
 }
 function renderTotals() {

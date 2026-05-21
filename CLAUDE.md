@@ -16,7 +16,7 @@ This file is the single source of truth for the Rafter project. Read it in full 
 
 ---
 
-> Last reconciled: 21 May 2026 (Template v2 update: 24 templates replacing 26, merged into single `text` field. Form: Materials+Scope replaced with single "Works Description" textarea per section. Job note and PDF payload both use text field. Labour line item pre-populated on section add (exact match "Labour" at $80). MISC pill added — hardcoded, always visible, no text pre-fill, no Labour default. All 25 pills always visible — overflow "+ N more" button removed. KV updated on both trial and live instances.)
+> Last reconciled: 21 May 2026 (Template v2 update: 24 templates replacing 26, merged into single `text` field. Form: Materials+Scope replaced with single "Works Description" textarea per section. Job note and PDF payload both use text field. Labour line item pre-populated on section add (exact match "Labour" at $80). MISC pill added — hardcoded, always visible, no text pre-fill, no Labour default. All 25 pills always visible — overflow "+ N more" button removed. KV updated on both trial and live instances. Payment schedule updated to six tiers: 0–$20K, $20K–$35K, $35K–$50K, $50K–$100K, $100K–$200K, $200K+. KV payment_thresholds updated to match.)
 
 ---
 
@@ -286,7 +286,7 @@ via `/store-token`. Fields marked [post-OAuth] must be set manually after OAuth 
 | `branding.heading_font` | string | Client | `/client/{uuid}` | e.g. `"Playfair Display"` |
 | `branding.body_font` | string | Client | `/client/{uuid}` | e.g. `"Mulish"` |
 | `r2_photo_path` | string | Derived | `/client/{uuid}` | Always `"clients/{uuid}/photos/"` |
-| `payment_thresholds` | object | Client | `/client/{uuid}` | Keys: `under_15k`, `between_15k_50k`, `over_50k`. Values: e.g. `"50/50"`, `"20/60/20"`, `"5/progress/final"` |
+| `payment_thresholds` | object | Client | `/client/{uuid}` | Keys: `under_20k`, `20k_to_35k`, `35k_to_50k`, `50k_to_100k`, `100k_to_200k`, `over_200k`. Dead data — logic lives in `paymentSchedule()` in index.html. Updated 21 May 2026 to six-tier structure. |
 | `proposal_types` | string[] | Client | `/client/{uuid}` | e.g. `["LC", "GM"]` — abbreviations used in PDF cover title |
 | `job_categories` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Categories |
 | `job_queues` | string[] | SM8 | `/client/{uuid}` | From SM8 Settings → Job Queues |
