@@ -334,7 +334,8 @@ manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, rea
 |----------|-------------|---------|
 | Account Discovery | `hook.eu1.make.com/38k3vwhijsfun40uu3pmk942gdjnvj32` | OAuth token exchange |
 | Data Retrieval | `hook.eu1.make.com/hao3fhj1n2d1il4bhkkabozjwl892ujt` | Pull SM8 data on callback |
-| Rafter Form | (no external webhook) | Quote submission → SM8 job creation |
+| Rafter Form (prod) | (no external webhook — `5537814`) | Quote submission → SM8 job creation |
+| Rafter Form - Dev | (no external webhook — `5962197`) | Dev/trial submissions |
 
 **Make Data Store:** "Rafter Tokens" — fields: uuid, access_token, refresh_token, expires_at.
 
