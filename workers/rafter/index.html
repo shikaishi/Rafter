@@ -944,6 +944,7 @@ const state = {
   proposalType: "LC",
   clientName: "",
   clientSm8Uuid: null,
+  clientSelectedName: null,
   customerEmail: "",
   customerPhone: "",
   siteAddress: "",
@@ -1150,6 +1151,7 @@ async function sm8Search(q) {
         e.preventDefault();
         state.clientSm8Uuid = row.dataset.uuid;
         state.clientName = row.dataset.name;
+        state.clientSelectedName = row.dataset.name;
         $("clientName").value = state.clientName;
         if (row.dataset.addr) {
           state.siteAddress = row.dataset.addr;
@@ -1513,7 +1515,7 @@ function renderPhotoPanel(s) {
     const cat = state.photos.find((c) => c.name === s.photoCat) || state.photos[0];
     const selectedSet = new Set(s.photos);
     grid.innerHTML = (cat?.photos || []).map((p) => `<div class="pp-cell ${selectedSet.has(p.key) ? "sel" : ""}" data-key="${escapeHtml(p.key)}">
-      <img loading="lazy" src="${photoUrl(p.key)}" alt="">
+      <img loading="lazy" src="${escapeHtml(photoUrl(p.key))}" alt="">
       <div class="check"><i class="ti ti-check"></i></div>
     </div>`).join("");
     grid.querySelectorAll(".pp-cell").forEach((c) => {
@@ -1541,55 +1543,44 @@ function calcTotals() {
 }
 function paymentSchedule(total) {
   if (total <= 0) return { tier: "—", rows: [] };
-  if (total <= 20000) {
-    return { tier: "0–$20K — 50/50", rows: [
-      { pct: 50, desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.50 },
-      { pct: 50, desc: "Final payment at completion of quoted works", amt: total * 0.50 },
-    ]};
+  const pt = state.client?.payment_thresholds || {};
+  const DESC_D = "Deposit — Required to reserve a starting date and pre-order materials";
+  const DESC_P = "Progress payment — At completion of stage (yet to be determined)";
+  const DESC_F = "Final payment at completion of quoted works";
+  const DESCS = [DESC_D, DESC_P, DESC_P, DESC_P, DESC_P, DESC_P, DESC_F];
+
+  function parseSplit(key, fallback) {
+    const raw = pt[key];
+    if (raw) {
+      const n = raw.split("/").map(Number);
+      if (n.length >= 2 && n.every(Number.isFinite) && n.every((x) => x > 0)) return n;
+    }
+    return fallback;
   }
-  if (total <= 35000) {
-    return { tier: "$20K–$35K — 20/60/20", rows: [
-      { pct: 20, desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.20 },
-      { pct: 60, desc: "Progress payment — Required to reserve a starting date and pre-order materials", amt: total * 0.60 },
-      { pct: 20, desc: "Final payment at completion of quoted works", amt: total * 0.20 },
-    ]};
+
+  function makeRows(split) {
+    return split.map((pct, i) => ({
+      pct,
+      desc: i === 0 ? DESC_D : i === split.length - 1 ? DESC_F : DESC_P,
+      amt: total * pct / 100,
+    }));
   }
-  if (total <= 50000) {
-    return { tier: "$35K–$50K — 5/45/45/5", rows: [
-      { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
-      { pct: 45, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.45 },
-      { pct: 45, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.45 },
-      { pct: 5,  desc: "Final payment at completion of quoted works", amt: total * 0.05 },
-    ]};
+
+  const TIERS = [
+    { max: 20000,   label: "0–$20K",        key: "under_20k",     fallback: [50, 50] },
+    { max: 35000,   label: "$20K–$35K",      key: "20k_to_35k",    fallback: [20, 60, 20] },
+    { max: 50000,   label: "$35K–$50K",      key: "35k_to_50k",    fallback: [5, 45, 45, 5] },
+    { max: 100000,  label: "$50K–$100K",     key: "50k_to_100k",   fallback: [5, 31, 31, 31, 2] },
+    { max: 200000,  label: "$100K–$200K",    key: "100k_to_200k",  fallback: [5, 27, 22, 22, 22, 2] },
+    { max: Infinity, label: "$200K+",        key: "over_200k",     fallback: [5, 21, 18, 18, 18, 18, 2] },
+  ];
+
+  for (const { max, label, key, fallback } of TIERS) {
+    if (total <= max) {
+      const split = parseSplit(key, fallback);
+      return { tier: `${label} — ${split.join("/")}`, rows: makeRows(split) };
+    }
   }
-  if (total <= 100000) {
-    return { tier: "$50K–$100K — 5/31/31/31/2", rows: [
-      { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
-      { pct: 31, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.31 },
-      { pct: 31, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.31 },
-      { pct: 31, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.31 },
-      { pct: 2,  desc: "Final payment at completion of quoted works", amt: total * 0.02 },
-    ]};
-  }
-  if (total <= 200000) {
-    return { tier: "$100K–$200K — 5/27/22/22/22/2", rows: [
-      { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
-      { pct: 27, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.27 },
-      { pct: 22, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.22 },
-      { pct: 22, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.22 },
-      { pct: 22, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.22 },
-      { pct: 2,  desc: "Final payment at completion of quoted works", amt: total * 0.02 },
-    ]};
-  }
-  return { tier: "$200K+ — 5/21/18/18/18/18/2", rows: [
-    { pct: 5,  desc: "Deposit — Required to reserve a starting date and pre-order materials", amt: total * 0.05 },
-    { pct: 21, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.21 },
-    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
-    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
-    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
-    { pct: 18, desc: "Progress payment — At completion of stage (yet to be determined)", amt: total * 0.18 },
-    { pct: 2,  desc: "Final payment at completion of quoted works", amt: total * 0.02 },
-  ]};
 }
 function renderTotals() {
   const { sub, gst, total } = calcTotals();
@@ -1749,9 +1740,12 @@ async function doSubmit(sendEmail) {
   btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Submitting…';
   try {
     const payload = buildPayload("submit", sendEmail);
+    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
+    if (!tokenRes.ok) throw new Error("Failed to get submit authorisation — please try again.");
+    const { token } = await tokenRes.json();
     const r = await fetch(`${PDF_API}/generate?mode=submit`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
       body: JSON.stringify(payload),
     });
     const data = await r.json().catch(() => ({}));
@@ -1814,14 +1808,20 @@ async function refreshMaterials() {
 function bindEvents() {
   $("clientName").addEventListener("input", (e) => {
     state.clientName = e.target.value;
-    state.clientSm8Uuid = null;
-    state.siteAddress = "";
-    state.customerEmail = "";
-    state.customerPhone = "";
-    $("siteAddress").value = "";
-    $("customerEmail").value = "";
-    $("customerPhone").value = "";
-    $("clientHint").textContent = "";
+    // Only clear the selected client when the name actually changes away from the selected value.
+    // Without this guard, fixing a typo after selecting a client from the dropdown would clear
+    // the UUID and cause Make to create a duplicate SM8 company instead of using the existing one.
+    if (state.clientSm8Uuid && e.target.value !== state.clientSelectedName) {
+      state.clientSm8Uuid = null;
+      state.clientSelectedName = null;
+      state.siteAddress = "";
+      state.customerEmail = "";
+      state.customerPhone = "";
+      $("siteAddress").value = "";
+      $("customerEmail").value = "";
+      $("customerPhone").value = "";
+      $("clientHint").textContent = "";
+    }
     sm8SearchDebounced(e.target.value.trim());
   });
   $("clientName").addEventListener("blur", () => {

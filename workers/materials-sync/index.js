@@ -40,6 +40,24 @@ function json(body, init = {}) {
   });
 }
 
+async function hmacSha256(data, secret) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+function requireWorkerSecret(request, env) {
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  if (!env.RAFTER_WORKER_SECRET || token !== env.RAFTER_WORKER_SECRET) {
+    return json({ error: "unauthorized" }, { status: 401 });
+  }
+  return null;
+}
+
 function sanitizeClient(config) {
   if (!config || typeof config !== "object") return null;
   const out = {};
@@ -130,7 +148,14 @@ async function refreshTokenIfNeeded(uuid, env) {
   }
   config.token_updated_at = new Date().toISOString();
 
-  await writeClient(env, uuid, config);
+  try {
+    await writeClient(env, uuid, config);
+  } catch (e) {
+    // KV write failure after SM8 has already rotated the token — re-throw so callers
+    // return a 502 rather than silently returning the new in-memory token while KV
+    // still holds the old (now-invalidated) refresh_token.
+    throw new Error(`kv_write_failed_after_token_refresh: ${e.message}`);
+  }
   console.log(JSON.stringify({ event: "token_refreshed", uuid, expires_at: config.expires_at }));
 
   return config.access_token;
@@ -236,9 +261,27 @@ async function handleRenderEmail(request, env) {
   return json({ html });
 }
 
-async function handleRefreshMaterials(url, env) {
+async function handleGetFormToken(url, env) {
   const uuid = url.searchParams.get("uuid");
-  if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
+  if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
+    return json({ error: "invalid_uuid" }, { status: 400 });
+  }
+  const config = await readClient(env, uuid);
+  if (!config) return json({ error: "client_not_found" }, { status: 404 });
+  if (!env.RAFTER_INTERNAL_SECRET) return json({ error: "server_misconfigured" }, { status: 500 });
+  const ts = Math.floor(Date.now() / 1000);
+  const data = `${uuid}:${ts}`;
+  const sig = await hmacSha256(data, env.RAFTER_INTERNAL_SECRET);
+  return json({ token: `${data}:${sig}`, expires_in: 60 });
+}
+
+async function handleRefreshMaterials(url, env, request) {
+  const denied = requireWorkerSecret(request, env);
+  if (denied) return denied;
+  const uuid = url.searchParams.get("uuid");
+  if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
+    return json({ error: "invalid_uuid" }, { status: 400 });
+  }
 
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
@@ -432,7 +475,9 @@ async function handleClientLogo(uuid, env) {
   return new Response("not_found", { status: 404 });
 }
 
-async function handleSm8Staff(url, env) {
+async function handleSm8Staff(url, env, request) {
+  const denied = requireWorkerSecret(request, env);
+  if (denied) return denied;
   const uuid = url.searchParams.get("uuid");
   if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
   const config = await readClient(env, uuid);
@@ -471,7 +516,9 @@ async function handleResolveSlug(slug, env) {
 async function handleSm8Search(url, env) {
   const uuid = url.searchParams.get("uuid");
   const q = (url.searchParams.get("q") || "").trim();
-  if (!uuid) return json({ error: "missing_param", param: "uuid" }, { status: 400 });
+  if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
+    return json({ error: "invalid_uuid" }, { status: 400 });
+  }
   if (q.length < 3) return json({ ok: true, results: [], note: "query_too_short" });
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
@@ -582,7 +629,8 @@ async function route(request, env) {
   if (method === "POST" && path === "/store-token") return handleStoreToken(request, env);
   if (method === "POST" && path === "/render-email") return handleRenderEmail(request, env);
   if (method === "GET" && path === "/client-config") return handleClientConfig(request, url, env);
-  if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env);
+  if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env, request);
+  if (method === "GET" && path === "/get-form-token") return handleGetFormToken(url, env);
   if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
 
@@ -594,7 +642,7 @@ async function route(request, env) {
   if (photosMatch) return handleListPhotos(photosMatch[1], env);
   if (method === "GET" && path === "/photo") return handleGetPhoto(url, env);
   if (method === "GET" && path === "/sm8-search") return handleSm8Search(url, env);
-  if (method === "GET" && path === "/sm8-staff") return handleSm8Staff(url, env);
+  if (method === "GET" && path === "/sm8-staff") return handleSm8Staff(url, env, request);
   const brandMatch = method === "GET" && /^\/brand\/([a-z0-9_.-]+)$/i.exec(path);
   if (brandMatch) return handleBrandAsset(brandMatch[1], env);
   const logoMatch = method === "GET" && /^\/logo\/([0-9a-f-]{36})$/i.exec(path);

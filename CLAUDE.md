@@ -13,12 +13,23 @@
 
 **NEVER use Andy's live ServiceM8 instance UUID during development or testing.**
 
-| Instance | UUID | Use |
-|----------|------|-----|
-| **Trial (DEV/TEST)** | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` | All development and testing |
-| **Andy's live (PRODUCTION)** | `010895db-e06c-465d-bce9-2424477be15b` | T1-F2 only — explicit sign-off required |
+| Instance | UUID | Role | Use |
+|----------|------|------|-----|
+| **Trial (DEV/TEST)** | `010895db-e06c-465d-bce9-2424477be15b` | Will's thurlow.net SM8 vendor UUID | All development — **KV record does not yet exist; must be provisioned before usable** |
+| **Andy's KV record** | `0e604a45-84fd-4789-a2cb-662bcba51a8b` | Active KV key — `slug:andy` resolves here | The record the form reads. Production — explicit sign-off required for any write. |
+| **Andy's SM8 vendor UUID** | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` | SM8 API identity (vendor.json) | SM8 API calls use this as the account identity. KV record at this key is an orphaned duplicate — do not use. |
 
 If you are about to write code that references the live UUID, stop and confirm with Will first.
+
+### Incident note — 2026-05-28: UUIDs were documented swapped
+
+CLAUDE.md v2.0 (and the rafter-continuation-prompt before it) had these two UUIDs reversed. The UUID labelled "Trial" (`448e12a8-…`) is actually **Andy's live**, and the UUID labelled "Andy's live" (`010895db-…`) is actually the trial. Discovered via SM8 OAuth `/vendor.json` traces from Make scenario `5612449` runs on 2026-05-28.
+
+Consequence: every prior "dev/test" call against `448e12a8-…` — every KV write, every materials sync, every PDF preview, every Worker deploy verified against that UUID — has been hitting Andy's live SM8 instance. The KV record at `448e12a8-…` contains Andy's real branding, real materials (117 items), real customer list. The "trial KV record" referenced throughout this document up to v2.0 *is* Andy's live record.
+
+Until the real trial (`010895db-…`) is provisioned in KV with its own materials sync and OAuth tokens, **there is no functioning development environment.** Treat `448e12a8-…` as production for any write operation; reads against it are acceptable but understand you are reading Andy's live data.
+
+**KV audit — completed 2026-05-30:** The active record (`client:0e604a45-…`) was audited and is clean — correct prod webhook, Andrew Little staff_uuid, Andy's logo, 6-tier payment thresholds, 24 templates, correct credentials/T&Cs. The orphaned record (`client:448e12a8-…`) has stale dev values but is not used by the form.
 
 ---
 
@@ -26,13 +37,13 @@ If you are about to write code that references the live UUID, stop and confirm w
 
 Rafter is an AI-assisted quoting and operations platform for Australian tradespeople, built by
 Deep Green Sea Pty Ltd (Will Thurlow). It generates branded PDF quotes from a web form,
-creates jobs in ServiceM8, and delivers the PDF via the SM8 Inbox.
+creates jobs in ServiceM8, and attaches the PDF to the SM8 job via the two-step SM8 Attachment API.
 
 **First client:** Andy — 2 Men and a Shovel, Melbourne landscaper.
 **Operator email (Andy's SM8):** will@deepgreensea.au
 **Trial email:** will@thurlow.net
 **GitHub:** shikaishi/Rafter
-**Hosting:** Cloudflare Pages at rafter.deepgreensea.au (auto-deploys from main branch push)
+**Hosting:** `workers/rafter` Worker with Assets at rafter.deepgreensea.au (custom domain binding — deploy manually from `workers/rafter/`)
 **Issue tracking:** Linear — https://linear.app/deepgreensea · Team: Rafter · Issue prefix: RFT
 
 ---
@@ -58,25 +69,28 @@ creates jobs in ServiceM8, and delivers the PDF via the SM8 Inbox.
 
 ```
 / (repo root)
-├── index.html            # Quoting form — Clerk session required
-├── onboarding.html       # Client intake form — post-Clerk sign-up (NEW v2.0)
-├── setup.html            # SM8 OAuth initiation
-├── callback.html         # OAuth callback
-├── workers/
-│   ├── materials-sync/   # rafter-materials-sync Worker
-│   │   ├── wrangler.toml
-│   │   └── index.js
-│   ├── pdf/              # rafter-pdf Worker
-│   │   ├── wrangler.toml
-│   │   └── index.js
-│   └── admin-api/        # rafter-admin-api Worker (NEW v2.0 — not yet built)
-│       ├── wrangler.toml
-│       └── index.js
+└── workers/
+    ├── rafter/              # Site Worker — Worker with Assets, rafter.deepgreensea.au
+    │   ├── wrangler.toml    # custom_domain = rafter.deepgreensea.au
+    │   ├── index.html       # Quoting form (operator-facing)
+    │   ├── setup.html       # SM8 OAuth initiation
+    │   ├── callback.html    # OAuth callback
+    │   └── [onboarding.html]  # NEW v2.0 — NOT YET CREATED
+    ├── materials-sync/      # rafter-materials-sync Worker
+    │   ├── wrangler.toml
+    │   └── index.js
+    ├── pdf/                 # rafter-pdf Worker
+    │   ├── wrangler.toml
+    │   └── index.js
+    └── admin-api/           # rafter-admin-api Worker (NEW v2.0 — NOT YET BUILT)
+        ├── wrangler.toml
+        └── index.js
 ```
 
-**CRITICAL:** Never put wrangler.toml at repo root. Cloudflare Pages auto-deploys static files
-from root on push to main. Workers deploy manually via `wrangler deploy` from their subdirectory.
-Workers auto-deploy is disabled (build command = `exit 0`).
+**CRITICAL:** Never put wrangler.toml at repo root. All Workers deploy manually:
+`cd workers/<name> && npx wrangler deploy`. The site is served by `workers/rafter/` (Worker with
+Assets, custom domain binding in wrangler.toml). No git auto-deploy is active — the Pages project
+build command is `exit 0`.
 
 ---
 
@@ -84,7 +98,7 @@ Workers auto-deploy is disabled (build command = `exit 0`).
 
 | Resource | Name / ID |
 |----------|-----------|
-| Pages project | rafter (rafter.deepgreensea.au) |
+| Site Worker | `rafter` — rafter.deepgreensea.au (custom domain, Worker with Assets) |
 | R2 bucket | `rafter-assets` |
 | KV namespace | `RAFTER_CLIENTS` |
 | KV namespace ID | `7c7ad02d8136452eb6d03d1af89a684f` |
@@ -94,17 +108,33 @@ Workers auto-deploy is disabled (build command = `exit 0`).
 **KV tooling note:** Wrangler v4 `kv key list` returns `[]` — use Cloudflare REST API directly
 for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also work.
 
-**KV key format:** `client:{uuid}` — e.g. `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b`
+**KV key format:** `client:{uuid}` and `slug:{slug}` → uuid
 
-### KV record contents (trial UUID)
+### KV records (audited 2026-05-30)
 
-The KV record for the trial UUID contains:
+| Key | UUID | Status | Used by |
+|-----|------|--------|---------|
+| `slug:andy` | → `0e604a45-84fd-4789-a2cb-662bcba51a8b` | Active | slug resolution |
+| `client:0e604a45-84fd-4789-a2cb-662bcba51a8b` | Andy's Rafter record | **Active — form uses this** | index.html, Make, rafter-pdf |
+| `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` | Andy's SM8 vendor UUID | Orphaned — not used by form | — |
+
+**`0e604a45-…` is the KV record the form actually reads.** `448e12a8-…` is Andy's SM8 vendor UUID (confirmed via vendor.json 2026-05-28) but the KV record at that key was set up as a dev duplicate and has stale values (dev webhook_url, wrong staff_uuid, Rafter logo). Do not use it.
+
+### KV record contents (`client:0e604a45-…` — verified clean 2026-05-30)
+
 - `uuid`, `company_name` ("2 Men and a Shovel"), branding, `r2_photo_path`
-- `payment_thresholds`: `{under_15k: "50/50", between_15k_50k: "20/60/20", over_50k: "5/progress/final"}`
+- `payment_thresholds`: 6-tier — `under_20k` (50/50), `20k_to_35k` (20/60/20), `35k_to_50k` (5/45/45/5), `50k_to_100k` (5/31/31/31/2), `100k_to_200k` (5/27/22/22/22/2), `over_200k` (5/21/18/18/18/18/2). Boundary: `<=` so $20,000 falls in tier 1, $20,001 in tier 2.
 - `proposal_types`: `["LC", "GM"]`
-- `job_categories`, `job_queues`, `templates` (26 items)
-- `phone`, `business_address`, `abn`, `business_email`, `credentials[]`, `terms_and_conditions[]`
-- `access_token`, `refresh_token`, `expires_at`, `token_updated_at`
+- `job_categories`: `["Garden Maintenance", "Landscaping"]`
+- `job_queues`: `["Leads - New", "Leads - Postponed", "Quotes - Accepted"]`
+- `templates`: 24 items (name + text fields)
+- `phone`, `business_address`, `abn`, `business_email`, `credentials[]` (16), `terms_and_conditions[]` (10)
+- `staff_uuid`: `fe62e877-7a15-4a31-aac7-f670c78ef0ab` (Andrew Little)
+- `operator_email`: `willthurlow73@gmail.com` (Will — intentional for now)
+- `logo_url`: `https://rafter-materials-sync.will-8e8.workers.dev/logo/0e604a45-84fd-4789-a2cb-662bcba51a8b`
+- `webhook_url`: `https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4` (prod Rafter Form scenario)
+- `email_template`: Andy's logo + correct merge fields (`{client_name}`, `{job_address}`)
+- `access_token`, `refresh_token`, `expires_at`, `token_updated_at` (OAuth — auto-refreshed)
 - `clerk_org_id` (NEW v2.0 — added at onboarding time)
 
 ---
@@ -157,7 +187,27 @@ CLERK_WEBHOOK_SECRET=whsec_...
 | `/health` | GET | None | Status check |
 | `/refresh-materials?uuid={uuid}` | GET | None | Sync materials from SM8 to KV |
 | `/store-token` | POST | Bearer `RAFTER_WORKER_SECRET` | Write OAuth tokens to KV |
+| `/client-config?uuid={uuid}` | GET | `x-rafter-secret` | Live client config for Make — returns `access_token`, `staff_uuid`, `email_template`, `company_name`, `phone`, `business_email`, `operator_email`, `logo_url`, `webhook_url`. Called at the top of every Make Rafter Form run. |
+| `/render-email` | POST | `x-rafter-secret` | Render email HTML with merge fields `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. Returns `{"html": "..."}`. |
+| `/client/{uuid}` | GET | None | Sanitised KV record (no tokens) |
+| `/materials/{uuid}` | GET | None | Cached materials from KV |
+| `/sm8-staff?uuid={uuid}` | GET | None | List active SM8 staff |
+| `/sm8-search?uuid={uuid}&q={q}` | GET | None | Search SM8 companies (min 3 chars) |
+| `/logo/{uuid}` | GET | None | Serve client logo from R2 |
+| `/resolve-slug/{slug}` | GET | None | Resolve URL slug → client UUID |
 | Cron `0 10 * * * UTC` | — | — | Nightly materials sync |
+
+**Worker secrets** (`npx wrangler secret put <NAME> --name rafter-materials-sync`):
+
+| Secret | Purpose |
+|--------|---------|
+| `RAFTER_WORKER_SECRET` | Bearer token for `/store-token` (called by Make Account Discovery) |
+| `RAFTER_INTERNAL_SECRET` | Header auth (`x-rafter-secret`) for `/client-config` and `/render-email` (called by Make Rafter Form). **Must be provisioned on every new Worker deploy.** |
+| `SERVICEM8_CLIENT_SECRET` | SM8 OAuth client secret for token refresh |
+
+**SM8 token freshness invariant:** Every handler that returns `access_token` or calls SM8 MUST call `refreshTokenIfNeeded(uuid, env)` first. The nightly cron is a safety net only — Make calls `/client-config` at the top of every form scenario and relies on a valid token. Violating this invariant caused BUG-23. See `INVARIANT` comment at `workers/materials-sync/index.js:549`.
+
+**Materials filter:** Always use `?$filter=active eq 1` on `/api_1.0/material.json` fetches — without it inactive (archived) materials are returned alongside active ones.
 
 **SM8 materials:** 117 items. Fields: uuid, name, price, active, cost, quantity_in_stock,
 item_description, unit.
@@ -165,7 +215,7 @@ item_description, unit.
 **store-token body:**
 ```json
 {
-  "uuid": "448e12a8-f7d9-4ace-b8c6-242bf678db3b",
+  "uuid": "010895db-e06c-465d-bce9-2424477be15b",
   "access_token": "...",
   "refresh_token": "...",
   "expires_at": "..."
@@ -180,7 +230,7 @@ item_description, unit.
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/generate?mode=preview` | POST | Generate PDF, return binary |
-| `/generate?mode=submit` | POST | Generate PDF + write to SM8 (501 — NOT YET BUILT) |
+| `/generate?mode=submit` | POST | Generate PDF → POST multipart to `client.webhook_url` (Make Rafter Form webhook). Returns 400 if `webhook_url` not in KV. |
 
 **Required wrangler flags:**
 ```toml
@@ -257,16 +307,15 @@ CREATE TABLE events (
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
 | `/company.json?search={q}` | GET | Client search (min 3 chars, debounced 400ms) |
-| `/job.json` | POST | Create job |
+| `/job.json` | POST | Create job — UUID returned in `x-record-uuid` response header (not body) |
 | `/jobactivity.json` | POST | Create job note |
 | `/staff.json` | GET | List staff (for UUID lookup) |
-| `/api_1.0/inboxmessage.json` | POST | Deliver PDF to SM8 Inbox (VER-01 open — see below) |
+| `/api_1.0/Attachment.json` | POST | Create attachment record — step 1 of PDF delivery. Returns attachment UUID in `x-record-uuid` header. |
+| `/api_1.0/Attachment/{uuid}.file` | POST | Upload PDF binary — step 2 of PDF delivery. Multipart, field name `file`. |
 
-**ALWAYS use trial UUID** for any API test call. Never the live UUID.
+**PDF delivery is two-step Attachment API** (not SM8 Inbox). Inbox delivery is not viable — SM8 Inbox has no file attachment field (VER-01 closed negative).
 
-**Trial instance token:** Retrieve from Make Data Store "Rafter Tokens" → key
-`448e12a8-f7d9-4ace-b8c6-242bf678db3b` → `access_token` field.
-Alternatively: Cloudflare KV → `RAFTER_CLIENTS` → `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b`.
+**Trial UUID token:** Trial UUID `010895db-e06c-465d-bce9-2424477be15b` is not yet provisioned — no KV record, no OAuth tokens. Until the trial is provisioned, **the only available token is Andy's live token** at `client:0e604a45-84fd-4789-a2cb-662bcba51a8b`. Use it for read-only SM8 API calls only — never for writes that create jobs, clients, or attachments in Andy's live SM8.
 
 ### OAuth scopes (current)
 ```
@@ -292,6 +341,8 @@ manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, rea
 **Make is UI-only** — Claude Code cannot modify Make scenarios. Document the required Make
 changes and hand them to Will for manual configuration.
 
+**⚠️ Make UI fragility (BUG-25):** Two modules in the Rafter Form prod scenario were fixed by direct API PATCH and will **silently revert** if the scenario is opened and saved through the Make UI: M3 `company_uuid: {{ifempty(1.client_sm8_uuid; 2.headers.\`x-record-uuid\`)}}` and M33/M37 subject expressions. If new-customer jobs start appearing with blank `company_uuid`, or the email subject regresses, re-PATCH from `make-blueprints/rafter-form-prod-2026-05-21-final.json`. **Avoid opening the Rafter Form prod scenario in the Make UI.**
+
 **Make.com replacement** is a deferred future decision. Candidates: Pipedream (has REST API,
 programmable scenario provisioning) or Cloudflare Workers + Queues (eliminates iPaaS entirely).
 Do not act on this until Will explicitly initiates the workstream.
@@ -307,7 +358,7 @@ Do not act on this until Will explicitly initiates the workstream.
 | Light background | `#ECF1E8` |
 | Heading font | Playfair Display Semi-Bold (600) |
 | Body font | Mulish Regular (400) / Bold (700) |
-| Logo (R2) | `clients/448e12a8-f7d9-4ace-b8c6-242bf678db3b/logo.png` |
+| Logo (R2) | `clients/0e604a45-84fd-4789-a2cb-662bcba51a8b/logo.png` |
 
 ---
 
@@ -319,16 +370,14 @@ Google Sheets issue tracker is retired. All issues now in Linear. Current open i
 
 | Linear ID | Title | Priority | Status |
 |-----------|-------|----------|--------|
-| RFT — VER-01 | SM8 Inbox API PDF attachment support | High | Backlog — blocks T1-E1 |
-| RFT — VER-02 | SM8 OAuth scope includes Inbox write access | High | Backlog — blocked on VER-01 |
+| RFT — VER-01 | SM8 Inbox API PDF attachment support | — | Closed (answered negative 2026-05-14) — Inbox has no file attachment field; re-examine D5 before T1-E1 |
+| RFT — VER-02 | SM8 OAuth scope includes Inbox write access | — | Closed (moot — VER-01 answered negative) |
 | RFT — DEBT-01 | Make email delivery template not served from KV | High | In Progress |
 | RFT — DEBT-03 | Make dev/prod scenario separation | Medium | Backlog — before second client |
 
-**VER-01 detail:** Trial SM8 returns `Inbox functionality is not available on this account`
-(account-gated, not scope). OpenAPI `createInboxMessage` schema has no file/attachment field.
-D5 (amendments via Inbox) must be re-examined before T1-E1 starts.
+**VER-01 (closed negative 2026-05-14):** SM8 Inbox API has no file attachment field — `createInboxMessage` OpenAPI schema has no file/attachment property. Account also returns `Inbox functionality is not available on this account`. Inbox delivery is not viable. D5 must be re-examined before T1-E1 to determine the PDF delivery path.
 
-**VER-02 detail:** Required scope `publish_inbox` — moot until VER-01 resolved.
+**VER-02 (closed — moot):** `publish_inbox` scope is irrelevant given VER-01 negative result.
 
 **VER-03 (closed):** New job UUID returned in `x-record-uuid` response header, not body.
 Any consumer of `POST /job.json` must read headers.
@@ -463,8 +512,8 @@ CONTEXT: See CLAUDE.md
 ## Things that require verification before building
 
 **SM8 verifications — answered 2026-05-14:**
-- **Inbox-attach delivery not supported** by public SM8 API. No file field on `createInboxMessage`. D5 must be re-examined before T1-E1.
-- **`publish_inbox`** is the scope for Inbox write — undocumented on public page, defined in OpenAPI only. Moot until VER-01/D5 resolved.
+- **Inbox-attach delivery not supported** (VER-01 closed negative). No file field on `createInboxMessage`. D5 delivery path is unresolved — must be re-examined before T1-E1.
+- **`publish_inbox`** scope is moot (VER-02 closed).
 - **`create_jobs` missing** from current OAuth grant. New grant + re-auth needed before runtime job creation testing.
 - **New job UUID** in `x-record-uuid` response header, not body.
 
@@ -481,7 +530,7 @@ and prefer test calls against the trial instance for new verification work.
 
 ## Non-negotiable constraints
 
-1. **Trial instance only** until T1-F2. Andy's live UUID must not be used.
+1. **Trial instance only** for development. Andy's active KV record (`0e604a45-…`) is production — explicit sign-off required for any write. T1-F2 is complete; Andy is live.
 2. **No client UUID, credential, or client-specific value hardcoded** in platform files.
 3. **Rafter is stateless** — no quote database. Quotes live in SM8 only. D1 is event logging only.
 4. **job_description is append-only** with delimiter markers. Never overwrite.

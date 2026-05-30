@@ -85,18 +85,39 @@
     document.getElementById('status').style.display = 'none';
     const box = document.createElement('div');
     box.className = 'error-box';
-    box.innerHTML = '<div class="error-title">Error</div><div class="error-msg">' + msg + '</div>';
+    const title = document.createElement('div');
+    title.className = 'error-title';
+    title.textContent = 'Error';
+    const body = document.createElement('div');
+    body.className = 'error-msg';
+    body.textContent = msg;
+    box.appendChild(title);
+    box.appendChild(body);
     document.getElementById('card').appendChild(box);
   }
 
   async function run() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
+    const returnedState = params.get('state');
+    const error = params.get('error');
+
+    if (error) {
+      showError('ServiceM8 returned an error: ' + (params.get('error_description') || error));
+      return;
+    }
 
     if (!code) {
       showError('No authorisation code received from ServiceM8. Please go back and try again.');
       return;
     }
+
+    const savedState = sessionStorage.getItem('oauth_state');
+    if (!savedState || returnedState !== savedState) {
+      showError('Security check failed (state mismatch). Please go back to the setup page and try again.');
+      return;
+    }
+    sessionStorage.removeItem('oauth_state');
 
     try {
       setStatus('Exchanging authorisation code…');

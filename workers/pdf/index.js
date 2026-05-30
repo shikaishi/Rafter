@@ -71,6 +71,29 @@ export default {
   },
 };
 
+const MAKE_WEBHOOK_PREFIX = "https://hook.eu1.make.com/";
+
+async function hmacSha256(data, secret) {
+  const key = await crypto.subtle.importKey(
+    "raw", new TextEncoder().encode(secret),
+    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
+  );
+  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
+  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+}
+
+async function verifyFormToken(token, uuid, env) {
+  if (!env.RAFTER_INTERNAL_SECRET) return false;
+  const parts = token.split(":");
+  if (parts.length !== 3) return false;
+  const [tokenUuid, tsStr, sig] = parts;
+  if (tokenUuid !== uuid) return false;
+  const ts = parseInt(tsStr, 10);
+  if (isNaN(ts) || Math.floor(Date.now() / 1000) - ts > 60) return false;
+  const expected = await hmacSha256(`${tokenUuid}:${tsStr}`, env.RAFTER_INTERNAL_SECRET);
+  return sig === expected;
+}
+
 async function handleGenerate(request, env, url) {
   let payload;
   try {
@@ -87,10 +110,24 @@ async function handleGenerate(request, env, url) {
   const { client_uuid } = payload;
   if (!client_uuid) return json({ error: "missing_client_uuid" }, 400);
 
+  // submit requires a short-lived HMAC token issued by materials-sync /get-form-token
+  if (mode === "submit") {
+    const authHeader = request.headers.get("authorization") || "";
+    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
+    if (!token || !await verifyFormToken(token, client_uuid, env)) {
+      return json({ error: "unauthorized" }, 401);
+    }
+  }
+
   const client = await loadClient(env, client_uuid);
 
   if (mode === "submit" && !client.webhook_url) {
     return json({ error: "webhook_url_not_configured", client_uuid }, 400);
+  }
+
+  // Guard against SSRF via a compromised or misconfigured KV record
+  if (mode === "submit" && !client.webhook_url.startsWith(MAKE_WEBHOOK_PREFIX)) {
+    return json({ error: "invalid_webhook_url" }, 500);
   }
 
   const [logoDataUrl, photoMap] = await Promise.all([
@@ -234,7 +271,7 @@ async function renderPdf(env, html) {
 }
 
 function buildHtml({ payload, client, logoDataUrl, photoMap }) {
-  const businessName = client.business_name || "2 Men and a Shovel";
+  const businessName = client.company_name || "";
   const businessAddress = client.business_address || "";
   const businessEmail = client.business_email || "";
   const businessAbn = client.abn || "";
@@ -689,7 +726,7 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   </div>
 
   <div class="appendix">
-    ${renderCredentials(credentials)}
+    ${renderCredentials(credentials, businessName)}
     ${renderTerms(terms)}
   </div>
 
@@ -787,7 +824,7 @@ function renderTotals(payload) {
   </section>`;
 }
 
-function renderCredentials(credentials) {
+function renderCredentials(credentials, businessName) {
   if (!credentials.length) return "";
   const check = `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="5 12 10 17 19 8"/></svg>`;
   const rows = credentials
@@ -804,7 +841,7 @@ function renderCredentials(credentials) {
     })
     .join("");
   return `<section class="block">
-    <h2 class="block-h">You can rely on 2 Men and a Shovel</h2>
+    <h2 class="block-h">You can rely on ${escapeHtml(businessName)}</h2>
     <div class="creds">${rows}</div>
   </section>`;
 }
