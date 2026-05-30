@@ -275,12 +275,30 @@ async function handleGetFormToken(url, env) {
   return json({ token: `${data}:${sig}`, expires_in: 60 });
 }
 
+async function verifyFormToken(token, uuid, env) {
+  if (!env.RAFTER_INTERNAL_SECRET) return false;
+  const parts = token.split(":");
+  if (parts.length !== 3) return false;
+  const [tokenUuid, tsStr, sig] = parts;
+  if (tokenUuid !== uuid) return false;
+  const ts = parseInt(tsStr, 10);
+  if (isNaN(ts) || Math.floor(Date.now() / 1000) - ts > 60) return false;
+  const expected = await hmacSha256(`${tokenUuid}:${tsStr}`, env.RAFTER_INTERNAL_SECRET);
+  return sig === expected;
+}
+
 async function handleRefreshMaterials(url, env, request) {
-  const denied = requireWorkerSecret(request, env);
-  if (denied) return denied;
   const uuid = url.searchParams.get("uuid");
   if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
     return json({ error: "invalid_uuid" }, { status: 400 });
+  }
+  // Accept either a worker-secret (operational) or a form token (browser)
+  const auth = request.headers.get("authorization") || "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+  const workerSecretOk = env.RAFTER_WORKER_SECRET && token === env.RAFTER_WORKER_SECRET;
+  const formTokenOk = !workerSecretOk && await verifyFormToken(token, uuid, env);
+  if (!workerSecretOk && !formTokenOk) {
+    return json({ error: "unauthorized" }, { status: 401 });
   }
 
   const config = await readClient(env, uuid);

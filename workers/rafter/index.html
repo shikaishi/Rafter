@@ -1783,7 +1783,12 @@ async function refreshMaterials() {
   const span = btn.querySelector('span');
   if (span) span.textContent = 'Syncing…';
   try {
-    const r = await fetch(`${API}/refresh-materials?uuid=${state.clientUuid}`);
+    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
+    if (!tokenRes.ok) throw new Error("Failed to get refresh authorisation");
+    const { token } = await tokenRes.json();
+    const r = await fetch(`${API}/refresh-materials?uuid=${encodeURIComponent(state.clientUuid)}`, {
+      headers: { "Authorization": `Bearer ${token}` },
+    });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       state.materialsAvailable = false;
