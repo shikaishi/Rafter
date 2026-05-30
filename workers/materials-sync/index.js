@@ -217,8 +217,7 @@ async function handleStoreToken(request, env) {
     return json({ error: "missing_field", field: "access_token" }, { status: 400 });
   }
 
-  const config = await readClient(env, uuid);
-  if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
+  const config = (await readClient(env, uuid)) || { uuid };
 
   config.access_token = access_token;
   if (refresh_token !== undefined) config.refresh_token = refresh_token;
