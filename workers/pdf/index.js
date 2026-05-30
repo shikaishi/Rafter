@@ -39,7 +39,7 @@ function corsHeaders(request) {
   return {
     "access-control-allow-origin": allow,
     "access-control-allow-methods": "POST, GET, OPTIONS",
-    "access-control-allow-headers": "Content-Type",
+    "access-control-allow-headers": "Content-Type, Authorization",
     "vary": "Origin",
   };
 }
