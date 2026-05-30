@@ -315,7 +315,7 @@ CREATE TABLE events (
 
 **PDF delivery is two-step Attachment API** (not SM8 Inbox). Inbox delivery is not viable — SM8 Inbox has no file attachment field (VER-01 closed negative).
 
-**Trial UUID token:** Trial UUID `010895db-e06c-465d-bce9-2424477be15b` is not yet provisioned — no KV record, no OAuth tokens. Until the trial is provisioned, **the only available token is Andy's live token** at `client:0e604a45-84fd-4789-a2cb-662bcba51a8b`. Use it for read-only SM8 API calls only — never for writes that create jobs, clients, or attachments in Andy's live SM8.
+**Trial UUID token:** Trial UUID `010895db-e06c-465d-bce9-2424477be15b` is provisioned — KV record created, OAuth done (will@thurlow.net), 114 materials synced (2026-05-30). Use `slug:dev` for all dev/test SM8 API calls. Andy's live token at `client:0e604a45-…` is read-only — never use for writes that create jobs, clients, or attachments.
 
 ### OAuth scopes (current)
 ```
@@ -374,7 +374,7 @@ Google Sheets issue tracker is retired. All issues now in Linear. Current open i
 | RFT — VER-01 | SM8 Inbox API PDF attachment support | — | Closed (answered negative 2026-05-14) — Inbox has no file attachment field; re-examine D5 before T1-E1 |
 | RFT — VER-02 | SM8 OAuth scope includes Inbox write access | — | Closed (moot — VER-01 answered negative) |
 | RFT — DEBT-01 | Make email delivery template not served from KV | High | In Progress |
-| RFT — DEBT-03 | Make dev/prod scenario separation | Medium | Backlog — before second client |
+| RFT — DEBT-03 | Make dev/prod scenario separation | Medium | **Done** — slug:dev → trial → dev scenario 5962197; slug:andy → Andy live → prod 5537814 (2026-05-30) |
 
 **VER-01 (closed negative 2026-05-14):** SM8 Inbox API has no file attachment field — `createInboxMessage` OpenAPI schema has no file/attachment property. Account also returns `Inbox functionality is not available on this account`. Inbox delivery is not viable. D5 must be re-examined before T1-E1 to determine the PDF delivery path.
 
