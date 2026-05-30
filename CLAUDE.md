@@ -1,8 +1,20 @@
 # CLAUDE.md — Rafter Platform
 
-> Read this file at the start of every Claude Code session. It contains everything needed to work
-> on Rafter without a context dump. Do not make assumptions about endpoints, UUIDs, or
-> configuration values — they are all here or flagged as requiring verification.
+> **⚠️ SESSION-START PROTOCOL — do this before reading anything else, every session, every machine.**
+>
+> This file is canonical **only on `origin/main`**. The copy on your disk is a *reader*, never a master.
+> A working tree that is behind origin, or has uncommitted edits to this file, is NOT to be trusted or written from.
+>
+> **At the start of every Claude Code session, before reading the rest of this file or touching any resource:**
+> 1. `git fetch && git status` — confirm you are on `main` and **0 commits behind**. If behind, `git pull --ff-only` to current.
+> 2. If the working tree is dirty (`git status` shows modified/deleted files), STOP and resolve before working — do not build on or around uncommitted changes. Report the dirty state to Will.
+> 3. Re-read this file *after* syncing. The UUID table below is safety-critical; a stale copy has caused live-data risk before (the 2026-05-28 incident). Confirm the three-UUID table is present before any KV/SM8/Cloudflare operation.
+>
+> **One writer, many readers.** This file is edited only by commit-and-push to `origin/main`. Never as an uncommitted local-only change, never by hand-editing a Drive/laptop copy. Every machine (desktop, laptop) and both surfaces (Claude Code reads it from the repo; Claude Chat reads it via the GitHub connector or a current paste) read the *same* origin copy. If you find yourself with a second editable copy, that copy is the bug — delete it or make it a read-only mirror.
+>
+> **Why this protocol exists:** on 2026-05-30 a Code session was found 69 commits behind origin, working from a pre-2026-05-28 CLAUDE.md whose UUID table was stale — it labelled `448e12a8-…` as the dev/trial instance when that UUID is actually an orphaned record on Andy's live SM8 vendor identity. Building from that copy would have routed "dev" writes to Andy's live data. The cause was a working tree allowed to drift and be edited. This protocol removes the ability for that to happen silently.
+>
+> Read this file at the start of every Claude Code session — it contains everything needed to work on Rafter without a context dump. Do not make assumptions about endpoints, UUIDs, or configuration values — they are all here or flagged as requiring verification.
 >
 > **Version 2.0 — Updated May 2026.** Major changes: Clerk auth + billing, Admin API Worker,
 > D1 event logging, central dashboard, Linear issue tracking. See change summary below.
