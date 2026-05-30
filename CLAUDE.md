@@ -15,7 +15,7 @@
 
 | Instance | UUID | Role | Use |
 |----------|------|------|-----|
-| **Trial (DEV/TEST)** | `010895db-e06c-465d-bce9-2424477be15b` | Will's thurlow.net SM8 vendor UUID | All development — **KV record does not yet exist; must be provisioned before usable** |
+| **Trial (DEV/TEST)** | `010895db-e06c-465d-bce9-2424477be15b` | Will's thurlow.net SM8 vendor UUID | All development — `slug:dev` resolves here. **Provisioned 2026-05-30: KV record created, OAuth done, 114 materials synced.** |
 | **Andy's KV record** | `0e604a45-84fd-4789-a2cb-662bcba51a8b` | Active KV key — `slug:andy` resolves here | The record the form reads. Production — explicit sign-off required for any write. |
 | **Andy's SM8 vendor UUID** | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` | SM8 API identity (vendor.json) | SM8 API calls use this as the account identity. KV record at this key is an orphaned duplicate — do not use. |
 
@@ -27,7 +27,7 @@ CLAUDE.md v2.0 (and the rafter-continuation-prompt before it) had these two UUID
 
 Consequence: every prior "dev/test" call against `448e12a8-…` — every KV write, every materials sync, every PDF preview, every Worker deploy verified against that UUID — has been hitting Andy's live SM8 instance. The KV record at `448e12a8-…` contains Andy's real branding, real materials (117 items), real customer list. The "trial KV record" referenced throughout this document up to v2.0 *is* Andy's live record.
 
-Until the real trial (`010895db-…`) is provisioned in KV with its own materials sync and OAuth tokens, **there is no functioning development environment.** Treat `448e12a8-…` as production for any write operation; reads against it are acceptable but understand you are reading Andy's live data.
+**Dev environment provisioned 2026-05-30.** `slug:dev` → `010895db-…` KV record, OAuth complete (will@thurlow.net), 114 materials synced, dev Make scenario 5962197 active. Use `rafter.deepgreensea.au/dev` for all development and testing. Treat `448e12a8-…` as production for any write operation.
 
 **KV audit — completed 2026-05-30:** The active record (`client:0e604a45-…`) was audited and is clean — correct prod webhook, Andrew Little staff_uuid, Andy's logo, 6-tier payment thresholds, 24 templates, correct credentials/T&Cs. The orphaned record (`client:448e12a8-…`) has stale dev values but is not used by the form.
 
