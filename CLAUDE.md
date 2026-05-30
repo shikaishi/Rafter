@@ -94,8 +94,9 @@ creates jobs in ServiceM8, and attaches the PDF to the SM8 job via the two-step 
     ├── pdf/                 # rafter-pdf Worker
     │   ├── wrangler.toml
     │   └── index.js
-    └── admin-api/           # rafter-admin-api Worker (NEW v2.0 — NOT YET BUILT)
+    └── admin-api/           # rafter-admin-api Worker (NEW v2.0 — stub deployed, provisioning TBD)
         ├── wrangler.toml
+        ├── package.json
         └── index.js
 ```
 
@@ -253,22 +254,41 @@ compatibility_date = "2024-09-23"
 **Font loading:** Google Fonts does NOT load in headless Chromium. All fonts (Mulish 400/700,
 Playfair Display 600) must be inlined as base64 data URIs. Do not reference Google Fonts CDN.
 
-### rafter-admin-api (NEW v2.0 — NOT YET BUILT)
+### rafter-admin-api (NEW v2.0)
 
-**URL:** https://rafter-admin-api.will-8e8.workers.dev (proposed)
+**URL:** https://rafter-admin-api.will-8e8.workers.dev
 **Location:** `workers/admin-api/`
-**Auth:** Bearer `RAFTER_ADMIN_SECRET` (Worker secret — never hardcode)
+**Status:** Stub deployed (RFT-24, RFT-25 closed). Route classes and auth guards live; provisioning handlers are stubs pending Admin API build step.
+
+**Route classes (auth pattern locked — RFT-25):**
+
+| Route class | Auth | Callers |
+|-------------|------|---------|
+| `POST /webhooks/clerk` | Svix HMAC-SHA256 (`CLERK_WEBHOOK_SECRET`) | Clerk server-to-server only |
+| `/admin/*` | Bearer `RAFTER_ADMIN_SECRET` | Claude Code / MCP — not browser-reachable |
+| `POST /onboarding/*` | Clerk JWT (networkless via `CLERK_JWT_KEY`) | `onboarding.html` browser session |
 
 | Endpoint | Method | Purpose |
 |----------|--------|---------|
+| `/webhooks/clerk` | POST | Receive Clerk org lifecycle events |
 | `/admin/clients` | POST | Provision new client KV record |
-| `/admin/clients/{uuid}/verify` | POST | Run end-to-end health check |
+| `/admin/clients` | GET | List all clients and status |
+| `/admin/clients/{uuid}/verify` | POST | Run end-to-end health check (smoketest) |
 | `/admin/clients/{uuid}/sync` | POST | Trigger materials sync |
 | `/admin/clients/{uuid}/rotate-secret` | POST | Rotate client auth token |
-| `/admin/clients` | GET | List all clients and status |
+| `/onboarding/provision` | POST | Browser-initiated provisioning (Clerk JWT scoped to org) |
+| `/onboarding/verify` | POST | Browser-initiated smoketest trigger |
 
-**Called by:** Clerk webhook (org.created), Claude Code via Cloudflare MCP, onboarding.html.
-**Not called by:** index.html, any client-facing surface.
+**Called by:** Clerk webhook (`/webhooks/clerk`), Claude Code via MCP (`/admin/*`), `onboarding.html` (`/onboarding/*`).
+**Not called by:** `index.html`, any other client-facing surface.
+
+**Worker secrets** (`npx wrangler secret put <NAME> --name rafter-admin-api`):
+
+| Secret | Purpose | Status |
+|--------|---------|--------|
+| `CLERK_WEBHOOK_SECRET` | Svix signing secret for `/webhooks/clerk` | Set 2026-05-30. **Rotated 2026-05-30** — original value was echoed to terminal via `Object.keys(env)` diagnostic log during RFT-24; new secret generated in Clerk Dashboard before close. |
+| `RAFTER_ADMIN_SECRET` | Bearer token for `/admin/*` routes | Set 2026-05-30 |
+| `CLERK_JWT_KEY` | PEM public key for networkless Clerk JWT verification (REQ-On-05) | **Pending** — set at Clerk-wiring step |
 
 ---
 
