@@ -509,6 +509,19 @@ wrangler CLI or manual steps.
 
 **Make.com remains UI-only.** Document required Make changes and hand to Will.
 
+### Tool discipline (token and approval efficiency)
+
+**For file operations — always use the built-in tools, never Bash/PowerShell:**
+- File search → `Glob` · Content search → `Grep` · File read → `Read`
+- Never substitute `Bash(find ...)`, `Bash(grep ...)`, `PowerShell(Get-ChildItem ...)` for these
+
+**For Cloudflare data — MCP first, wrangler CLI second:**
+- KV reads → `mcp__cloudflare__kv_get` before `npx wrangler kv key get`
+- Note: wrangler v4 `kv key list` and `kv key get` are broken (return empty/not-found). MCP is the reliable path.
+- If `kv_get` returns `[object Object]` (MCP serialisation bug), fall back to wrangler; if that also fails, **stop and ask Will to retrieve the value from the Cloudflare dashboard** — do not explore workarounds iteratively.
+
+**Dead-end rule:** If a data source is inaccessible after one attempt with each available tool, stop and ask Will one targeted question. State exactly what value is needed and why. Do not iterate through system directories or try multiple alternative approaches unilaterally.
+
 ---
 
 ## Claude Chat / Claude Code split
