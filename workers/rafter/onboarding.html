@@ -730,13 +730,26 @@ function setResult(kind, data, errorMsg) {
     return;
   }
 
-  // Activate first org if none selected
+  // Activate correct org — safe for multi-org accounts
   if (!clerk.organization) {
+    const params      = new URLSearchParams(window.location.search);
+    const paramOrgId  = params.get('org_id');
     const memberships = clerk.user.organizationMemberships ?? [];
-    if (memberships.length > 0) {
-      try {
-        await clerk.setActive({ organization: memberships[0].organization.id });
-      } catch {}
+
+    // Priority: explicit ?org_id= URL param → single membership auto-activate → error
+    let targetOrgId = paramOrgId;
+    if (!targetOrgId) {
+      if (memberships.length === 1) {
+        targetOrgId = memberships[0].organization.id;
+      } else if (memberships.length > 1) {
+        loadingEl.querySelector('p').textContent =
+          'Multiple organisations found. Open this page from your Rafter organisation dashboard, or ask your administrator for a link with ?org_id= specified.';
+        return;
+      }
+      // length === 0: no org yet — form proceeds with clerk_org_id null
+    }
+    if (targetOrgId) {
+      try { await clerk.setActive({ organization: targetOrgId }); } catch {}
     }
   }
 

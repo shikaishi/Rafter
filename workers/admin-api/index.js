@@ -66,14 +66,56 @@ async function requireClerkJWT(request, env) {
 // ── Webhook handler ──────────────────────────────────────────────────────────
 
 async function handleClerkWebhook(request, env) {
+  const svixId = request.headers.get('svix-id');
   try {
     const evt = await verifyWebhook(request, { signingSecret: env.CLERK_WEBHOOK_SECRET });
     console.log(JSON.stringify({ event: 'webhook_received', type: evt.type }));
+
     if (evt.type === 'organization.created') {
-      // TODO REQ-On-09: trigger provisioning from webhook at Clerk wiring step
-      // Per REQ-On-13: dedupe on svix-id or clerk_org_id already in KV before acting
-      console.log(JSON.stringify({ event: 'org_created', org_id: evt.data?.id }));
+      const orgId   = evt.data?.id;
+      const orgSlug = evt.data?.slug;
+      const orgName = evt.data?.name;
+
+      // REQ-On-13: idempotency guard — check svix-id first (covers Svix retry storms),
+      // then clerk_org_id in KV (covers any other duplicate delivery path).
+      if (svixId) {
+        const seen = await env.RAFTER_CLIENTS.get('svix:' + svixId).catch(() => null);
+        if (seen) {
+          console.log(JSON.stringify({ event: 'webhook_dedup', svix_id: svixId }));
+          return json({ ok: true, type: evt.type, dedup: true });
+        }
+      }
+      if (orgId) {
+        const existingUuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+        if (existingUuid) {
+          console.log(JSON.stringify({ event: 'webhook_dedup_org', clerk_org_id: orgId, uuid: existingUuid }));
+          return json({ ok: true, type: evt.type, dedup: true, uuid: existingUuid });
+        }
+      }
+
+      // REQ-On-09: provision stub record — full business details arrive via onboarding form (merge-safe).
+      // Clerk org slug becomes the initial Rafter URL slug; webhook_url populated by form submission.
+      let uuid;
+      try {
+        ({ uuid } = await provisionClient({
+          clerk_org_id: orgId,
+          company_name: orgName || 'Unknown',
+          slug: orgSlug || orgId,
+          webhook_url: '',
+        }, env));
+      } catch (err) {
+        console.error(JSON.stringify({ event: 'org_provision_error', clerk_org_id: orgId, error: err.message }));
+        return json({ ok: false, error: err.message }, 500);
+      }
+
+      // Store svix-id for 7 days (Svix retry window) so retries are no-ops
+      if (svixId) {
+        await env.RAFTER_CLIENTS.put('svix:' + svixId, uuid, { expirationTtl: 7 * 24 * 3600 }).catch(() => {});
+      }
+      console.log(JSON.stringify({ event: 'org_provisioned', clerk_org_id: orgId, uuid, slug: orgSlug }));
+      return json({ ok: true, type: evt.type, uuid });
     }
+
     return json({ ok: true, type: evt.type });
   } catch (err) {
     return json({ ok: false, error: err.message }, 400);
@@ -159,10 +201,16 @@ async function handleProvision(body, env) {
 }
 
 async function provisionClient(body, env) {
-  const uuid = body.uuid || crypto.randomUUID();
+  // UUID resolution: explicit → clerk_org reverse lookup → new random
+  // Clerk_org lookup ensures webhook stub + form submission share the same UUID (REQ-On-13 merge-safe)
+  let uuid = body.uuid;
+  if (!uuid && body.clerk_org_id) {
+    uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + body.clerk_org_id).catch(() => null);
+  }
+  uuid = uuid || crypto.randomUUID();
   const { slug } = body;
 
-  // Read existing for merge-safe update — preserves all fields (incl. OAuth tokens) not in body (REQ-On-13)
+  // Read existing for merge-safe update — preserves all fields (incl. OAuth tokens) not in body
   const existingRaw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid);
   const existing = existingRaw ? JSON.parse(existingRaw) : {};
 
@@ -187,7 +235,13 @@ async function provisionClient(body, env) {
 
   // REQ-On-29: write KV client record + slug resolver
   await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
-  await env.RAFTER_CLIENTS.put(SLUG_PREFIX + slug, uuid);
+  if (slug) await env.RAFTER_CLIENTS.put(SLUG_PREFIX + slug, uuid);
+  // Clerk org reverse index: enables UUID continuity and idempotency checks
+  if (record.clerk_org_id) await env.RAFTER_CLIENTS.put('clerk_org:' + record.clerk_org_id, uuid);
+  // Clean up stale slug key if slug changed (e.g., Clerk slug replaced by admin slug on form submit)
+  if (existing.slug && slug && existing.slug !== slug) {
+    await env.RAFTER_CLIENTS.delete(SLUG_PREFIX + existing.slug).catch(() => {});
+  }
 
   // REQ-On-30: upload logo to R2 if provided as base64
   let logo_uploaded = false;
