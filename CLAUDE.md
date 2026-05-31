@@ -121,6 +121,8 @@ build command is `exit 0`.
 **KV tooling note:** Wrangler v4 `kv key list` returns `[]` — use Cloudflare REST API directly
 for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also work.
 
+**Worker-to-Worker calls:** Same-account Workers MUST use a **Service Binding**, NOT a workers.dev URL. Cloudflare blocks W2W subrequests via workers.dev at the edge — they are silently never delivered (wrangler tail shows zero events). Admin API → materials-sync uses binding `MATERIALS_SYNC_WORKER` (declared in admin-api wrangler.toml `[[services]]`). Any new Worker-to-Worker call must follow the same pattern.
+
 **KV key format:** `client:{uuid}` and `slug:{slug}` → uuid
 
 ### KV records (audited 2026-05-30)
@@ -258,7 +260,11 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 
 **URL:** https://rafter-admin-api.will-8e8.workers.dev
 **Location:** `workers/admin-api/`
-**Status:** Stub deployed (RFT-24, RFT-25 closed). Route classes and auth guards live; provisioning handlers are stubs pending Admin API build step.
+**Status:** Implemented 2026-05-31. Route classes, auth guards, provisioning (POST /admin/clients), smoketest (POST /admin/clients/{uuid}/verify), and sync trigger (POST /admin/clients/{uuid}/sync) all live. GET /admin/clients (list) pending. Clerk wiring (CLERK_JWT_KEY, onboarding webhook trigger) pending.
+
+**Bindings:** KV (`RAFTER_CLIENTS`), R2 (`RAFTER_ASSETS`), D1 (`RAFTER_EVENTS`), Service Binding (`MATERIALS_SYNC_WORKER` → `rafter-materials-sync`). The service binding is required for Worker-to-Worker calls — see W2W note in Cloudflare infrastructure section.
+
+**REQ-On-32 (trigger materials sync):** Admin API calls materials-sync via `MATERIALS_SYNC_WORKER` service binding, not HTTP. Auth still uses `RAFTER_WORKER_SECRET` bearer token (materials-sync `/refresh-materials` checks it regardless of call path).
 
 **Route classes (auth pattern locked — RFT-25):**
 
@@ -288,7 +294,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 |--------|---------|--------|
 | `CLERK_WEBHOOK_SECRET` | Svix signing secret for `/webhooks/clerk` | Set 2026-05-30. **Rotated 2026-05-30** — original value was echoed to terminal via `Object.keys(env)` diagnostic log during RFT-24; new secret generated in Clerk Dashboard before close. |
 | `RAFTER_ADMIN_SECRET` | Bearer token for `/admin/*` routes | Set 2026-05-30 |
-| `RAFTER_WORKER_SECRET` | Bearer token for admin-api→materials-sync calls to `/refresh-materials`. **Same value as on materials-sync.** Required for sync and token_fresh smoketest assertion. | **Pending** — `npx wrangler secret put RAFTER_WORKER_SECRET --name rafter-admin-api` with the same value already set on rafter-materials-sync |
+| `RAFTER_WORKER_SECRET` | Bearer token for admin-api→materials-sync calls to `/refresh-materials`. **Same value as on materials-sync.** Required for sync and token_fresh smoketest assertion. | **Set 2026-05-31** (rotated on same date — previous value unknown, new value set on both workers simultaneously) |
 | `CLERK_JWT_KEY` | PEM public key for networkless Clerk JWT verification (REQ-On-05) | **Pending** — set at Clerk-wiring step |
 
 ---
