@@ -181,10 +181,15 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 - GST/tax: not yet supported in Clerk. Manual invoice short-term.
 - Subscription lapse → Worker gates access, redirects to billing page
 
+**Clerk instance (test):**
+- Publishable key: `pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ`
+- Clerk domain: `first-kiwi-3.clerk.accounts.dev`
+- JWKS: `https://first-kiwi-3.clerk.accounts.dev/.well-known/jwks.json`
+
 **Clerk environment variables (to be added to all Workers):**
 ```
-CLERK_PUBLISHABLE_KEY=pk_live_...
-CLERK_SECRET_KEY=sk_live_...
+CLERK_PUBLISHABLE_KEY=pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ
+CLERK_SECRET_KEY=sk_test_...
 CLERK_WEBHOOK_SECRET=whsec_...
 ```
 
@@ -295,7 +300,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 | `CLERK_WEBHOOK_SECRET` | Svix signing secret for `/webhooks/clerk` | Set 2026-05-30. **Rotated 2026-05-30** — original value was echoed to terminal via `Object.keys(env)` diagnostic log during RFT-24; new secret generated in Clerk Dashboard before close. |
 | `RAFTER_ADMIN_SECRET` | Bearer token for `/admin/*` routes | Set 2026-05-30 |
 | `RAFTER_WORKER_SECRET` | Bearer token for admin-api→materials-sync calls to `/refresh-materials`. **Same value as on materials-sync.** Required for sync and token_fresh smoketest assertion. | **Set 2026-05-31** (rotated on same date — previous value unknown, new value set on both workers simultaneously) |
-| `CLERK_JWT_KEY` | PEM public key for networkless Clerk JWT verification (REQ-On-05) | **Pending** — set at Clerk-wiring step |
+| `CLERK_JWT_KEY` | PEM public key for networkless Clerk JWT verification (REQ-On-05) | **Set 2026-05-31** — RSA public key derived from JWKS at `https://first-kiwi-3.clerk.accounts.dev/.well-known/jwks.json` (decoded from publishable key `pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ`) |
 
 ---
 
