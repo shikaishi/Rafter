@@ -531,13 +531,31 @@ function initLogoUpload() {
   }
 }
 
-// ── Slug preview ─────────────────────────────────────────────────────────────
+// ── Slug preview + suggestion from company name ──────────────────────────────
 
-function initSlugPreview() {
-  const slugInput = document.getElementById('slug');
-  const slugEl    = document.getElementById('slug-preview');
+function initSlugLogic() {
+  const slugInput   = document.getElementById('slug');
+  const slugPreview = document.getElementById('slug-preview');
+  const nameInput   = document.getElementById('company_name');
+
+  // Live URL preview on every keystroke
   slugInput.addEventListener('input', () => {
-    slugEl.textContent = slugInput.value.trim() || 'yourcompany';
+    slugPreview.textContent = slugInput.value.trim() || 'yourcompany';
+  });
+
+  // Suggest slug from company name — auto-fills only while operator hasn't customised it
+  let lastSuggested = '';
+  nameInput.addEventListener('input', () => {
+    const suggested = nameInput.value.trim()
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-|-$/g, '')
+      .slice(0, 30);
+    if (!slugInput.value || slugInput.value === lastSuggested) {
+      slugInput.value         = suggested;
+      slugPreview.textContent = suggested || 'yourcompany';
+      lastSuggested           = suggested;
+    }
   });
 }
 
@@ -655,6 +673,8 @@ async function handleSubmit(e, clerk) {
 
     if (res.ok && data.ok) {
       setResult('ok', data, null);
+    } else if (data.code === 'SLUG_TAKEN') {
+      showSlugError(data.error);
     } else {
       const msg = Array.isArray(data.errors) ? data.errors.join('\n') : (data.error ?? JSON.stringify(data));
       setResult('error', null, msg);
@@ -665,6 +685,25 @@ async function handleSubmit(e, clerk) {
 
   btn.disabled = false;
   status.textContent = '';
+}
+
+function showSlugError(msg) {
+  const slugInput = document.getElementById('slug');
+  slugInput.classList.add('invalid');
+  const prev = document.getElementById('slug-field-error');
+  if (prev) prev.remove();
+  const errEl = document.createElement('div');
+  errEl.id = 'slug-field-error';
+  errEl.style.cssText = 'font-size:12px;color:var(--rf-danger);font-weight:600;margin-top:4px;';
+  errEl.textContent = msg;
+  slugInput.parentNode.appendChild(errEl);
+  slugInput.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  slugInput.focus();
+  slugInput.addEventListener('input', () => {
+    slugInput.classList.remove('invalid');
+    const el = document.getElementById('slug-field-error');
+    if (el) el.remove();
+  }, { once: true });
 }
 
 function setResult(kind, data, errorMsg) {
@@ -762,7 +801,7 @@ function setResult(kind, data, errorMsg) {
   // Build UI
   buildThresholdTable();
   initLogoUpload();
-  initSlugPreview();
+  initSlugLogic();
   prefillFromParams();
 
   document.getElementById('onboarding-form').addEventListener('submit', e => handleSubmit(e, clerk));

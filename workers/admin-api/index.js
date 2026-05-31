@@ -196,6 +196,9 @@ async function handleProvision(body, env) {
     const result = await provisionClient(body, env);
     return json({ ok: true, ...result });
   } catch (err) {
+    if (err.code === 'SLUG_TAKEN') {
+      return json({ ok: false, error: err.message, code: 'SLUG_TAKEN' }, 409);
+    }
     console.error(JSON.stringify({ event: 'provision_error', error: err.message }));
     return json({ ok: false, error: err.message }, 500);
   }
@@ -234,7 +237,17 @@ async function provisionClient(body, env) {
     if (body[f] !== undefined) record[f] = body[f];
   }
 
-  // REQ-On-29: write KV client record + slug resolver
+  // REQ-On-29: uniqueness guard before any write — fail fast so no partial state is left
+  if (slug) {
+    const slugOwner = await env.RAFTER_CLIENTS.get(SLUG_PREFIX + slug);
+    if (slugOwner && slugOwner !== uuid) {
+      const err = new Error(`slug '${slug}' is already taken — choose a different URL identifier`);
+      err.code = 'SLUG_TAKEN';
+      throw err;
+    }
+  }
+
+  // Write KV client record + slug resolver
   await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
   if (slug) await env.RAFTER_CLIENTS.put(SLUG_PREFIX + slug, uuid);
   // Clerk org reverse index: enables UUID continuity and idempotency checks
