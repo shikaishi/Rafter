@@ -116,7 +116,7 @@ build command is `exit 0`.
 | KV namespace | `RAFTER_CLIENTS` |
 | KV namespace ID | `7c7ad02d8136452eb6d03d1af89a684f` |
 | wrangler.toml binding | `binding = "RAFTER_CLIENTS", id = "7c7ad02d8136452eb6d03d1af89a684f"` |
-| D1 database | `rafter-events` (NEW v2.0 — not yet created) |
+| D1 database | `rafter-events` — ID `39f38376-d163-439b-984d-2f0889e88d56` (built 2026-05-31) |
 
 **KV tooling note:** Wrangler v4 `kv key list` returns `[]` — use Cloudflare REST API directly
 for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also work.
@@ -292,10 +292,11 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 
 ---
 
-## D1 — rafter-events (NEW v2.0 — NOT YET BUILT)
+## D1 — rafter-events (NEW v2.0 — built 2026-05-31, RFT-27)
 
 **Database name:** `rafter-events`
-**Write ownership:** `rafter-materials-sync` Worker
+**Database ID:** `39f38376-d163-439b-984d-2f0889e88d56`
+**Write ownership:** `rafter-materials-sync` Worker — binding `RAFTER_EVENTS` in wrangler.toml
 **Retention:** 90-day rolling window
 **Purpose:** Event logging for dashboard. Not quote persistence — Rafter remains stateless.
 
@@ -503,7 +504,7 @@ wrangler CLI or manual steps.
 - Read and write KV records without wrangler
 - Upload files to R2 without wrangler
 - Deploy Workers
-- Query D1 once rafter-events is created
+- Query D1 (`rafter-events` — ID `39f38376-d163-439b-984d-2f0889e88d56`)
 - Create and update Linear issues
 - Commit code and open PRs on shikaishi/Rafter
 

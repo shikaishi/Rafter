@@ -10,5 +10,10 @@ id = "7c7ad02d8136452eb6d03d1af89a684f"
 binding = "RAFTER_ASSETS"
 bucket_name = "rafter-assets"
 
+[[d1_databases]]
+binding = "RAFTER_EVENTS"
+database_name = "rafter-events"
+database_id = "39f38376-d163-439b-984d-2f0889e88d56"
+
 [triggers]
 crons = ["0 10 * * *"]
