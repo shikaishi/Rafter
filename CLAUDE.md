@@ -299,6 +299,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 |--------|---------|--------|
 | `CLERK_WEBHOOK_SECRET` | Svix signing secret for `/webhooks/clerk` | Set 2026-05-30. **Rotated 2026-05-30** — original value was echoed to terminal via `Object.keys(env)` diagnostic log during RFT-24; new secret generated in Clerk Dashboard before close. |
 | `RAFTER_ADMIN_SECRET` | Bearer token for `/admin/*` routes | Set 2026-05-30 |
+| `CLERK_SECRET_KEY` | Clerk Backend API key — used by subscription_gate smoketest (GET /v1/organizations) and any future Clerk API calls | **Set 2026-05-31** |
 | `RAFTER_WORKER_SECRET` | Bearer token for admin-api→materials-sync calls to `/refresh-materials`. **Same value as on materials-sync.** Required for sync and token_fresh smoketest assertion. | **Set 2026-05-31** (rotated on same date — previous value unknown, new value set on both workers simultaneously) |
 | `CLERK_JWT_KEY` | PEM public key for networkless Clerk JWT verification (REQ-On-05) | **Set 2026-05-31** — RSA public key derived from JWKS at `https://first-kiwi-3.clerk.accounts.dev/.well-known/jwks.json` (decoded from publishable key `pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ`) |
 
@@ -599,3 +600,4 @@ and prefer test calls against the trial instance for new verification work.
 8. **Citations required** for any external platform claim (API behaviour, endpoint shape, etc.).
 9. **Admin API is the only privileged surface.** Claude Code operates against it — never directly against production KV with client data outside of the Admin API contract.
 10. **Clerk org = security boundary.** No request reaches protected resources without a valid Clerk JWT with active subscription.
+11. **Worker-to-Worker calls MUST use Service Bindings, never workers.dev URLs.** Cloudflare silently drops same-account W2W subrequests routed via workers.dev — zero events in wrangler tail, no error returned. Declare the target worker in wrangler.toml `[[services]]` and call via the binding. The `MATERIALS_SYNC_WORKER` binding on admin-api is the canonical example; every future W2W call must follow this pattern.
