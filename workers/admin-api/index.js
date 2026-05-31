@@ -93,8 +93,7 @@ async function handleAdmin(request, env, url) {
   }
 
   if (method === 'GET' && path === '/admin/clients') {
-    // TODO REQ-On-27: list all clients + status
-    return json({ ok: false, error: 'Not yet implemented' }, 501);
+    return handleListClients(env);
   }
 
   const m = path.match(/^\/admin\/clients\/([0-9a-f-]{36})\/(verify|sync|rotate-secret)$/i);
@@ -240,6 +239,46 @@ async function runProvisioningGate(uuid, slug, env) {
   checks.slug_resolves = target === uuid;
 
   return { passed: Object.values(checks).every(Boolean), checks };
+}
+
+// ── List clients — REQ-On-27 ─────────────────────────────────────────────────
+
+async function handleListClients(env) {
+  // List all client: keys, return summary of each record
+  const clients = [];
+  let cursor;
+  do {
+    const page = await env.RAFTER_CLIENTS.list({ prefix: CLIENT_PREFIX, cursor });
+    for (const key of page.keys) {
+      const uuid = key.name.slice(CLIENT_PREFIX.length);
+      if (!uuid) continue;
+      const raw = await env.RAFTER_CLIENTS.get(key.name);
+      if (!raw) continue;
+      try {
+        const record = JSON.parse(raw);
+        const missingFields = REQUIRED_FIELDS.filter(f => !record[f]);
+        const hasTokens = !!(record.access_token && record.refresh_token);
+        const tokenExpiresAt = record.expires_at ?? null;
+        const tokenExpired = tokenExpiresAt ? Date.now() >= new Date(tokenExpiresAt).getTime() : null;
+        clients.push({
+          uuid,
+          slug: record.slug ?? null,
+          company_name: record.company_name ?? null,
+          clerk_org_id: record.clerk_org_id ?? null,
+          has_tokens: hasTokens,
+          token_expires_at: tokenExpiresAt,
+          token_expired: tokenExpired,
+          kv_complete: missingFields.length === 0,
+          missing_fields: missingFields.length ? missingFields : undefined,
+        });
+      } catch {
+        clients.push({ uuid, error: 'parse_failed' });
+      }
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+
+  return json({ ok: true, count: clients.length, clients });
 }
 
 // ── Sync handler — REQ-On-25 ─────────────────────────────────────────────────
