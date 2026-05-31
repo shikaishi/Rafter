@@ -198,7 +198,7 @@ CLERK_WEBHOOK_SECRET=whsec_...
 | Endpoint | Method | Auth | Purpose |
 |----------|--------|------|---------|
 | `/health` | GET | None | Status check |
-| `/refresh-materials?uuid={uuid}` | GET | None | Sync materials from SM8 to KV |
+| `/refresh-materials?uuid={uuid}` | GET | Bearer `RAFTER_WORKER_SECRET` (operational) or HMAC form token (browser) | Sync materials from SM8 to KV — **auth required; CLAUDE.md previously said "None" which was wrong** |
 | `/store-token` | POST | Bearer `RAFTER_WORKER_SECRET` | Write OAuth tokens to KV |
 | `/client-config?uuid={uuid}` | GET | `x-rafter-secret` | Live client config for Make — returns `access_token`, `staff_uuid`, `email_template`, `company_name`, `phone`, `business_email`, `operator_email`, `logo_url`, `webhook_url`. Called at the top of every Make Rafter Form run. |
 | `/render-email` | POST | `x-rafter-secret` | Render email HTML with merge fields `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. Returns `{"html": "..."}`. |
@@ -288,6 +288,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 |--------|---------|--------|
 | `CLERK_WEBHOOK_SECRET` | Svix signing secret for `/webhooks/clerk` | Set 2026-05-30. **Rotated 2026-05-30** — original value was echoed to terminal via `Object.keys(env)` diagnostic log during RFT-24; new secret generated in Clerk Dashboard before close. |
 | `RAFTER_ADMIN_SECRET` | Bearer token for `/admin/*` routes | Set 2026-05-30 |
+| `RAFTER_WORKER_SECRET` | Bearer token for admin-api→materials-sync calls to `/refresh-materials`. **Same value as on materials-sync.** Required for sync and token_fresh smoketest assertion. | **Pending** — `npx wrangler secret put RAFTER_WORKER_SECRET --name rafter-admin-api` with the same value already set on rafter-materials-sync |
 | `CLERK_JWT_KEY` | PEM public key for networkless Clerk JWT verification (REQ-On-05) | **Pending** — set at Clerk-wiring step |
 
 ---

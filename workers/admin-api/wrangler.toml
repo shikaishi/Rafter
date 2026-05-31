@@ -1,0 +1,21 @@
+name = "rafter-admin-api"
+main = "index.js"
+compatibility_date = "2024-09-23"
+compatibility_flags = ["nodejs_compat"]
+
+[[kv_namespaces]]
+binding = "RAFTER_CLIENTS"
+id = "7c7ad02d8136452eb6d03d1af89a684f"
+
+[[r2_buckets]]
+binding = "RAFTER_ASSETS"
+bucket_name = "rafter-assets"
+
+[[d1_databases]]
+binding = "RAFTER_EVENTS"
+database_name = "rafter-events"
+database_id = "39f38376-d163-439b-984d-2f0889e88d56"
+
+[[services]]
+binding = "MATERIALS_SYNC_WORKER"
+service = "rafter-materials-sync"
