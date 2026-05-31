@@ -87,7 +87,7 @@ creates jobs in ServiceM8, and attaches the PDF to the SM8 job via the two-step 
     │   ├── index.html       # Quoting form (operator-facing)
     │   ├── setup.html       # SM8 OAuth initiation
     │   ├── callback.html    # OAuth callback
-    │   └── [onboarding.html]  # NEW v2.0 — NOT YET CREATED
+    │   └── onboarding.html    # NEW v2.0 — browser intake form, posts to /onboarding/provision
     ├── materials-sync/      # rafter-materials-sync Worker
     │   ├── wrangler.toml
     │   └── index.js
@@ -265,7 +265,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 
 **URL:** https://rafter-admin-api.will-8e8.workers.dev
 **Location:** `workers/admin-api/`
-**Status:** Implemented 2026-05-31. Route classes, auth guards, provisioning (POST /admin/clients), smoketest (POST /admin/clients/{uuid}/verify), and sync trigger (POST /admin/clients/{uuid}/sync) all live. GET /admin/clients (list) pending. Clerk wiring (CLERK_JWT_KEY, onboarding webhook trigger) pending.
+**Status:** Implemented 2026-05-31. All routes live: provisioning (POST /admin/clients), list clients (GET /admin/clients), smoketest (POST /admin/clients/{uuid}/verify), sync trigger (POST /admin/clients/{uuid}/sync). CLERK_JWT_KEY set — networkless JWT verification working. onboarding.html built 2026-05-31. Pending: CLERK_SECRET_KEY (subscription_gate smoketest), Clerk webhook org.created trigger.
 
 **Bindings:** KV (`RAFTER_CLIENTS`), R2 (`RAFTER_ASSETS`), D1 (`RAFTER_EVENTS`), Service Binding (`MATERIALS_SYNC_WORKER` → `rafter-materials-sync`). The service binding is required for Worker-to-Worker calls — see W2W note in Cloudflare infrastructure section.
 

@@ -1,0 +1,762 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rafter — Account Setup</title>
+<link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
+<style>
+:root {
+  --rf-navy: #1B4F72;
+  --rf-ocean: #2E86AB;
+  --rf-teal-bg: #EAF4F8;
+  --rf-teal-border: #A8D5E2;
+  --rf-outer: #1B3A52;
+  --rf-card: #FFFFFF;
+  --rf-row-bg: #F7F9FC;
+  --rf-border: #D4D0C8;
+  --rf-divider: #E8E4DC;
+  --rf-text: #1C1C1C;
+  --rf-muted: #6B6860;
+  --rf-green: #0D2E1C;
+  --rf-lime: #84B741;
+  --rf-danger-bg: #FFCDD2;
+  --rf-danger: #E57373;
+  --shadow-card: 0 2px 8px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
+}
+
+* { box-sizing: border-box; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--rf-outer);
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: var(--rf-text);
+  line-height: 1.45;
+  padding: 24px 20px;
+}
+
+/* ===== Layout ===== */
+.app { max-width: 720px; margin: 0 auto; display: flex; flex-direction: column; gap: 16px; }
+
+/* ===== Loading ===== */
+.state-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 16px;
+  color: rgba(255,255,255,0.65);
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid rgba(255,255,255,0.15);
+  border-top-color: var(--rf-lime);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== Card ===== */
+.card {
+  background: var(--rf-card);
+  border: 0.5px solid var(--rf-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+
+/* ===== Page header ===== */
+.page-header {
+  padding: 20px 24px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.header-text { flex: 1; }
+.header-text h1 { margin: 0; font-size: 19px; font-weight: 700; color: var(--rf-green); }
+.header-text p { margin: 3px 0 0; font-size: 13px; color: var(--rf-muted); }
+.user-badge { font-size: 12px; color: var(--rf-muted); text-align: right; line-height: 1.5; }
+.user-badge .org-name { color: var(--rf-lime); font-weight: 600; }
+
+/* ===== Form sections ===== */
+.section { padding: 24px; }
+.section + .section { border-top: 1px solid var(--rf-divider); }
+
+.section-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--rf-navy);
+  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.section-title i { font-size: 15px; }
+
+/* ===== Fields ===== */
+.field { margin-bottom: 14px; }
+.field:last-child { margin-bottom: 0; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+label {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rf-muted);
+  margin-bottom: 5px;
+}
+label .req { color: var(--rf-danger); margin-left: 2px; }
+
+input[type=text],
+input[type=email],
+input[type=tel],
+input[type=url],
+textarea {
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--rf-border);
+  border-radius: 6px;
+  font-size: 14px;
+  color: var(--rf-text);
+  background: #fff;
+  font-family: inherit;
+  transition: border-color 0.15s, box-shadow 0.15s;
+}
+input:focus, textarea:focus {
+  outline: none;
+  border-color: var(--rf-ocean);
+  box-shadow: 0 0 0 3px rgba(46,134,171,0.12);
+}
+input.invalid { border-color: var(--rf-danger); }
+textarea { resize: vertical; min-height: 68px; }
+.field-hint { font-size: 11px; color: var(--rf-muted); margin-top: 4px; }
+
+/* ===== Logo upload ===== */
+.logo-drop-zone {
+  border: 2px dashed var(--rf-border);
+  border-radius: 8px;
+  padding: 24px 16px;
+  text-align: center;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+  background: var(--rf-row-bg);
+  position: relative;
+}
+.logo-drop-zone:hover,
+.logo-drop-zone.drag-over { border-color: var(--rf-ocean); background: var(--rf-teal-bg); }
+.logo-drop-zone input[type=file] { display: none; }
+#logo-preview { max-height: 72px; max-width: 200px; display: block; margin: 0 auto 10px; border-radius: 4px; }
+.upload-prompt i { font-size: 28px; color: var(--rf-muted); display: block; margin-bottom: 6px; }
+.upload-prompt p { margin: 0; font-size: 13px; color: var(--rf-muted); }
+.upload-prompt strong { color: var(--rf-ocean); }
+.logo-filename { font-size: 12px; color: var(--rf-muted); margin-top: 4px; }
+
+/* ===== Payment threshold table ===== */
+.threshold-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.threshold-table th {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--rf-muted);
+  padding: 0 8px 8px 4px;
+  text-align: left;
+  border-bottom: 1px solid var(--rf-divider);
+}
+.threshold-table th.col-sum { text-align: right; }
+.threshold-table td {
+  padding: 5px 8px 5px 4px;
+  vertical-align: middle;
+  border-bottom: 1px solid var(--rf-row-bg);
+}
+.threshold-table tr:last-child td { border-bottom: none; }
+.tier-label { font-weight: 500; color: var(--rf-text); white-space: nowrap; width: 170px; }
+.threshold-table input[type=text] { padding: 6px 8px; font-size: 13px; }
+.tier-sum { font-weight: 700; font-size: 12px; text-align: right; white-space: nowrap; min-width: 44px; }
+.tier-sum.ok { color: var(--rf-lime); }
+.tier-sum.bad { color: var(--rf-danger); }
+.tier-sum.empty { color: var(--rf-muted); font-weight: 400; }
+
+/* ===== Admin section ===== */
+.admin-box {
+  background: var(--rf-teal-bg);
+  border: 1px solid var(--rf-teal-border);
+  border-radius: 8px;
+  padding: 16px;
+}
+.admin-box-title {
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--rf-navy);
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.admin-note { font-size: 12px; color: var(--rf-muted); margin: 0 0 14px; }
+
+/* ===== Submit ===== */
+.form-footer {
+  padding: 20px 24px;
+  border-top: 1px solid var(--rf-divider);
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+.btn-primary {
+  background: var(--rf-green);
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 11px 26px;
+  font-size: 15px;
+  font-weight: 600;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: opacity 0.15s;
+  font-family: inherit;
+}
+.btn-primary:hover { opacity: 0.88; }
+.btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
+.btn-primary i { font-size: 17px; }
+#submit-status { font-size: 13px; color: var(--rf-muted); }
+
+/* ===== Result ===== */
+.result-body { padding: 20px 24px; }
+.result-ok .result-heading { color: #2e7d32; }
+.result-err .result-heading { color: var(--rf-danger); }
+.result-heading {
+  font-size: 16px;
+  font-weight: 700;
+  margin: 0 0 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.result-meta { font-size: 13px; margin: 0; }
+.result-meta p { margin: 4px 0; }
+.result-meta code {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 12px;
+  background: var(--rf-row-bg);
+  padding: 1px 5px;
+  border-radius: 4px;
+}
+.gate-checks { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 4px; }
+.gate-checks li { font-size: 13px; display: flex; align-items: center; gap: 6px; }
+.c-ok { color: #2e7d32; }
+.c-fail { color: var(--rf-danger); }
+.next-step {
+  background: var(--rf-teal-bg);
+  border: 1px solid var(--rf-teal-border);
+  border-radius: 8px;
+  padding: 16px;
+  margin-top: 16px;
+}
+.next-step h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--rf-navy); display: flex; align-items: center; gap: 6px; }
+.next-step p { margin: 0; font-size: 13px; color: var(--rf-muted); }
+.err-pre { font-size: 12px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; white-space: pre-wrap; background: var(--rf-danger-bg); padding: 10px; border-radius: 6px; margin: 10px 0 0; }
+</style>
+</head>
+<body>
+
+<!-- Loading state (shown until Clerk resolves) -->
+<div id="state-loading" class="state-loading">
+  <div class="spinner"></div>
+  <p>Checking authentication…</p>
+</div>
+
+<!-- Main form -->
+<div id="state-form" class="app" hidden>
+
+  <div class="card page-header">
+    <svg width="40" height="40" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
+      <rect width="32" height="32" rx="6" fill="#0D2E1C"/>
+      <path d="M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z" fill="#84B741"/>
+    </svg>
+    <div class="header-text">
+      <h1>Account Setup</h1>
+      <p>Configure your Rafter account</p>
+    </div>
+    <div id="user-badge" class="user-badge"></div>
+  </div>
+
+  <form id="onboarding-form" class="card" novalidate>
+
+    <!-- 1 · Business Details -->
+    <div class="section">
+      <div class="section-title"><i class="ti ti-building-store"></i> Business Details</div>
+
+      <div class="field">
+        <label>Company name <span class="req">*</span></label>
+        <input type="text" id="company_name" placeholder="2 Men and a Shovel" required autocomplete="organization">
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>ABN</label>
+          <input type="text" id="abn" placeholder="12 345 678 901" maxlength="14" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Phone</label>
+          <input type="tel" id="phone" placeholder="0400 000 000" autocomplete="tel">
+        </div>
+      </div>
+
+      <div class="field">
+        <label>Business Address</label>
+        <textarea id="business_address" placeholder="123 Main St, Melbourne VIC 3000" rows="2" autocomplete="street-address"></textarea>
+      </div>
+
+      <div class="field-row">
+        <div class="field">
+          <label>Business Email</label>
+          <input type="email" id="business_email" placeholder="info@yourcompany.com.au" autocomplete="email">
+          <div class="field-hint">Shown on PDF quotes</div>
+        </div>
+        <div class="field">
+          <label>Operator Email</label>
+          <input type="email" id="operator_email" placeholder="admin@yourcompany.com.au" autocomplete="off">
+          <div class="field-hint">Your ServiceM8 admin login</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 2 · Branding -->
+    <div class="section">
+      <div class="section-title"><i class="ti ti-photo"></i> Branding</div>
+
+      <div class="field">
+        <label>Company Logo</label>
+        <div class="logo-drop-zone" id="logo-drop-zone">
+          <input type="file" id="logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp">
+          <img id="logo-preview" hidden>
+          <div id="upload-prompt" class="upload-prompt">
+            <i class="ti ti-upload"></i>
+            <p><strong>Click to upload</strong> or drag and drop</p>
+            <p style="font-size:12px;margin-top:4px;">PNG, JPG, SVG or WebP · max 2 MB</p>
+          </div>
+          <div id="logo-filename" class="logo-filename" hidden></div>
+        </div>
+        <div class="field-hint">Appears on PDF quotes and the quoting form header</div>
+      </div>
+    </div>
+
+    <!-- 3 · Quote Settings -->
+    <div class="section">
+      <div class="section-title"><i class="ti ti-settings-2"></i> Quote Settings</div>
+
+      <div class="field">
+        <label>Proposal Types</label>
+        <input type="text" id="proposal_types" placeholder="LC, GM">
+        <div class="field-hint">Comma-separated codes — e.g. "LC" for Landscaping, "GM" for Garden Maintenance</div>
+      </div>
+
+      <div class="field">
+        <label>Job Categories</label>
+        <input type="text" id="job_categories" placeholder="Garden Maintenance, Landscaping">
+        <div class="field-hint">Comma-separated — must match your ServiceM8 job categories exactly</div>
+      </div>
+    </div>
+
+    <!-- 4 · Payment Schedule -->
+    <div class="section">
+      <div class="section-title"><i class="ti ti-cash"></i> Payment Schedule</div>
+      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+        Enter payment percentages for each job value tier as comma-separated values. Each tier must sum to 100.
+        Example: <code style="font-size:12px;background:var(--rf-row-bg);padding:1px 5px;border-radius:3px;">20, 60, 20</code>
+        = 20% deposit · 60% progress · 20% final.
+      </p>
+
+      <table class="threshold-table">
+        <thead>
+          <tr>
+            <th>Job Value</th>
+            <th>Payment breakdown (comma-separated %)</th>
+            <th class="col-sum">Sum</th>
+          </tr>
+        </thead>
+        <tbody id="threshold-body"></tbody>
+      </table>
+    </div>
+
+    <!-- 5 · Administrator Setup -->
+    <div class="section">
+      <div class="admin-box">
+        <div class="admin-box-title"><i class="ti ti-shield-lock"></i> Administrator Setup</div>
+        <p class="admin-note">These fields are pre-configured by your Rafter administrator. Pre-filled values from your onboarding link — do not change unless instructed.</p>
+
+        <div class="field-row">
+          <div class="field">
+            <label>URL Slug <span class="req">*</span></label>
+            <input type="text" id="slug" placeholder="yourcompany" required pattern="[a-z0-9-]+" autocomplete="off">
+            <div class="field-hint">Form URL: rafter.deepgreensea.au/<strong id="slug-preview">yourcompany</strong></div>
+          </div>
+          <div class="field">
+            <label>Webhook URL <span class="req">*</span></label>
+            <input type="url" id="webhook_url" placeholder="https://hook.eu1.make.com/…" required autocomplete="off">
+            <div class="field-hint">Make.com scenario webhook</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Submit -->
+    <div class="form-footer">
+      <button type="submit" id="submit-btn" class="btn-primary">
+        <i class="ti ti-check"></i>
+        Set up my account
+      </button>
+      <span id="submit-status"></span>
+    </div>
+
+  </form>
+
+  <!-- Result (shown after submission) -->
+  <div id="result-area" class="card" hidden>
+    <div class="result-body" id="result-content"></div>
+  </div>
+
+</div><!-- /#state-form -->
+
+<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"></script>
+<script>
+'use strict';
+
+const CLERK_KEY  = 'pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ';
+const ADMIN_API  = 'https://rafter-admin-api.will-8e8.workers.dev';
+
+const TIERS = [
+  { key: 'under_20k',     label: 'Under $20,000',       def: '50, 50' },
+  { key: '20k_to_35k',   label: '$20,001 – $35,000',   def: '20, 60, 20' },
+  { key: '35k_to_50k',   label: '$35,001 – $50,000',   def: '5, 45, 45, 5' },
+  { key: '50k_to_100k',  label: '$50,001 – $100,000',  def: '5, 31, 31, 31, 2' },
+  { key: '100k_to_200k', label: '$100,001 – $200,000', def: '5, 27, 22, 22, 22, 2' },
+  { key: 'over_200k',    label: 'Over $200,000',        def: '5, 21, 18, 18, 18, 18, 2' },
+];
+
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
+// ── Threshold table ──────────────────────────────────────────────────────────
+
+function buildThresholdTable() {
+  const tbody = document.getElementById('threshold-body');
+  TIERS.forEach(tier => {
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="tier-label">${esc(tier.label)}</td>
+      <td><input type="text" id="tier_${esc(tier.key)}" value="${esc(tier.def)}" placeholder="e.g. ${esc(tier.def)}"></td>
+      <td><span class="tier-sum" id="sum_${esc(tier.key)}"></span></td>
+    `;
+    tbody.appendChild(tr);
+
+    const input  = document.getElementById('tier_' + tier.key);
+    const sumEl  = document.getElementById('sum_'  + tier.key);
+
+    function refreshSum() {
+      const raw = input.value.trim();
+      if (!raw) { sumEl.textContent = '—'; sumEl.className = 'tier-sum empty'; return; }
+      const parts = raw.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+      const s = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
+      sumEl.textContent = s + '%';
+      sumEl.className   = 'tier-sum ' + (Math.abs(s - 100) < 0.05 ? 'ok' : 'bad');
+    }
+    input.addEventListener('input', refreshSum);
+    refreshSum();
+  });
+}
+
+// ── Logo upload ──────────────────────────────────────────────────────────────
+
+let logoBase64      = null;
+let logoContentType = null;
+
+function initLogoUpload() {
+  const zone      = document.getElementById('logo-drop-zone');
+  const fileInput = document.getElementById('logo-file');
+  const preview   = document.getElementById('logo-preview');
+  const prompt    = document.getElementById('upload-prompt');
+  const filename  = document.getElementById('logo-filename');
+
+  zone.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('click', e => e.stopPropagation());
+
+  zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
+  zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
+  zone.addEventListener('drop', e => {
+    e.preventDefault();
+    zone.classList.remove('drag-over');
+    const file = e.dataTransfer.files[0];
+    if (file) loadLogoFile(file);
+  });
+
+  fileInput.addEventListener('change', () => {
+    if (fileInput.files[0]) loadLogoFile(fileInput.files[0]);
+  });
+
+  function loadLogoFile(file) {
+    if (file.size > 2 * 1024 * 1024) {
+      alert('Logo file must be under 2 MB.');
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = ev => {
+      logoBase64      = ev.target.result;
+      logoContentType = file.type || 'image/png';
+      preview.src     = logoBase64;
+      preview.hidden  = false;
+      prompt.hidden   = true;
+      filename.textContent = file.name;
+      filename.hidden = false;
+    };
+    reader.readAsDataURL(file);
+  }
+}
+
+// ── Slug preview ─────────────────────────────────────────────────────────────
+
+function initSlugPreview() {
+  const slugInput = document.getElementById('slug');
+  const slugEl    = document.getElementById('slug-preview');
+  slugInput.addEventListener('input', () => {
+    slugEl.textContent = slugInput.value.trim() || 'yourcompany';
+  });
+}
+
+// ── URL param pre-fill ───────────────────────────────────────────────────────
+
+function prefillFromParams() {
+  const p = new URLSearchParams(window.location.search);
+  const slug    = p.get('slug');
+  const webhook = p.get('webhook_url');
+  if (slug) {
+    document.getElementById('slug').value = slug;
+    document.getElementById('slug-preview').textContent = slug;
+  }
+  if (webhook) {
+    document.getElementById('webhook_url').value = webhook;
+  }
+}
+
+// ── Read threshold inputs ────────────────────────────────────────────────────
+
+function readThresholds() {
+  const thresholds = {};
+  let allValid = true;
+  TIERS.forEach(tier => {
+    const raw = document.getElementById('tier_' + tier.key).value.trim();
+    if (!raw) { thresholds[tier.key] = []; return; }
+    const parts = raw.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+    const sum   = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
+    if (Math.abs(sum - 100) >= 0.05) allValid = false;
+    thresholds[tier.key] = parts;
+  });
+  return { thresholds, valid: allValid };
+}
+
+// ── Form submission ──────────────────────────────────────────────────────────
+
+async function handleSubmit(e, clerk) {
+  e.preventDefault();
+
+  const btn    = document.getElementById('submit-btn');
+  const status = document.getElementById('submit-status');
+
+  const companyName  = document.getElementById('company_name').value.trim();
+  const slug         = document.getElementById('slug').value.trim();
+  const webhookUrl   = document.getElementById('webhook_url').value.trim();
+
+  // Validate
+  const errors = [];
+  if (!companyName) errors.push('Company name is required.');
+  if (!slug)        errors.push('URL slug is required.');
+  if (!webhookUrl)  errors.push('Webhook URL is required.');
+
+  const { thresholds, valid: thresholdValid } = readThresholds();
+  if (!thresholdValid) errors.push('Each non-empty payment tier must sum to 100%.');
+
+  if (errors.length) {
+    setResult('error', null, errors.join('\n'));
+    return;
+  }
+
+  btn.disabled   = true;
+  status.textContent = 'Authenticating…';
+
+  // Get Clerk session token
+  let token;
+  try {
+    token = await clerk.session.getToken();
+    if (!token) throw new Error('No active session — please sign in again.');
+  } catch (err) {
+    setResult('error', null, 'Authentication error: ' + err.message);
+    btn.disabled = false;
+    status.textContent = '';
+    return;
+  }
+
+  // Build payload
+  const payload = { slug, company_name: companyName, webhook_url: webhookUrl };
+
+  const abn             = document.getElementById('abn').value.trim();
+  const phone           = document.getElementById('phone').value.trim();
+  const businessAddress = document.getElementById('business_address').value.trim();
+  const businessEmail   = document.getElementById('business_email').value.trim();
+  const operatorEmail   = document.getElementById('operator_email').value.trim();
+  if (abn)             payload.abn              = abn;
+  if (phone)           payload.phone            = phone;
+  if (businessAddress) payload.business_address = businessAddress;
+  if (businessEmail)   payload.business_email   = businessEmail;
+  if (operatorEmail)   payload.operator_email   = operatorEmail;
+
+  payload.payment_thresholds = thresholds;
+
+  const propRaw = document.getElementById('proposal_types').value.trim();
+  if (propRaw) payload.proposal_types = propRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+  const catRaw = document.getElementById('job_categories').value.trim();
+  if (catRaw) payload.job_categories = catRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+  if (logoBase64) {
+    payload.logo_base64      = logoBase64;
+    payload.logo_content_type = logoContentType;
+  }
+
+  status.textContent = 'Provisioning…';
+
+  try {
+    const res  = await fetch(ADMIN_API + '/onboarding/provision', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer ' + token,
+      },
+      body: JSON.stringify(payload),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (res.ok && data.ok) {
+      setResult('ok', data, null);
+    } else {
+      const msg = Array.isArray(data.errors) ? data.errors.join('\n') : (data.error ?? JSON.stringify(data));
+      setResult('error', null, msg);
+    }
+  } catch (err) {
+    setResult('error', null, 'Network error: ' + err.message);
+  }
+
+  btn.disabled = false;
+  status.textContent = '';
+}
+
+function setResult(kind, data, errorMsg) {
+  const area    = document.getElementById('result-area');
+  const content = document.getElementById('result-content');
+
+  if (kind === 'ok') {
+    const checks     = data.gate?.checks ?? {};
+    const checkItems = Object.entries(checks).map(([k, v]) =>
+      `<li><i class="ti ${v ? 'ti-circle-check c-ok' : 'ti-circle-x c-fail'}"></i> ${esc(k)}</li>`
+    ).join('');
+
+    content.innerHTML = `
+      <div class="result-ok">
+        <div class="result-heading"><i class="ti ti-circle-check c-ok"></i> Account provisioned</div>
+        <div class="result-meta">
+          <p><strong>UUID:</strong> <code>${esc(data.uuid)}</code></p>
+          <p><strong>Slug:</strong> <code>${esc(data.slug)}</code></p>
+          <p><strong>Logo uploaded:</strong> ${data.logo_uploaded ? 'Yes' : 'Not yet — upload a logo to complete branding'}</p>
+          <p><strong>Materials sync:</strong> ${data.sync_ok ? 'Started successfully' : 'Pending — run sync from admin panel'}</p>
+          ${checkItems ? `<ul class="gate-checks">${checkItems}</ul>` : ''}
+        </div>
+        <div class="next-step">
+          <h3><i class="ti ti-brand-oauth"></i> Next: Connect ServiceM8</h3>
+          <p>To complete setup, authorise Rafter to access your ServiceM8 account.
+             Visit <strong>rafter.deepgreensea.au/setup?uuid=${esc(data.uuid)}</strong>
+             and click <strong>Connect ServiceM8</strong>. Your Rafter administrator will send you this link.</p>
+        </div>
+      </div>`;
+  } else {
+    content.innerHTML = `
+      <div class="result-err">
+        <div class="result-heading"><i class="ti ti-alert-circle c-fail"></i> Setup failed</div>
+        <div class="err-pre">${esc(errorMsg)}</div>
+      </div>`;
+  }
+
+  area.hidden = false;
+  area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Bootstrap ────────────────────────────────────────────────────────────────
+
+(async function init() {
+  const loadingEl = document.getElementById('state-loading');
+  const formEl    = document.getElementById('state-form');
+
+  if (!window.Clerk) {
+    loadingEl.querySelector('p').textContent = 'Failed to load authentication library. Please refresh.';
+    return;
+  }
+
+  const clerk = new window.Clerk(CLERK_KEY);
+  try {
+    await clerk.load();
+  } catch (err) {
+    loadingEl.querySelector('p').textContent = 'Authentication error: ' + err.message;
+    return;
+  }
+
+  if (!clerk.user) {
+    clerk.redirectToSignIn({ redirectUrl: window.location.href });
+    return;
+  }
+
+  // Activate first org if none selected
+  if (!clerk.organization) {
+    const memberships = clerk.user.organizationMemberships ?? [];
+    if (memberships.length > 0) {
+      try {
+        await clerk.setActive({ organization: memberships[0].organization.id });
+      } catch {}
+    }
+  }
+
+  // Show user badge
+  const email   = clerk.user.primaryEmailAddress?.emailAddress ?? '';
+  const orgName = clerk.organization?.name ?? '';
+  document.getElementById('user-badge').innerHTML =
+    esc(email) + (orgName ? `<br><span class="org-name">${esc(orgName)}</span>` : '');
+
+  // Build UI
+  buildThresholdTable();
+  initLogoUpload();
+  initSlugPreview();
+  prefillFromParams();
+
+  document.getElementById('onboarding-form').addEventListener('submit', e => handleSubmit(e, clerk));
+
+  loadingEl.hidden = true;
+  formEl.hidden    = false;
+})();
+</script>
+</body>
+</html>
