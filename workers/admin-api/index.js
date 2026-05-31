@@ -94,13 +94,14 @@ async function handleClerkWebhook(request, env) {
       }
 
       // REQ-On-09: provision stub record — full business details arrive via onboarding form (merge-safe).
-      // Clerk org slug becomes the initial Rafter URL slug; webhook_url populated by form submission.
+      // slug intentionally null: operator assigns the URL slug via the onboarding form, never Clerk's auto slug.
+      // webhook_url populated by form submission.
       let uuid;
       try {
         ({ uuid } = await provisionClient({
           clerk_org_id: orgId,
           company_name: orgName || 'Unknown',
-          slug: orgSlug || orgId,
+          slug: null,
           webhook_url: '',
         }, env));
       } catch (err) {
@@ -310,19 +311,30 @@ async function handleListClients(env) {
       if (!raw) continue;
       try {
         const record = JSON.parse(raw);
-        const missingFields = REQUIRED_FIELDS.filter(f => !record[f]);
         const hasTokens = !!(record.access_token && record.refresh_token);
         const tokenExpiresAt = record.expires_at ?? null;
         const tokenExpired = tokenExpiresAt ? Date.now() >= new Date(tokenExpiresAt).getTime() : null;
+        // stage: pending = webhook fired, operator not yet set slug/webhook_url via form
+        //        provisioned = form submitted, full record present (may still fail smoketest)
+        //        stub = manually created with missing data, no clerk_org_id link
+        const stage = record.slug && record.webhook_url
+          ? 'provisioned'
+          : record.clerk_org_id
+            ? 'pending'
+            : 'stub';
+        // kv_complete and missing_fields only meaningful for provisioned records — pending stubs
+        // are intentionally incomplete and should not read as broken
+        const missingFields = stage === 'provisioned' ? REQUIRED_FIELDS.filter(f => !record[f]) : [];
         clients.push({
           uuid,
           slug: record.slug ?? null,
           company_name: record.company_name ?? null,
           clerk_org_id: record.clerk_org_id ?? null,
+          stage,
           has_tokens: hasTokens,
           token_expires_at: tokenExpiresAt,
           token_expired: tokenExpired,
-          kv_complete: missingFields.length === 0,
+          kv_complete: stage === 'provisioned' ? missingFields.length === 0 : null,
           missing_fields: missingFields.length ? missingFields : undefined,
         });
       } catch {
@@ -527,8 +539,31 @@ async function runSmoketest(uuid, { destructive }, env) {
   }
 
   // ── REQ-On-49: Subscription gate live ────────────────────────────────────
-  // TODO: verify via Clerk API (CLERK_SECRET_KEY) at Clerk wiring step
-  skip('subscription_gate', 'TODO: implement at Clerk wiring step — requires CLERK_SECRET_KEY');
+  if (!env.CLERK_SECRET_KEY) {
+    skip('subscription_gate', 'CLERK_SECRET_KEY not set on this Worker');
+  } else if (!record.clerk_org_id) {
+    fail('subscription_gate', 'clerk_org_id not set in KV — complete Clerk onboarding flow first');
+  } else {
+    try {
+      const res = await fetch(`https://api.clerk.com/v1/organizations/${record.clerk_org_id}`, {
+        headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}` },
+      });
+      if (res.status === 404) {
+        fail('subscription_gate', `Clerk org ${record.clerk_org_id} not found — may have been deleted`);
+      } else if (!res.ok) {
+        fail('subscription_gate', `Clerk API returned ${res.status}`);
+      } else {
+        // Test keys: org existence is sufficient (Clerk Billing not active in test mode).
+        // Production keys: TODO add subscription state check when Clerk Billing is activated.
+        pass('subscription_gate', {
+          clerk_org_id: record.clerk_org_id,
+          billing_check: env.CLERK_SECRET_KEY.startsWith('sk_test_') ? 'deferred (test mode)' : 'deferred (billing not yet activated)',
+        });
+      }
+    } catch (err) {
+      fail('subscription_gate', `Clerk API error: ${err.message}`);
+    }
+  }
 
   // ── REQ-On-52: structured result — done (this object is the result) ───────
 
