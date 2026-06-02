@@ -18,6 +18,8 @@
 >
 > **Version 2.0 — Updated May 2026.** Major changes: Clerk auth + billing, Admin API Worker,
 > D1 event logging, central dashboard, Linear issue tracking. See change summary below.
+>
+> **Companion doc: `TRADIE.md` (repo root)** — target-user persona and design/appraisal lens. Consult for any user-facing product decision.
 
 ---
 
@@ -117,6 +119,7 @@ build command is `exit 0`.
 | KV namespace ID | `7c7ad02d8136452eb6d03d1af89a684f` |
 | wrangler.toml binding | `binding = "RAFTER_CLIENTS", id = "7c7ad02d8136452eb6d03d1af89a684f"` |
 | D1 database | `rafter-events` — ID `39f38376-d163-439b-984d-2f0889e88d56` (built 2026-05-31) |
+| D1 database | `rafter-quotes` — quote payload persistence for edit/versioning (RFT-32). ID: TBD on creation (RFT-36). Durable retention — NOT on the `rafter-events` 90-day prune. |
 
 **KV tooling note:** Wrangler v4 `kv key list` returns `[]` — use Cloudflare REST API directly
 for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also work.
@@ -375,7 +378,7 @@ vendor, vendor_logo, read_staff, read_inventory, read_job_categories, read_job_q
 manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, read_jobs
 ```
 
-**Missing:** `create_jobs` — required for runtime job creation testing. New grant + re-auth needed.
+**`create_jobs`:** present on trial, working (RFT-26). **For edit-quote (RFT-32), three further scopes are required and currently MISSING:** `manage_jobs` (update job_description), `publish_job_attachments` (create attachment + upload binary), `read_attachments` (list attachments — runtime-confirmed name; docs say `read_job_attachments`, runtime error is authoritative). Add to the scope string in `workers/rafter/setup.html`, then re-auth (Flow D — human, ~1 min). No scope elevation without a new grant.
 **Inbox scope:** `publish_inbox` — undocumented on public scopes page, defined in OpenAPI only. Moot until VER-01 resolved.
 
 ---
@@ -445,7 +448,7 @@ Any consumer of `POST /job.json` must read headers.
 | D2 | PDF: Browser Rendering API via Cloudflare Worker |
 | D3 | Client deduplication: deferred — SM8 native Merge Clients |
 | D4 | Materials: KV cache 24hr TTL, nightly cron sync |
-| D5 | Amendments: stateless regeneration + SM8 Inbox — **PATH TBD, VER-01 answered negative, revisit before T1-E1** |
+| D5 | Amendments: **RESOLVED 2026-06-02 → edit-quote feature (Linear RFT-32).** Versioned amend onto the existing SM8 job: new PDF attachment (Attachment API — multiple-attachments-per-job confirmed, RFT-33) + appended job_description version block. Rafter persists structured payload in `rafter-quotes` D1 for rehydration; `sm8_job_uuid` stored at submit time is the SOLE job-linkage (no SM8 job-search fallback exists — RFT-35). SM8 Inbox path abandoned (VER-01/02 negative). Customer artifact stays PDF-as-object; living-link delivery shelved. Requires SM8 scopes `manage_jobs` + `publish_job_attachments` + `read_attachments` (re-auth). |
 | D6 | Quote ref: Q-YYYYMMDD-HHMM (Melbourne timezone) |
 | D7 | Template library: per-client KV |
 | D8 | Onboarding: **v2.0 — Clerk-driven self-service. Manual checklist retired.** |
@@ -459,7 +462,7 @@ Any consumer of `POST /job.json` must read headers.
 | D-MAKE | Make.com retained as-is. Replacement deferred — separate future decision. |
 | — | Agent lives on Rafter side. SM8 is a dumb REST recipient. |
 | — | job_description is append-only with delimiter markers. Never overwrite. |
-| — | Rafter is stateless — no quote database. D1 is event logging only. |
+| — | Rafter is bounded-stateful — `rafter-quotes` D1 persists payloads for rehydration/versioning (RFT-32); `rafter-events` D1 is event-logging only; SM8 is system-of-record for issued quotes. |
 | — | No client UUID or credential hardcoded in platform files. All config from KV. |
 
 ---
@@ -580,7 +583,7 @@ CONTEXT: See CLAUDE.md
 **SM8 verifications — answered 2026-05-14:**
 - **Inbox-attach delivery not supported** (VER-01 closed negative). No file field on `createInboxMessage`. D5 delivery path is unresolved — must be re-examined before T1-E1.
 - **`publish_inbox`** scope is moot (VER-02 closed).
-- **`create_jobs` missing** from current OAuth grant. New grant + re-auth needed before runtime job creation testing.
+- **`create_jobs`** present and working (RFT-26). Edit-quote (RFT-32) additionally needs `manage_jobs`, `publish_job_attachments`, `read_attachments` — currently missing, re-auth required before amend testing.
 - **New job UUID** in `x-record-uuid` response header, not body.
 
 **v2.0 items requiring verification before building:**
@@ -598,8 +601,8 @@ and prefer test calls against the trial instance for new verification work.
 
 1. **Trial instance only** for development. Andy's active KV record (`0e604a45-…`) is production — explicit sign-off required for any write. T1-F2 is complete; Andy is live.
 2. **No client UUID, credential, or client-specific value hardcoded** in platform files.
-3. **Rafter is stateless** — no quote database. Quotes live in SM8 only. D1 is event logging only.
-4. **job_description is append-only** with delimiter markers. Never overwrite.
+3. **Rafter is bounded-stateful.** SM8 remains system-of-record for the issued quote. Rafter persists the structured submission payload in the `rafter-quotes` D1 database solely to enable quote rehydration and versioned editing (RFT-32). `rafter-events` D1 remains event-logging only. No other quote state is held; Rafter does not become the quote system-of-record.
+4. **job_description is append-only** with delimiter markers, by Rafter convention. NB: SM8 itself permits overwrite via `POST /job/{uuid}.json` (verified RFT-34) — append is Rafter's deliberate choice, not an SM8 limitation. Revisitable pending Andy's input (RFT-41 Q1); changing to overwrite is a one-line change. Never overwrite while this convention stands.
 5. **Agent on Rafter side only.** SM8 is a dumb REST recipient.
 6. **768px minimum.** Touch-first. Mobile out of scope.
 7. **No assumptions.** Flag for verification if not confirmed in this file.
