@@ -1,5 +1,7 @@
 # CLAUDE.md — Rafter Platform
 
+@docs/claude-code-tuning.md
+
 > **⚠️ SESSION-START PROTOCOL — do this before reading anything else, every session, every machine.**
 >
 > This file is canonical **only on `origin/main`**. The copy on your disk is a *reader*, never a master.
