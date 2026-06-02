@@ -206,7 +206,7 @@ CLERK_WEBHOOK_SECRET=whsec_...
 |----------|--------|------|---------|
 | `/health` | GET | None | Status check |
 | `/refresh-materials?uuid={uuid}` | GET | Bearer `RAFTER_WORKER_SECRET` (operational) or HMAC form token (browser) | Sync materials from SM8 to KV — **auth required; CLAUDE.md previously said "None" which was wrong** |
-| `/store-token` | POST | Bearer `RAFTER_WORKER_SECRET` | Write OAuth tokens to KV |
+| `/store-token` | POST | Bearer `MAKE_STORE_TOKEN_SECRET` (Make) or `RAFTER_WORKER_SECRET` (admin/Claude Code) | Write OAuth tokens to KV |
 | `/client-config?uuid={uuid}` | GET | `x-rafter-secret` | Live client config for Make — returns `access_token`, `staff_uuid`, `email_template`, `company_name`, `phone`, `business_email`, `operator_email`, `logo_url`, `webhook_url`. Called at the top of every Make Rafter Form run. |
 | `/render-email` | POST | `x-rafter-secret` | Render email HTML with merge fields `{client_name}`, `{job_address}`, `{quote_ref}`, `{total}`. Returns `{"html": "..."}`. |
 | `/client/{uuid}` | GET | None | Sanitised KV record (no tokens) |
@@ -221,9 +221,15 @@ CLERK_WEBHOOK_SECRET=whsec_...
 
 | Secret | Purpose |
 |--------|---------|
-| `RAFTER_WORKER_SECRET` | Bearer token for `/store-token` (called by Make Account Discovery) |
+| `MAKE_STORE_TOKEN_SECRET` | Bearer token for `/store-token` — **used by Make Account Discovery only**. Rotate independently of `RAFTER_WORKER_SECRET`. **⚠️ Whenever this is rotated, the Make Account Discovery scenario HTTP module must be updated in the Make UI with the new value — if Make and the worker diverge, setup will fail with 500 and clients cannot re-authenticate.** |
+| `RAFTER_WORKER_SECRET` | Bearer token for `/store-token` (admin/Claude Code fallback) and admin-api→`/refresh-materials`. Rotating this does NOT require a Make update. |
 | `RAFTER_INTERNAL_SECRET` | Header auth (`x-rafter-secret`) for `/client-config` and `/render-email` (called by Make Rafter Form). **Must be provisioned on every new Worker deploy.** |
 | `SERVICEM8_CLIENT_SECRET` | SM8 OAuth client secret for token refresh |
+
+**Secret rotation checklist — `MAKE_STORE_TOKEN_SECRET`:**
+1. `npx wrangler secret put MAKE_STORE_TOKEN_SECRET --name rafter-materials-sync` (new value)
+2. Open Make Account Discovery scenario → HTTP module that POSTs to `/store-token` → update `Authorization: Bearer` value
+3. Test: run setup flow end-to-end and confirm callback shows "Setup complete"
 
 **SM8 token freshness invariant:** Every handler that returns `access_token` or calls SM8 MUST call `refreshTokenIfNeeded(uuid, env)` first. The nightly cron is a safety net only — Make calls `/client-config` at the top of every form scenario and relies on a valid token. Violating this invariant caused BUG-23. See `INVARIANT` comment at `workers/materials-sync/index.js:549`.
 

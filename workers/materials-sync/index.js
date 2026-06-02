@@ -202,8 +202,22 @@ function summariseMaterials(data) {
 }
 
 async function handleStoreToken(request, env) {
-  const auth = bearerCheck(request, env);
-  if (auth) return auth;
+  // Accept either MAKE_STORE_TOKEN_SECRET (Make Account Discovery) or RAFTER_WORKER_SECRET
+  // (admin-api / Claude Code). Splitting these means rotating the internal worker secret
+  // doesn't break Make, and vice versa.
+  const header = request.headers.get("authorization") || "";
+  const m = /^Bearer\s+(.+)$/i.exec(header);
+  const provided = m ? m[1] : "";
+  const makeSecret = env.MAKE_STORE_TOKEN_SECRET;
+  const workerSecret = env.RAFTER_WORKER_SECRET;
+  const makeOk = makeSecret && constantTimeEqual(provided, makeSecret);
+  const workerOk = workerSecret && constantTimeEqual(provided, workerSecret);
+  if (!makeOk && !workerOk) {
+    if (!makeSecret && !workerSecret) {
+      return json({ error: "server_misconfigured", detail: "MAKE_STORE_TOKEN_SECRET and RAFTER_WORKER_SECRET not set" }, { status: 500 });
+    }
+    return json({ error: "unauthorized" }, { status: 401 });
+  }
 
   let body;
   try { body = await request.json(); }
