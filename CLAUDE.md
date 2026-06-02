@@ -399,6 +399,8 @@ manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, rea
 | Rafter Form (prod) | (no external webhook — `5537814`) | Quote submission → SM8 job creation |
 | Rafter Form - Dev | (no external webhook — `5962197`) | Dev/trial submissions |
 
+**Probe 2 monitoring (RFT-47 — nightly cron):** For each scenario above (5612449, 5537814), Probe 2 checks: `isPaused`, `isActive === false`, `dlqCount > 0` (dead-letter queue — failed executions awaiting retry). Any of these signals an alert. `dlqCount > 0` is the primary early-warning signal for execution failures that did not yet deactivate the scenario.
+
 **Make Data Store:** "Rafter Tokens" — fields: uuid, access_token, refresh_token, expires_at.
 
 **Make is UI-only** — Claude Code cannot modify Make scenarios. Document the required Make
