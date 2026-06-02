@@ -611,6 +611,226 @@ async function runScheduledSync(env) {
   return { total: uuids.length, ok, skipped, failed };
 }
 
+// ─── RFT-31 Telemetry & Probes ────────────────────────────────────────────────
+
+const MAKE_SCENARIO_IDS = ["5612449", "5537814"];
+const MAKE_SCENARIO_NAMES = { "5612449": "Account Discovery", "5537814": "Rafter Form prod" };
+const MAKE_BASE_URL = "https://eu1.make.com/api/v2";
+
+// sendTelegramAlert: POST to Telegram Bot API sendMessage.
+// Ref: https://core.telegram.org/bots/api#sendmessage
+// Token goes in URL path (no Authorization header). 4096-char cap enforced.
+// Worker → Telegram only — never routed via SM8 or Make (alert path must not
+// depend on what it reports on).
+async function sendTelegramAlert(text, env) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) {
+    console.error(JSON.stringify({ event: "telegram_alert_skipped", reason: "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set" }));
+    return;
+  }
+  const truncated = text.length > 4096 ? text.slice(0, 4093) + "…" : text;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: truncated }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(JSON.stringify({ event: "telegram_send_failed", status: res.status, body: body.slice(0, 200) }));
+    }
+  } catch (e) {
+    console.error(JSON.stringify({ event: "telegram_send_error", error: e.message }));
+  }
+}
+
+// writeD1Event: append a row to rafter-events.events.
+async function writeD1Event(env, eventType, clientUuid, payload) {
+  if (!env.RAFTER_EVENTS) return;
+  try {
+    await env.RAFTER_EVENTS.prepare(
+      "INSERT INTO events (id, client_uuid, event_type, occurred_at, payload) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      crypto.randomUUID(),
+      clientUuid || null,
+      eventType,
+      new Date().toISOString(),
+      payload ? JSON.stringify(payload) : null
+    ).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: "d1_write_failed", eventType, error: e.message }));
+  }
+}
+
+// ─── Probe 1 (RFT-45): SM8 token health ──────────────────────────────────────
+// Iterates all client KV records and calls refreshTokenIfNeeded for each.
+// refreshTokenIfNeeded writes refreshed tokens back to KV when a refresh occurs —
+// this is intended and safe in cron context: the existing nightly sync already
+// does this per client. Probe 1 runs first so tokens are warm before the sync loop.
+async function runProbe1(env) {
+  const uuids = await listClientUuids(env);
+  for (const uuid of uuids) {
+    try {
+      await refreshTokenIfNeeded(uuid, env);
+      await writeD1Event(env, "token_probe_ok", uuid, null);
+    } catch (e) {
+      console.error(JSON.stringify({ event: "token_probe_failed", uuid, detail: e.message }));
+      await writeD1Event(env, "token_probe_failed", uuid, { detail: e.message });
+      await sendTelegramAlert(
+        `🚨 Rafter SM8 token probe FAILED\nClient: ${uuid}\nError: ${e.message}\nTime: ${new Date().toISOString()}`,
+        env
+      );
+    }
+  }
+}
+
+// ─── Probe 2 (RFT-47): Make scenario health ───────────────────────────────────
+// Checks isPaused, isActive, dlqCount, and last execution status for each watched scenario.
+// Refs: https://developers.make.com/api-documentation/api-reference/scenarios
+//       https://developers.make.com/api-documentation/api-reference/scenarios/logs
+// Auth: "Authorization: Token {token}" — NOT Bearer.
+// Logs status is INTEGER: 1=success, 3=error (not a string).
+// Limitation: catches deactivated/erroring/dlq-backed-up scenarios. Does NOT detect
+// latent breaks such as MAKE_STORE_TOKEN_SECRET drift — that is Probe 3's job.
+async function runProbe2(env) {
+  const token = env.MAKE_API_TOKEN;
+  if (!token) {
+    console.error(JSON.stringify({ event: "probe2_skipped", reason: "MAKE_API_TOKEN not set" }));
+    await sendTelegramAlert("🚨 Rafter Probe 2 skipped: MAKE_API_TOKEN not set. Set secret and redeploy.", env);
+    return;
+  }
+  const authHeaders = { "Authorization": `Token ${token}` };
+
+  for (const scenarioId of MAKE_SCENARIO_IDS) {
+    const name = MAKE_SCENARIO_NAMES[scenarioId];
+    const signals = [];
+
+    try {
+      const res = await fetch(`${MAKE_BASE_URL}/scenarios/${scenarioId}`, { headers: authHeaders });
+      if (!res.ok) {
+        signals.push(`status_check_failed:${res.status}`);
+        console.error(JSON.stringify({ event: "probe2_scenario_http_error", scenarioId, status: res.status }));
+      } else {
+        const data = await res.json();
+        const s = data.scenario || data;
+        if (s.isPaused) signals.push("isPaused=true");
+        if (s.isActive === false) signals.push("isActive=false");
+        if (typeof s.dlqCount === "number" && s.dlqCount > 0) signals.push(`dlqCount=${s.dlqCount}`);
+      }
+    } catch (e) {
+      signals.push("status_fetch_error");
+      console.error(JSON.stringify({ event: "probe2_scenario_fetch_error", scenarioId, error: e.message }));
+    }
+
+    try {
+      const res = await fetch(`${MAKE_BASE_URL}/scenarios/${scenarioId}/logs?pg[limit]=1`, { headers: authHeaders });
+      if (!res.ok) {
+        signals.push(`logs_check_failed:${res.status}`);
+      } else {
+        const data = await res.json();
+        const logs = Array.isArray(data) ? data : (data.scenarioLogs || data.logs || []);
+        if (logs.length > 0 && logs[0].status === 3) signals.push("last_execution_error");
+      }
+    } catch (e) {
+      signals.push("logs_fetch_error");
+      console.error(JSON.stringify({ event: "probe2_logs_fetch_error", scenarioId, error: e.message }));
+    }
+
+    if (signals.length > 0) {
+      await writeD1Event(env, "make_scenario_unhealthy", null, { scenario_id: scenarioId, name, signals });
+      await sendTelegramAlert(
+        `🚨 Rafter Make probe: scenario unhealthy\nScenario: ${name} (${scenarioId})\nSignals: ${signals.join(", ")}\nTime: ${new Date().toISOString()}`,
+        env
+      );
+    }
+  }
+}
+
+// ─── Probe 3 (RFT-48): recovery-path component health ────────────────────────
+// DESIGN from RFT-44: full end-to-end exercise of Account Discovery is UNSAFE on
+// a schedule — SM8 uses rotating refresh tokens; a KV write failure mid-exchange
+// would lock out the trial instance. Component-checking is used instead.
+//
+// Checks:
+//   a. MAKE_STORE_TOKEN_SECRET and RAFTER_WORKER_SECRET are present in env —
+//      confirms the auth path for /store-token is intact without any HTTP call.
+//   b. Account Discovery (5612449) last SUCCESS log entry is within 30 days —
+//      lagging indicator for MAKE_STORE_TOKEN_SECRET drift. If Account Discovery
+//      hasn't succeeded recently, the most likely cause is a secret mismatch.
+//
+// Detection only — never auto-mutates tokens or secrets.
+// Admin API is the only privileged write path (CLAUDE.md constraint).
+async function runProbe3(env) {
+  const signals = [];
+
+  if (!env.MAKE_STORE_TOKEN_SECRET) signals.push("MAKE_STORE_TOKEN_SECRET_missing");
+  if (!env.RAFTER_WORKER_SECRET) signals.push("RAFTER_WORKER_SECRET_missing");
+
+  const token = env.MAKE_API_TOKEN;
+  if (token) {
+    try {
+      const res = await fetch(`${MAKE_BASE_URL}/scenarios/5612449/logs?pg[limit]=20`, {
+        headers: { "Authorization": `Token ${token}` },
+      });
+      if (!res.ok) {
+        signals.push(`account_discovery_logs_failed:${res.status}`);
+      } else {
+        const data = await res.json();
+        const logs = Array.isArray(data) ? data : (data.scenarioLogs || data.logs || []);
+        const lastSuccess = logs.find((l) => l.status === 1);
+        if (!lastSuccess) {
+          signals.push("account_discovery_no_recent_success");
+        } else {
+          const ageDays = (Date.now() - new Date(lastSuccess.timestamp).getTime()) / 86400000;
+          if (ageDays > 30) signals.push(`account_discovery_last_success_${Math.floor(ageDays)}d_ago`);
+        }
+      }
+    } catch (e) {
+      console.error(JSON.stringify({ event: "probe3_logs_error", error: e.message }));
+    }
+  }
+
+  if (signals.length > 0) {
+    await writeD1Event(env, "recovery_probe_failed", null, { signals });
+    await sendTelegramAlert(
+      `🚨 Rafter recovery probe: component unhealthy\nSignals: ${signals.join(", ")}\nTime: ${new Date().toISOString()}`,
+      env
+    );
+  }
+}
+
+// ─── RFT-49: external heartbeat (dead-man's switch) ──────────────────────────
+// Pings HEARTBEAT_URL at the end of each cron run. An external monitor (off-Cloudflare)
+// alerts Will if the expected daily ping does NOT arrive — catches the probe Worker
+// itself failing to run, which in-Worker alerting cannot detect.
+//
+// SETUP (one-time, Will):
+//   1. Create a check at https://healthchecks.io (free tier: 20 checks, 365-day log).
+//      Set period = 1 day, grace period = 2 hours.
+//   2. Copy the ping URL (format: https://hc-ping.com/{uuid}).
+//   3. npx wrangler secret put HEARTBEAT_URL --name rafter-materials-sync
+// Ref: https://healthchecks.io/docs/http_api/
+async function pingHeartbeat(env) {
+  const url = env.HEARTBEAT_URL;
+  if (!url) return;
+  try {
+    await fetch(url, { method: "GET" });
+  } catch (e) {
+    console.error(JSON.stringify({ event: "heartbeat_ping_failed", error: e.message }));
+  }
+}
+
+// handleSendTestAlert: RFT-46 deploy verification endpoint.
+// Sends one test message to confirm Telegram secrets are wired correctly.
+// Requires RAFTER_WORKER_SECRET bearer token.
+async function handleSendTestAlert(request, env) {
+  const denied = bearerCheck(request, env);
+  if (denied) return denied;
+  await sendTelegramAlert(`🔔 Rafter test alert — Telegram channel confirmed working.\nTime: ${new Date().toISOString()}`, env);
+  return json({ ok: true, sent_at: new Date().toISOString() });
+}
+
 async function handleClientConfig(request, url, env) {
   const secret = env.RAFTER_INTERNAL_SECRET;
   if (!secret) {
@@ -664,6 +884,7 @@ async function route(request, env) {
   if (method === "GET" && path === "/get-form-token") return handleGetFormToken(url, env);
   if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
+  if (method === "POST" && path === "/send-test-alert") return handleSendTestAlert(request, env);
 
   const clientMatch = method === "GET" && /^\/client\/([0-9a-f-]{36})$/i.exec(path);
   if (clientMatch) return handleReadClient(clientMatch[1], env);
@@ -691,6 +912,12 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(runScheduledSync(env));
+    ctx.waitUntil((async () => {
+      try { await runProbe1(env); } catch (e) { console.error(JSON.stringify({ event: "probe1_uncaught", error: e.message })); }
+      try { await runScheduledSync(env); } catch (e) { console.error(JSON.stringify({ event: "sync_uncaught", error: e.message })); }
+      try { await runProbe2(env); } catch (e) { console.error(JSON.stringify({ event: "probe2_uncaught", error: e.message })); }
+      try { await runProbe3(env); } catch (e) { console.error(JSON.stringify({ event: "probe3_uncaught", error: e.message })); }
+      await pingHeartbeat(env);
+    })());
   },
 };

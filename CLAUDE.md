@@ -220,7 +220,8 @@ CLERK_WEBHOOK_SECRET=whsec_...
 | `/sm8-search?uuid={uuid}&q={q}` | GET | None | Search SM8 companies (min 3 chars) |
 | `/logo/{uuid}` | GET | None | Serve client logo from R2 |
 | `/resolve-slug/{slug}` | GET | None | Resolve URL slug → client UUID |
-| Cron `0 10 * * * UTC` | — | — | Nightly materials sync |
+| `POST /send-test-alert` | POST | Bearer `RAFTER_WORKER_SECRET` | Fire one test Telegram alert — RFT-46 deploy verification |
+| Cron `0 10 * * * UTC` | — | — | Nightly: materials sync + Probe 1 (SM8 token) + Probe 2 (Make scenarios) + Probe 3 (recovery components) + heartbeat ping |
 
 **Worker secrets** (`npx wrangler secret put <NAME> --name rafter-materials-sync`):
 
@@ -230,6 +231,10 @@ CLERK_WEBHOOK_SECRET=whsec_...
 | `RAFTER_WORKER_SECRET` | Bearer token for `/store-token` (admin/Claude Code fallback) and admin-api→`/refresh-materials`. Rotating this does NOT require a Make update. |
 | `RAFTER_INTERNAL_SECRET` | Header auth (`x-rafter-secret`) for `/client-config` and `/render-email` (called by Make Rafter Form). **Must be provisioned on every new Worker deploy.** |
 | `SERVICEM8_CLIENT_SECRET` | SM8 OAuth client secret for token refresh |
+| `MAKE_API_TOKEN` | Make API token for Probe 2 (scenario status) and Probe 3 (Account Discovery logs). **Source of truth: Cloudflare Worker secret** — was incorrectly referenced as "in .env" in RFT-31 epic. Value lives on the Worker only; no local .env file. |
+| `TELEGRAM_BOT_TOKEN` | Telegram bot token for alert channel (RFT-31). Stored via @BotFather. |
+| `TELEGRAM_CHAT_ID` | Telegram chat/group ID that receives probe alerts (RFT-31). |
+| `HEARTBEAT_URL` | healthchecks.io ping URL — **pending setup by Will**. Create check at healthchecks.io (free, 20 checks), set period=1d grace=2h, copy ping URL, then `npx wrangler secret put HEARTBEAT_URL --name rafter-materials-sync`. |
 
 **Secret rotation checklist — `MAKE_STORE_TOKEN_SECRET`:**
 1. `npx wrangler secret put MAKE_STORE_TOKEN_SECRET --name rafter-materials-sync` (new value)
