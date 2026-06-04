@@ -179,6 +179,10 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 6. **SM8 OAuth (unavoidable human step)** — client must click Authorise in SM8 (Flow D)
 7. Verification pass → Clerk public metadata marks onboarding complete → client lands on quoting form
 
+**Onboarding — client-facing surfaces that require KV fields to be correct before go-live:**
+- `logo_url` + `company_name`: shown on the **PDF preview loading screen** (the branded interstitial the operator sees while the PDF renders). If `logo_url` is missing the loading screen falls back to `company_name` as text; if both are missing it falls back to "Rafter". Must be provisioned in step 5 before the operator uses the form.
+- `logo_url` is also embedded in the PDF cover page and in the quote email template (`email_template` field). All three surfaces pull from the same KV field — one logo upload covers all.
+
 ### Billing
 - Clerk Billing + Stripe. Plans defined in Clerk dashboard.
 - `<PricingTable />` component for plan selection
@@ -276,6 +280,10 @@ compatibility_date = "2024-09-23"
 
 **Font loading:** Google Fonts does NOT load in headless Chromium. All fonts (Mulish 400/700,
 Playfair Display 600) must be inlined as base64 data URIs. Do not reference Google Fonts CDN.
+
+**Photo compression:** Section photos are compressed inside the Puppeteer browser context (via Canvas API) before PDF generation — resized to 400px wide at JPEG quality 0.78. `OffscreenCanvas` is not available in the Cloudflare Workers runtime so compression cannot happen in the Worker itself; it must run inside `page.evaluate()` where the full browser Canvas API is available. A 20-photo quote produces ~2MB. Do not move compression back to the Worker layer.
+
+**PDF preview loading screen:** `index.html` writes a branded interstitial to the new tab synchronously (before the fetch) using `win.document.write()`. It shows `client.logo_url` pulsing over the `#ECF1E8` background with animated lime dots. Falls back to `client.company_name` as text if no logo. The window then navigates to the PDF blob URL when rendering completes. The `window.open()` call must remain synchronous inside the click handler — moving it after an `await` causes browsers to block it as a popup.
 
 ### rafter-admin-api (NEW v2.0)
 
