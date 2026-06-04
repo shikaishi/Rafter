@@ -1,0 +1,330 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rafter — Get Started</title>
+<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
+<style>
+:root {
+  --rf-outer:      #1B3A52;
+  --rf-card:       #FFFFFF;
+  --rf-border:     #D4D0C8;
+  --rf-divider:    #E8E4DC;
+  --rf-text:       #1C1C1C;
+  --rf-muted:      #6B6860;
+  --rf-green:      #0D2E1C;
+  --rf-lime:       #84B741;
+  --rf-danger:     #E57373;
+  --shadow-card:   0 2px 8px rgba(0,0,0,0.12), 0 1px 2px rgba(0,0,0,0.06);
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; padding: 0; }
+body {
+  background: var(--rf-outer);
+  min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-size: 14px;
+  color: var(--rf-text);
+  line-height: 1.45;
+  padding: 32px 20px 48px;
+}
+
+/* ── Loading ── */
+.state-loading {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  gap: 16px;
+  color: rgba(255,255,255,0.65);
+}
+.spinner {
+  width: 36px; height: 36px;
+  border: 3px solid rgba(255,255,255,0.15);
+  border-top-color: var(--rf-lime);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ── Layout ── */
+.app {
+  max-width: 480px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+/* ── Brand header ── */
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 0 8px;
+}
+.brand-logo {
+  width: 40px; height: 40px;
+  background: #0D2E1C;
+  border-radius: 8px;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+}
+.brand-logo svg { display: block; }
+.brand-name {
+  font-size: 22px;
+  font-weight: 700;
+  color: #fff;
+  letter-spacing: -0.02em;
+}
+.brand-tagline {
+  font-size: 13px;
+  color: rgba(255,255,255,0.55);
+  margin-top: 1px;
+}
+
+/* ── Step indicator ── */
+.step-indicator {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 2px;
+}
+.step {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: rgba(255,255,255,0.35);
+}
+.step.active { color: rgba(255,255,255,0.85); }
+.step.done   { color: var(--rf-lime); }
+.step-num {
+  width: 22px; height: 22px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px;
+}
+.step.active .step-num { background: var(--rf-lime); color: #0D2E1C; }
+.step.done   .step-num { background: var(--rf-lime); color: #0D2E1C; }
+.step-divider {
+  flex: 1;
+  height: 1px;
+  background: rgba(255,255,255,0.12);
+}
+
+/* ── Card ── */
+.card {
+  background: var(--rf-card);
+  border: 0.5px solid var(--rf-border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+}
+.card-header {
+  padding: 24px 24px 0;
+}
+.card-header h2 {
+  margin: 0 0 4px;
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--rf-green);
+}
+.card-header p {
+  margin: 0;
+  font-size: 13px;
+  color: var(--rf-muted);
+  line-height: 1.5;
+}
+.card-body {
+  padding: 20px 24px 24px;
+}
+
+/* ── Clerk component overrides ── */
+/* Centre the Clerk-rendered widget and neutralise its outer shadow */
+#clerk-signup,
+#clerk-create-org {
+  display: flex;
+  justify-content: center;
+}
+#clerk-signup > *,
+#clerk-create-org > * {
+  box-shadow: none !important;
+  border: none !important;
+  width: 100% !important;
+}
+
+/* ── Error banner ── */
+.error-banner {
+  background: #FFCDD2;
+  border: 1px solid var(--rf-danger);
+  border-radius: 8px;
+  padding: 12px 16px;
+  font-size: 13px;
+  color: #b71c1c;
+}
+</style>
+</head>
+<body>
+
+<!-- Loading state (shown until Clerk resolves) -->
+<div id="state-loading" class="state-loading">
+  <div class="spinner"></div>
+  <p>Loading…</p>
+</div>
+
+<!-- Step 1: Create account -->
+<div id="state-signup" class="app" hidden>
+  <div class="brand">
+    <div class="brand-logo">
+      <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z" fill="#84B741"/>
+      </svg>
+    </div>
+    <div>
+      <div class="brand-name">Rafter</div>
+      <div class="brand-tagline">Quoting made simple for tradespeople</div>
+    </div>
+  </div>
+
+  <div class="step-indicator">
+    <div class="step active">
+      <div class="step-num">1</div>
+      Create account
+    </div>
+    <div class="step-divider"></div>
+    <div class="step">
+      <div class="step-num">2</div>
+      Your organisation
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Create your account</h2>
+      <p>We'll send a magic link to your email — no password needed.</p>
+    </div>
+    <div class="card-body">
+      <div id="clerk-signup"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Step 2: Create organisation -->
+<div id="state-create-org" class="app" hidden>
+  <div class="brand">
+    <div class="brand-logo">
+      <svg width="24" height="24" viewBox="0 0 32 32" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z" fill="#84B741"/>
+      </svg>
+    </div>
+    <div>
+      <div class="brand-name">Rafter</div>
+      <div class="brand-tagline">Quoting made simple for tradespeople</div>
+    </div>
+  </div>
+
+  <div class="step-indicator">
+    <div class="step done">
+      <div class="step-num">✓</div>
+      Account created
+    </div>
+    <div class="step-divider"></div>
+    <div class="step active">
+      <div class="step-num">2</div>
+      Your organisation
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-header">
+      <h2>Create your organisation</h2>
+      <p>This sets up your Rafter workspace. Use your business name.</p>
+    </div>
+    <div class="card-body">
+      <div id="clerk-create-org"></div>
+    </div>
+  </div>
+</div>
+
+<script
+  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  crossorigin="anonymous"
+  onerror="document.querySelector('#state-loading p').textContent='Failed to load authentication library. Please refresh the page.'"
+></script>
+<script>
+'use strict';
+
+function show(id) {
+  document.getElementById('state-loading').hidden    = id !== 'state-loading';
+  document.getElementById('state-create-org').hidden = id !== 'state-create-org';
+}
+
+(async () => {
+  console.log('[Rafter] init start, window.Clerk =', typeof window.Clerk);
+  if (!window.Clerk) {
+    document.querySelector('#state-loading p').textContent =
+      'Failed to load authentication library. Please refresh the page.';
+    return;
+  }
+
+  const clerk = window.Clerk; // instance pre-configured by data-clerk-publishable-key
+  console.log('[Rafter] calling clerk.load()');
+  try {
+    await Promise.race([
+      clerk.load(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('clerk.load() timed out after 10s — check network tab for blocked requests')), 10000)),
+    ]);
+  } catch (err) {
+    console.error('[Rafter] clerk.load() failed:', err);
+    document.querySelector('#state-loading p').textContent =
+      'Authentication error: ' + err.message;
+    return;
+  }
+  console.log('[Rafter] clerk.load() complete, user =', clerk.user?.id ?? 'none');
+
+  // ── Already signed in ─────────────────────────────────────────────────────
+  if (clerk.user) {
+    let org = clerk.organization;
+
+    // Activate org if user has one but none is currently active
+    if (!org) {
+      const memberships = clerk.user.organizationMemberships ?? [];
+      if (memberships.length > 0) {
+        try {
+          await clerk.setActive({ organization: memberships[0].organization.id });
+          org = clerk.organization;
+        } catch {}
+      }
+    }
+
+    if (!org) {
+      // Signed in but no org — redirect to Clerk hosted create-org page
+      console.log('[Rafter] no org — redirecting to Clerk create-org');
+      await clerk.redirectToCreateOrganization({ afterCreateOrganizationUrl: '/onboarding.html' });
+      return;
+    }
+
+    // Has org — check if onboarding is already complete
+    if (org.publicMetadata?.rafter_onboarding_complete) {
+      window.location.replace('/');
+    } else {
+      window.location.replace('/onboarding.html');
+    }
+    return;
+  }
+
+  // ── Not signed in — redirect to Clerk hosted sign-up ────────────────────
+  console.log('[Rafter] no user — redirecting to Clerk sign-up');
+  await clerk.redirectToSignUp({ redirectUrl: window.location.href });
+})();
+</script>
+</body>
+</html>

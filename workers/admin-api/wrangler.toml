@@ -19,3 +19,7 @@ database_id = "39f38376-d163-439b-984d-2f0889e88d56"
 [[services]]
 binding = "MATERIALS_SYNC_WORKER"
 service = "rafter-materials-sync"
+
+[[services]]
+binding = "PDF_WORKER"
+service = "rafter-pdf"

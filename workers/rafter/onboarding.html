@@ -27,6 +27,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html, body { margin: 0; padding: 0; }
 body {
   background: var(--rf-outer);
@@ -435,7 +436,11 @@ textarea { resize: vertical; min-height: 68px; }
 
 </div><!-- /#state-form -->
 
-<script src="https://cdn.jsdelivr.net/npm/@clerk/clerk-js@5/dist/clerk.browser.js"></script>
+<script
+  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  crossorigin="anonymous"
+></script>
 <script>
 'use strict';
 
@@ -756,15 +761,23 @@ function setResult(kind, data, errorMsg) {
     return;
   }
 
-  const clerk = new window.Clerk(CLERK_KEY);
+  console.log('[Rafter] onboarding init, window.Clerk =', typeof window.Clerk);
+  const clerk = window.Clerk; // instance pre-configured by data-clerk-publishable-key
+  console.log('[Rafter] calling clerk.load()');
   try {
-    await clerk.load();
+    await Promise.race([
+      clerk.load(),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('clerk.load() timed out — check Network tab for blocked requests')), 10000)),
+    ]);
   } catch (err) {
+    console.error('[Rafter] clerk.load() failed:', err);
     loadingEl.querySelector('p').textContent = 'Authentication error: ' + err.message;
     return;
   }
+  console.log('[Rafter] clerk.load() complete, user =', clerk.user?.id ?? 'none');
 
   if (!clerk.user) {
+    console.log('[Rafter] no user, redirecting to sign-in');
     clerk.redirectToSignIn({ redirectUrl: window.location.href });
     return;
   }

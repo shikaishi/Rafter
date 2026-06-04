@@ -538,8 +538,102 @@ async function runSmoketest(uuid, { destructive }, env) {
   skip('company_uuid', 'requires Make scenario execution — verify M3 expression via blueprint GET (REQ-On-58/BUG-25)');
 
   // ── REQ-On-47: PDF + two-step SM8 Attachment API ─────────────────────────
-  // TODO: call rafter-pdf /generate?mode=preview, then POST /Attachment.json + /Attachment/{uuid}.file
-  skip('pdf_attach', 'TODO: implement rafter-pdf + SM8 two-step Attachment API test');
+  // Requires publish_job_attachments scope (added with manage_jobs + read_attachments for RFT-32).
+  // Until re-auth with updated scope string, fails at Attachment.json with 403.
+  if (!destructive) {
+    skip('pdf_attach', 'destructive=false — skipped for production clients per REQ-On-45');
+  } else if (!env.PDF_WORKER) {
+    skip('pdf_attach', 'PDF_WORKER service binding not configured — redeploy admin-api');
+  } else {
+    const freshRaw2 = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid);
+    const freshRecord2 = freshRaw2 ? JSON.parse(freshRaw2) : null;
+    const pdfToken = freshRecord2?.access_token;
+    if (!pdfToken) {
+      fail('pdf_attach', 'access_token missing — complete SM8 OAuth first (REQ-On-36)');
+    } else {
+      let pdfJobUuid = null;
+      try {
+        // Step 1: generate minimal test PDF via Service Binding (W2W — cannot use workers.dev URL)
+        const pdfReq = new Request('https://rafter-pdf.will-8e8.workers.dev/generate?mode=preview', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            client_uuid: uuid,
+            client_name: 'Smoketest',
+            site_address: '1 Test St, Melbourne VIC 3000',
+            proposal_type: 'LC',
+            proposal_date: new Date().toISOString().slice(0, 10),
+            quote_ref: `Q-SMOKETEST-${uuid.slice(0, 8)}`,
+            total: 0,
+            sections: [{ name: 'Test Section', items: [{ name: 'Smoketest item', price: 0, scope: 'Auto-generated smoketest — delete if found' }] }],
+            form_sections: [], payment_schedule: [], payment_notes: '', lineItems: [],
+          }),
+        });
+        const pdfRes = await env.PDF_WORKER.fetch(pdfReq);
+        if (!pdfRes.ok) {
+          fail('pdf_attach', `rafter-pdf /generate returned ${pdfRes.status}: ${(await pdfRes.text()).slice(0, 200)}`);
+        } else {
+          const pdfBytes = await pdfRes.arrayBuffer();
+          // Step 2: create a test SM8 job to attach to
+          const jobRes = await fetch(`${SM8_BASE}/job.json`, {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${pdfToken}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({ status: 'Quote', job_description: `[Rafter pdf_attach smoketest ${uuid.slice(0, 8)} — auto-delete]` }),
+          });
+          if (!jobRes.ok) {
+            fail('pdf_attach', `SM8 POST /job.json returned ${jobRes.status}`);
+          } else {
+            pdfJobUuid = jobRes.headers.get('x-record-uuid'); // VER-03
+            if (!pdfJobUuid) {
+              fail('pdf_attach', 'x-record-uuid header absent from SM8 job response (VER-03)');
+            } else {
+              // Step 3: create attachment record (requires publish_job_attachments scope)
+              const attachRes = await fetch(`${SM8_BASE}/Attachment.json`, {
+                method: 'POST',
+                headers: { Authorization: `Bearer ${pdfToken}`, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  related_object_uuid: pdfJobUuid, related_object: 'job',
+                  attachment_type: 'document', name: `smoketest-${uuid.slice(0, 8)}.pdf`, mime_type: 'application/pdf',
+                }),
+              });
+              if (attachRes.status === 403) {
+                fail('pdf_attach', 'SM8 /Attachment.json → 403: publish_job_attachments scope missing. Re-auth via setup.html after adding scope to the string (RFT-32).');
+              } else if (!attachRes.ok) {
+                fail('pdf_attach', `SM8 POST /Attachment.json returned ${attachRes.status}`);
+              } else {
+                const attachUuid = attachRes.headers.get('x-record-uuid');
+                if (!attachUuid) {
+                  fail('pdf_attach', 'x-record-uuid absent from SM8 Attachment response');
+                } else {
+                  // Step 4: upload PDF binary
+                  const uploadForm = new FormData();
+                  uploadForm.append('file', new Blob([pdfBytes], { type: 'application/pdf' }), `smoketest-${uuid.slice(0, 8)}.pdf`);
+                  const uploadRes = await fetch(`${SM8_BASE}/Attachment/${attachUuid}.file`, {
+                    method: 'POST',
+                    headers: { Authorization: `Bearer ${pdfToken}` },
+                    body: uploadForm,
+                  });
+                  if (!uploadRes.ok) {
+                    fail('pdf_attach', `SM8 POST /Attachment/${attachUuid}.file returned ${uploadRes.status}`);
+                  } else {
+                    pass('pdf_attach', { job_uuid: pdfJobUuid, attach_uuid: attachUuid, pdf_bytes: pdfBytes.byteLength });
+                  }
+                }
+              }
+            }
+          }
+        }
+      } catch (err) {
+        fail('pdf_attach', err.message);
+      } finally {
+        if (pdfJobUuid) {
+          fetch(`${SM8_BASE}/job/${pdfJobUuid}.json`, {
+            method: 'DELETE', headers: { Authorization: `Bearer ${pdfToken}` },
+          }).catch(() => {});
+        }
+      }
+    }
+  }
 
   // ── REQ-On-48: Clerk org binding ─────────────────────────────────────────
   // Full JWT admission check deferred to Clerk wiring step. Check field presence now.
@@ -586,7 +680,18 @@ async function runSmoketest(uuid, { destructive }, env) {
 
   if (hardPassed) {
     await writeEvent(env, 'onboarding_completed', uuid, { skipped_assertions: Object.keys(assertions).filter(k => assertions[k].skipped) });
-    // TODO REQ-On-53: flip Clerk public metadata to onboarding_complete — implement at Clerk wiring step
+    // REQ-On-53: flip Clerk public metadata so the edge JWT check admits the client to the quoting form
+    if (env.CLERK_SECRET_KEY && record?.clerk_org_id) {
+      try {
+        await fetch(`https://api.clerk.com/v1/organizations/${record.clerk_org_id}/metadata`, {
+          method: 'PATCH',
+          headers: { Authorization: `Bearer ${env.CLERK_SECRET_KEY}`, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ public_metadata: { rafter_onboarding_complete: true } }),
+        });
+      } catch (err) {
+        console.error(JSON.stringify({ event: 'clerk_metadata_flip_error', uuid, error: err.message }));
+      }
+    }
     console.log(JSON.stringify({ event: 'smoketest_passed', uuid }));
   } else {
     console.log(JSON.stringify({ event: 'smoketest_failed', uuid }));
