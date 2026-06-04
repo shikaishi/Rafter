@@ -91,6 +91,7 @@ creates jobs in ServiceM8, and attaches the PDF to the SM8 job via the two-step 
     │   ├── index.html       # Quoting form (operator-facing)
     │   ├── setup.html       # SM8 OAuth initiation
     │   ├── callback.html    # OAuth callback
+    │   ├── sign-up.html     # NEW 2026-06-04 — Clerk sign-up entry point (redirectToSignUp → redirectToCreateOrganization → onboarding.html)
     │   └── onboarding.html    # NEW v2.0 — browser intake form, posts to /onboarding/provision
     ├── materials-sync/      # rafter-materials-sync Worker
     │   ├── wrangler.toml
@@ -194,6 +195,21 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 - Publishable key: `pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ`
 - Clerk domain: `first-kiwi-3.clerk.accounts.dev`
 - JWKS: `https://first-kiwi-3.clerk.accounts.dev/.well-known/jwks.json`
+- **CLERK_JWT_KEY (PEM public key):** `-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuQIvdh+gKaqIqbz/sqKA\nyQnpYtMQ1kf1PM06Ujy82763e2uKi6oJVh2TGqj3gf5FMMVI387U3AMJ+6Ada4Zi\nJmPPQJ8PzXb+rz9Oe4R4feOu7B7wx9bGBndO66KQJc4FCP1/PiB5qkmkRTjAzjPx\nV8tQXG2/dz+U8egyfZbVGkp2HKlWOobOhs1sxT4EXk89JVE5DeY/Yibj5KHvdl2Y\n6EWWkSJWeDn66CQCQ0eMtvYTRHbfM6tFp9YxlStVu3ggb+5iX1s6ceyYrxJDGHM0\nQMWwXZsC0lb+VUgUEzD/5ppNHnNBsg9ArEsANBz6keChFYkI3WecoTm6RwWJ3fcj\n2wIDAQAB\n-----END PUBLIC KEY-----`
+
+**Clerk JS CDN (use this, not jsDelivr):** jsDelivr is blocked by Brave and other ad blockers. Always load from the Clerk-hosted CDN with `data-clerk-publishable-key` attribute:
+```html
+<script
+  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  crossorigin="anonymous"
+></script>
+```
+Use `window.Clerk` directly as the instance (NOT `new window.Clerk(KEY)`). Add `[hidden]{display:none!important}` to CSS — `display:flex` on loading states overrides the `hidden` attribute otherwise.
+
+**sign-up.html flow:** Uses `clerk.redirectToSignUp()` and `clerk.redirectToCreateOrganization()` (hosted redirects, no embedded components). After org creation Clerk redirects to `/onboarding.html`. The `organization.created` webhook fires → admin-api creates stub KV record. onboarding.html completes the record via `/onboarding/provision`.
+
+**Clerk Dashboard to-do:** Set Application name to "Rafter" (Configure → Settings) — currently shows "Index of /" as default org name suggestion.
 
 **Clerk environment variables (to be added to all Workers):**
 ```
@@ -289,9 +305,9 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 
 **URL:** https://rafter-admin-api.will-8e8.workers.dev
 **Location:** `workers/admin-api/`
-**Status:** Implemented 2026-05-31. All routes live: provisioning (POST /admin/clients), list clients (GET /admin/clients), smoketest (POST /admin/clients/{uuid}/verify), sync trigger (POST /admin/clients/{uuid}/sync). CLERK_JWT_KEY set — networkless JWT verification working. onboarding.html built 2026-05-31. Pending: CLERK_SECRET_KEY (subscription_gate smoketest), Clerk webhook org.created trigger.
+**Status:** Fully operational as of 2026-06-04. All routes live. Clerk webhook (`organization.created`) verified end-to-end. REQ-On-47 (pdf_attach smoketest) and REQ-On-53 (Clerk metadata flip on pass) implemented. pdf_attach currently fails with 403 — `publish_job_attachments` scope not yet in trial grant (deferred to RFT-32 re-auth). CLERK_SECRET_KEY set. sign-up.html built and live.
 
-**Bindings:** KV (`RAFTER_CLIENTS`), R2 (`RAFTER_ASSETS`), D1 (`RAFTER_EVENTS`), Service Binding (`MATERIALS_SYNC_WORKER` → `rafter-materials-sync`). The service binding is required for Worker-to-Worker calls — see W2W note in Cloudflare infrastructure section.
+**Bindings:** KV (`RAFTER_CLIENTS`), R2 (`RAFTER_ASSETS`), D1 (`RAFTER_EVENTS`), Service Binding (`MATERIALS_SYNC_WORKER` → `rafter-materials-sync`), Service Binding (`PDF_WORKER` → `rafter-pdf`). The service bindings are required for Worker-to-Worker calls — see W2W note in Cloudflare infrastructure section.
 
 **REQ-On-32 (trigger materials sync):** Admin API calls materials-sync via `MATERIALS_SYNC_WORKER` service binding, not HTTP. Auth still uses `RAFTER_WORKER_SECRET` bearer token (materials-sync `/refresh-materials` checks it regardless of call path).
 
