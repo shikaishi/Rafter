@@ -212,6 +212,34 @@ function collectPhotoKeys(payload) {
   return [...keys];
 }
 
+async function compressPhoto(buf, mime, maxWidth = 600) {
+  // Resize to maxWidth and re-encode as JPEG at quality 0.78.
+  // Falls back to original bytes if OffscreenCanvas is unavailable or the
+  // input is already small enough — never throws.
+  try {
+    const blob = new Blob([buf], { type: mime });
+    const bitmap = await createImageBitmap(blob);
+    if (bitmap.width <= maxWidth) {
+      // Already within target — still re-encode to JPEG to shed PNG/EXIF bloat.
+      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
+      canvas.getContext("2d").drawImage(bitmap, 0, 0);
+      bitmap.close();
+      const out = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.78 });
+      return new Uint8Array(await out.arrayBuffer());
+    }
+    const scale = maxWidth / bitmap.width;
+    const w = Math.round(bitmap.width * scale);
+    const h = Math.round(bitmap.height * scale);
+    const canvas = new OffscreenCanvas(w, h);
+    canvas.getContext("2d").drawImage(bitmap, 0, 0, w, h);
+    bitmap.close();
+    const out = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.78 });
+    return new Uint8Array(await out.arrayBuffer());
+  } catch {
+    return new Uint8Array(buf);
+  }
+}
+
 async function fetchPhotos(env, keys) {
   if (!keys.length) return new Map();
   const entries = await Promise.all(keys.map(async (k) => {
@@ -220,7 +248,8 @@ async function fetchPhotos(env, keys) {
       if (!obj) return [k, null];
       const buf = await obj.arrayBuffer();
       const mime = obj.httpMetadata?.contentType || mimeFromPath(k);
-      return [k, `data:${mime};base64,${arrayBufferToBase64(buf)}`];
+      const compressed = await compressPhoto(buf, mime, 600);
+      return [k, `data:image/jpeg;base64,${arrayBufferToBase64(compressed)}`];
     } catch {
       return [k, null];
     }
