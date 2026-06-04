@@ -212,34 +212,6 @@ function collectPhotoKeys(payload) {
   return [...keys];
 }
 
-async function compressPhoto(buf, mime, maxWidth = 600) {
-  // Resize to maxWidth and re-encode as JPEG at quality 0.78.
-  // Falls back to original bytes if OffscreenCanvas is unavailable or the
-  // input is already small enough — never throws.
-  try {
-    const blob = new Blob([buf], { type: mime });
-    const bitmap = await createImageBitmap(blob);
-    if (bitmap.width <= maxWidth) {
-      // Already within target — still re-encode to JPEG to shed PNG/EXIF bloat.
-      const canvas = new OffscreenCanvas(bitmap.width, bitmap.height);
-      canvas.getContext("2d").drawImage(bitmap, 0, 0);
-      bitmap.close();
-      const out = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.78 });
-      return new Uint8Array(await out.arrayBuffer());
-    }
-    const scale = maxWidth / bitmap.width;
-    const w = Math.round(bitmap.width * scale);
-    const h = Math.round(bitmap.height * scale);
-    const canvas = new OffscreenCanvas(w, h);
-    canvas.getContext("2d").drawImage(bitmap, 0, 0, w, h);
-    bitmap.close();
-    const out = await canvas.convertToBlob({ type: "image/jpeg", quality: 0.78 });
-    return new Uint8Array(await out.arrayBuffer());
-  } catch {
-    return new Uint8Array(buf);
-  }
-}
-
 async function fetchPhotos(env, keys) {
   if (!keys.length) return new Map();
   const entries = await Promise.all(keys.map(async (k) => {
@@ -248,8 +220,7 @@ async function fetchPhotos(env, keys) {
       if (!obj) return [k, null];
       const buf = await obj.arrayBuffer();
       const mime = obj.httpMetadata?.contentType || mimeFromPath(k);
-      const compressed = await compressPhoto(buf, mime, 600);
-      return [k, `data:image/jpeg;base64,${arrayBufferToBase64(compressed)}`];
+      return [k, `data:${mime};base64,${arrayBufferToBase64(buf)}`];
     } catch {
       return [k, null];
     }
@@ -279,6 +250,32 @@ async function renderPdf(env, html) {
     await page.setViewport({ width: 1240, height: 1754 });
     await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 30000 });
     await page.evaluate(() => document.fonts.ready);
+
+    // Compress section photos to 600px wide JPEG inside the browser context,
+    // where Canvas API is available. Runs before PDF generation so the PDF
+    // embeds the downscaled versions rather than the originals.
+    await page.evaluate(async () => {
+      const imgs = [...document.querySelectorAll(".sect-photo img")];
+      await Promise.all(imgs.map((img) => new Promise((resolve) => {
+        if (!img.src.startsWith("data:")) { resolve(); return; }
+        const tmp = new Image();
+        tmp.onload = () => {
+          try {
+            const maxW = 400;
+            const scale = Math.min(1, maxW / (tmp.naturalWidth || 1));
+            const w = Math.max(1, Math.round(tmp.naturalWidth * scale));
+            const h = Math.max(1, Math.round(tmp.naturalHeight * scale));
+            const canvas = document.createElement("canvas");
+            canvas.width = w; canvas.height = h;
+            canvas.getContext("2d").drawImage(tmp, 0, 0, w, h);
+            img.src = canvas.toDataURL("image/jpeg", 0.78);
+          } catch (_) { /* leave original on any error */ }
+          resolve();
+        };
+        tmp.onerror = resolve;
+        tmp.src = img.src;
+      })));
+    });
 
     const footerTemplate = `
       <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif; font-size: 9px; width: 100%; padding: 0 15mm; color: ${COLORS.muted}; text-align: right; box-sizing: border-box;">

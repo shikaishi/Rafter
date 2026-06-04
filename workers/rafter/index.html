@@ -1523,7 +1523,11 @@ function renderPhotoPanel(s) {
         const k = c.dataset.key;
         if (s.photos.includes(k)) s.photos = s.photos.filter((x) => x !== k);
         else s.photos.push(k);
-        renderSections();
+        // Update selection state in-place — no full re-render so scroll is preserved
+        c.classList.toggle("sel", s.photos.includes(k));
+        const n = s.photos.length;
+        panel.querySelector(".count").textContent = `${n} photo${n === 1 ? "" : "s"} selected`;
+        panel.querySelector('[data-role="done"]').innerHTML = `<i class="ti ti-check"></i>Done · ${n}`;
       });
     });
   }
