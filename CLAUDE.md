@@ -18,10 +18,13 @@
 >
 > Read this file at the start of every Claude Code session — it contains everything needed to work on Rafter without a context dump. Do not make assumptions about endpoints, UUIDs, or configuration values — they are all here or flagged as requiring verification.
 >
-> **Version 2.0 — Updated May 2026.** Major changes: Clerk auth + billing, Admin API Worker,
-> D1 event logging, central dashboard, Linear issue tracking. See change summary below.
+> **Version 2.1 — Updated June 2026.** Added: connect-first onboarding (OAuth-first, SM8 prefill, editable review), staff_uuid SM8 prefill, photo ingest Step 4 (Canvas resize + XHR progress + watchdog), ABN live validation, CORS requirement documented, KV reverse-index requirement documented, chat↔code channel (RFT-53 thread). Multi-tenant standing rule added.
 >
 > **Companion doc: `TRADIE.md` (repo root)** — target-user persona and design/appraisal lens. Consult for any user-facing product decision.
+>
+> **Chat↔Code channel:** RFT-53 Linear thread is the bidirectional handoff channel between Claude Chat and Claude Code. Read state via `mcp__linear__list_comments` with `issueId: "RFT-53"` (result overflows — extract body via `node -e` from the saved file, NOT python3 which hits the Windows Store alias). Linear docs/documents don't resolve reliably via MCP — use issue comments for state.
+>
+> **Standing rule — multi-tenant framing:** Rafter is a multi-tenant platform. The production environment serves all clients. The first client is the operator at `slug:andy`. Never frame production artefacts (webhook URLs, Make scenarios, KV records, data) as "Andy's" — that framing caused real errors in prior sessions.
 
 ---
 
@@ -129,7 +132,7 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 
 **Worker-to-Worker calls:** Same-account Workers MUST use a **Service Binding**, NOT a workers.dev URL. Cloudflare blocks W2W subrequests via workers.dev at the edge — they are silently never delivered (wrangler tail shows zero events). Admin API → materials-sync uses binding `MATERIALS_SYNC_WORKER` (declared in admin-api wrangler.toml `[[services]]`). Any new Worker-to-Worker call must follow the same pattern.
 
-**KV key format:** `client:{uuid}` and `slug:{slug}` → uuid
+**KV key format:** `client:{uuid}`, `slug:{slug}` → uuid, `clerk_org:{orgId}` → uuid (reverse index — written by admin-api webhook handler on org.created, and by materials-sync `handleStoreToken` as a safety fallback). The clerk_org reverse index is required by `/onboarding/sm8-prefill`, `/onboarding/photos`, and `/onboarding/provision` to find the uuid from the JWT org_id.
 
 ### KV records (audited 2026-05-30)
 
@@ -171,14 +174,34 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 - Roles: `admin` (client owner) + `member` (staff) — embedded in JWT, no extra network call
 - Subscription state embedded in JWT — Worker checks on every request
 
-### Onboarding flow (Flow E)
+### Onboarding flow (Flow E — connect-first, built 2026-06-05)
+
+**Step sequence (onboarding.html):** Step 1 → Step 2 → Step 3 (provision) → Step 4 (photos) → Done
+
 1. Client signs up at rafter.deepgreensea.au/sign-up — magic link, no password
-2. Clerk session task flow prompts org creation
-3. Clerk webhook fires `org.created` → Admin API triggered
-4. Client completes onboarding.html intake form (ABN, branding, payment thresholds, etc.)
-5. Admin API writes KV record, uploads logo to R2, triggers materials sync, runs verification
-6. **SM8 OAuth (unavoidable human step)** — client must click Authorise in SM8 (Flow D)
+2. Clerk session task flow prompts org creation → `org.created` webhook fires → admin-api creates stub KV record; clerk_org reverse index written
+3. **Step 1 — Connect ServiceM8 (OAuth-first):** onboarding.html immediately prompts SM8 OAuth at `/setup.html`. This is the first thing the client does — without it, prefill cannot run. After OAuth, callback redirects to `onboarding.html?oauth_complete=1`.
+4. **Step 2 — Review SM8 prefill:** onboarding.html calls `GET /onboarding/sm8-prefill` → admin-api fetches `vendor.json` (company_name + abn_number + billing_address), `jobtemplate.json` (sections), and `staff.json` (active staff) from SM8 in one `Promise.all`. Fields are populated and labelled SM8 ✓ or Manual. Business email and phone are always manual — SM8's `v.email` is a relay address, not a contact. Staff picker is required if SM8 returns staff.
+5. **Step 3 — Configure Rafter:** operator enters payment thresholds, credentials, T&Cs, logo, webhook environment, operator email. POSTs to `/onboarding/provision` → KV record written, logo uploaded to R2, materials sync triggered, smoketest run.
+6. **Step 4 — Photos (optional):** Category dropdown sourced from Step 2 sections + "General". File picker → Canvas resize (400px/JPEG q0.78, `createImageBitmap({imageOrientation:'from-image'})` for EXIF) → XHR upload with byte-level progress → POST `/onboarding/photos` → R2 `clients/{uuid}/photos/{category}/{filename}`. 10-concurrent, 30s watchdog per file, animated state chips, live status sentence. Skip-and-return supported.
 7. Verification pass → Clerk public metadata marks onboarding complete → client lands on quoting form
+
+**SM8 prefill field reliability (`workers/admin-api/index.js:handleSm8Prefill`):**
+- `vendor.name` → `company_name` ✓ (reliable)
+- `vendor.abn_number` → `abn` ✓ (reliable — bug was reading `v.abn` which is undefined; correct field is `v.abn_number`)
+- `vendor.billing_address` → `business_address` (best-effort — may be empty)
+- `business_email`: must-enter manually — `v.email` is a ServiceM8 relay address, not a business contact
+- `phone`: must-enter manually — no usable phone field in vendor.json
+- `logo`: must-upload manually — not available from SM8
+- Tax rates: schema-confirmed only (not ingested)
+
+**Onboarding gaps (RFT-53 analysis, 2026-06-05):**
+- `staff_uuid`: SM8-fetched from `staff.json`, operator selects from picker — required if list non-empty ✓ (deployed d5a093c)
+- `job_categories` / `job_queues`: confirmed dead — nothing in Make blueprint or live platform reads them from KV. **Do not add to onboarding.** Add only when a real consumer exists.
+- `bank_details`: open gap — needs adding to Step 3 (deferred, not yet built)
+- Photos: addressed by Step 4 (commit 7f41186)
+
+**CORS requirement (bit us once — RFT-53):** Every `/onboarding/*` route requires CORS headers. The OPTIONS preflight handler (`admin-api/index.js:43`) and `withCors()` wrapper must cover any new `/onboarding/*` route. Omitting them produces a silent network error in the browser with no server-side log. Added after `cc221407` incident.
 
 **Onboarding — client-facing surfaces that require KV fields to be correct before go-live:**
 - `logo_url` + `company_name`: shown on the **PDF preview loading screen** (the branded interstitial the operator sees while the PDF renders). If `logo_url` is missing the loading screen falls back to `company_name` as text; if both are missing it falls back to "Rafter". Must be provisioned in step 5 before the operator uses the form.
@@ -297,7 +320,7 @@ compatibility_date = "2024-09-23"
 **Font loading:** Google Fonts does NOT load in headless Chromium. All fonts (Mulish 400/700,
 Playfair Display 600) must be inlined as base64 data URIs. Do not reference Google Fonts CDN.
 
-**Photo compression:** Section photos are compressed inside the Puppeteer browser context (via Canvas API) before PDF generation — resized to 400px wide at JPEG quality 0.78. `OffscreenCanvas` is not available in the Cloudflare Workers runtime so compression cannot happen in the Worker itself; it must run inside `page.evaluate()` where the full browser Canvas API is available. A 20-photo quote produces ~2MB. Do not move compression back to the Worker layer.
+**Photo compression:** Section photos are compressed inside the Puppeteer browser context (via Canvas API) before PDF generation — resized to 400px wide at JPEG quality 0.78 (`pdf/index.js:264,271`). `OffscreenCanvas` is not available in the Cloudflare Workers runtime so compression cannot happen in the Worker itself; it must run inside `page.evaluate()` where the full browser Canvas API is available. A 20-photo quote produces ~2MB. Do not move compression back to the Worker layer. **The same 400px/q0.78 target is used at ingest time (onboarding Step 4, `onboarding.html:resizePhoto`)** so photos stored in R2 are already correctly-sized — consistent with Make's 5MB payload limit.
 
 **PDF preview loading screen:** `index.html` writes a branded interstitial to the new tab synchronously (before the fetch) using `win.document.write()`. It shows `client.logo_url` pulsing over the `#ECF1E8` background with animated lime dots. Falls back to `client.company_name` as text if no logo. The window then navigates to the PDF blob URL when rendering completes. The `window.open()` call must remain synchronous inside the click handler — moving it after an `await` causes browsers to block it as a popup.
 
@@ -305,7 +328,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 
 **URL:** https://rafter-admin-api.will-8e8.workers.dev
 **Location:** `workers/admin-api/`
-**Status:** Fully operational as of 2026-06-04. All routes live. Clerk webhook (`organization.created`) verified end-to-end. REQ-On-47 (pdf_attach smoketest) and REQ-On-53 (Clerk metadata flip on pass) implemented. pdf_attach currently fails with 403 — `publish_job_attachments` scope not yet in trial grant (deferred to RFT-32 re-auth). CLERK_SECRET_KEY set. sign-up.html built and live.
+**Status:** Fully operational as of 2026-06-05. Connect-first onboarding flow complete: SM8 OAuth → prefill → review → provision → photo upload. All routes live. Clerk webhook (`organization.created`) verified end-to-end. pdf_attach smoketest currently 403 — `publish_job_attachments` scope not yet in trial grant (deferred to RFT-32 re-auth). CLERK_SECRET_KEY set. sign-up.html live.
 
 **Bindings:** KV (`RAFTER_CLIENTS`), R2 (`RAFTER_ASSETS`), D1 (`RAFTER_EVENTS`), Service Binding (`MATERIALS_SYNC_WORKER` → `rafter-materials-sync`), Service Binding (`PDF_WORKER` → `rafter-pdf`). The service bindings are required for Worker-to-Worker calls — see W2W note in Cloudflare infrastructure section.
 
@@ -329,6 +352,9 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 | `/admin/clients/{uuid}/rotate-secret` | POST | Rotate client auth token |
 | `/onboarding/provision` | POST | Browser-initiated provisioning (Clerk JWT scoped to org) |
 | `/onboarding/verify` | POST | Browser-initiated smoketest trigger |
+| `/onboarding/sm8-prefill` | GET | Fetch vendor.name/abn_number/billing_address + job templates + active staff from SM8 in one call |
+| `/onboarding/abn-lookup` | GET | Live ABN validation via ABR SearchByABNv202001 SOAP API (ABR_GUID secret) |
+| `/onboarding/photos` | POST | Upload single photo: multipart file+category → Canvas-pre-resized 400px/JPEG q0.78 → R2 `clients/{uuid}/photos/{category}/{filename}` |
 
 **Called by:** Clerk webhook (`/webhooks/clerk`), Claude Code via MCP (`/admin/*`), `onboarding.html` (`/onboarding/*`).
 **Not called by:** `index.html`, any other client-facing surface.
@@ -342,6 +368,7 @@ Playfair Display 600) must be inlined as base64 data URIs. Do not reference Goog
 | `CLERK_SECRET_KEY` | Clerk Backend API key — used by subscription_gate smoketest (GET /v1/organizations) and any future Clerk API calls | **Set 2026-05-31** |
 | `RAFTER_WORKER_SECRET` | Bearer token for admin-api→materials-sync calls to `/refresh-materials`. **Same value as on materials-sync.** Required for sync and token_fresh smoketest assertion. | **Set 2026-05-31** (rotated on same date — previous value unknown, new value set on both workers simultaneously) |
 | `CLERK_JWT_KEY` | PEM public key for networkless Clerk JWT verification (REQ-On-05) | **Set 2026-05-31** — RSA public key derived from JWKS at `https://first-kiwi-3.clerk.accounts.dev/.well-known/jwks.json` (decoded from publishable key `pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ`) |
+| `ABR_GUID` | Australian Business Register API GUID for ABN lookups (`/onboarding/abn-lookup`) | Never hardcode, never log. Stored as Worker secret only. |
 
 ---
 
@@ -464,7 +491,9 @@ Google Sheets issue tracker is retired. All issues now in Linear. Current open i
 | RFT — VER-01 | SM8 Inbox API PDF attachment support | — | Closed (answered negative 2026-05-14) — Inbox has no file attachment field; re-examine D5 before T1-E1 |
 | RFT — VER-02 | SM8 OAuth scope includes Inbox write access | — | Closed (moot — VER-01 answered negative) |
 | RFT — DEBT-01 | Make email delivery template not served from KV | High | In Progress |
-| RFT — DEBT-03 | Make dev/prod scenario separation | Medium | **Done** — slug:dev → trial → dev scenario 5962197; slug:andy → Andy live → prod 5537814 (2026-05-30) |
+| RFT — DEBT-03 | Make dev/prod scenario separation | Medium | **Done** — slug:dev → trial → dev scenario 5962197; slug:andy → prod 5537814 (2026-05-30) |
+| RFT — (open) | Quote title hardcoded — needs configurable per-client title | Medium | Open — deferred |
+| RFT — (open) | bank_details onboarding gap — not yet in Step 3 | Low | Open — deferred |
 
 **VER-01 (closed negative 2026-05-14):** SM8 Inbox API has no file attachment field — `createInboxMessage` OpenAPI schema has no file/attachment property. Account also returns `Inbox functionality is not available on this account`. Inbox delivery is not viable. D5 must be re-examined before T1-E1 to determine the PDF delivery path.
 
@@ -472,6 +501,10 @@ Google Sheets issue tracker is retired. All issues now in Linear. Current open i
 
 **VER-03 (closed):** New job UUID returned in `x-record-uuid` response header, not body.
 Any consumer of `POST /job.json` must read headers.
+
+**Quote title hardcoded (open — design TBD):** `pdf/index.js:24-27` defines `PROPOSAL_TYPE_LABEL = { LC: "Landscape Construction", GM: "Garden Maintenance" }`. `index.html:944` hardcodes `proposalType: "LC"` with no UI selector. `client.proposal_types` is a dead KV field — the form never reads it. Title shown on PDF is always "Landscape Construction". Fix requires a configurable per-client title mechanism. Do not change without a design decision from Will.
+
+**Bot/scanner webhook exploitation (RFT-58 — open):** Make webhook URLs are exposed in client-side JS. Bots POST malformed payloads that trigger Make `BundleValidationError`. Mitigation options being assessed. Seen on both dev (5962197) and prod (5537814) scenarios.
 
 ---
 
