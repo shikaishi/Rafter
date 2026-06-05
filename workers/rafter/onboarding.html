@@ -751,6 +751,10 @@ async function fetchSm8Prefill() {
     loadingEl.hidden = true;
     document.getElementById('prefill-error-msg').textContent = err.message;
     errorBox.hidden = false;
+    // Show the form anyway so the operator can fill manually and reach step 3
+    contentEl.hidden = false;
+    // Suppress the connected banner — we have no confirmed company name on error
+    document.getElementById('connected-banner').hidden = true;
   }
 }
 
