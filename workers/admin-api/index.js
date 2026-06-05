@@ -16,10 +16,33 @@ const REQUIRED_FIELDS = [
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
+// Allow onboarding.html (rafter.deepgreensea.au) to call this worker cross-origin.
+// Any endpoint that onboarding.html fetches with an Authorization header requires
+// a CORS preflight — OPTIONS must return 204 with the allow headers, and the real
+// response must include Access-Control-Allow-Origin.
+const CORS_ORIGIN = 'https://rafter.deepgreensea.au';
+const CORS_PREFLIGHT_HEADERS = {
+  'Access-Control-Allow-Origin': CORS_ORIGIN,
+  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+  'Access-Control-Max-Age': '86400',
+};
+
+function withCors(response) {
+  const r = new Response(response.body, response);
+  r.headers.set('Access-Control-Allow-Origin', CORS_ORIGIN);
+  return r;
+}
+
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     const { pathname } = url;
+
+    // CORS preflight — must be handled before any auth check
+    if (request.method === 'OPTIONS' && pathname.startsWith('/onboarding/')) {
+      return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
+    }
 
     if (request.method === 'POST' && pathname === '/webhooks/clerk') {
       return handleClerkWebhook(request, env);
@@ -31,8 +54,8 @@ export default {
     }
     if ((request.method === 'POST' || request.method === 'GET') && pathname.startsWith('/onboarding/')) {
       const { error, payload } = await requireClerkJWT(request, env);
-      if (error) return error;
-      return handleOnboarding(request, env, url, payload);
+      if (error) return withCors(error);
+      return withCors(await handleOnboarding(request, env, url, payload));
     }
     return new Response('Not Found', { status: 404 });
   },

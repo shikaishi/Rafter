@@ -668,7 +668,7 @@ textarea { resize: vertical; min-height: 68px; }
 
 </div><!-- /#state-form -->
 
-<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC0jXEG5nCnpI-Odu8wKLpJc2n3HKRfUdg&libraries=places&callback=initMaps" async defer></script>
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC0jXEG5nCnpI-Odu8wKLpJc2n3HKRfUdg&libraries=places&loading=async" async></script>
 <script
   data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
   src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
@@ -710,6 +710,7 @@ function showStep(n) {
       else if (i < n) si.classList.add('done');
     }
   });
+  if (n === 2) initAddressAutocomplete();
 }
 
 // ── Section seed text ────────────────────────────────────────────────────────
@@ -1005,7 +1006,6 @@ function initAddressAutocomplete() {
     input.value = place.formatted_address || input.value;
   });
 }
-window.initMaps = initAddressAutocomplete;
 
 // ── Slug logic ───────────────────────────────────────────────────────────────
 
