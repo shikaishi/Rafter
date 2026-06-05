@@ -890,9 +890,9 @@ async function handleSm8Prefill(jwtPayload, env) {
       uuid,
       vendor: {
         company_name: v.name ?? '',
-        abn: v.abn ?? '',
-        business_email: v.email ?? '',
-        business_address: v.address ?? '',
+        abn: v.abn_number ?? '',       // SM8 field is abn_number, not abn
+        business_email: '',             // v.email is a ServiceM8 relay addr, not business contact
+        business_address: v.billing_address ?? '',  // SM8 field is billing_address, not address
       },
       sections,
     });

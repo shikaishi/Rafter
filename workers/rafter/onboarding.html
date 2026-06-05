@@ -770,12 +770,13 @@ function populatePrefill(data) {
   if (v.company_name) setFieldValue('p_company_name', v.company_name);
   if (v.abn) setFieldValue('abn', formatAbn(v.abn));
   if (v.business_address) setFieldValue('business_address', v.business_address);
-  if (v.business_email) setFieldValue('business_email', v.business_email);
+  // business_email intentionally not set — v.email is a ServiceM8 relay address, not business contact
 
-  // Downgrade badges to "verify" when the SM8 value was empty
-  if (!v.business_address) setBadgeVerify('address-sm8-badge');
-  if (!v.business_email)   setBadgeVerify('email-sm8-badge');
-  if (!v.abn)              setBadgeVerify('abn-sm8-badge');
+  // Badges: ✓ only if SM8 actually returned a value; "Not in ServiceM8" otherwise
+  if (!v.abn)              setBadgeManual('abn-sm8-badge');
+  if (!v.business_address) setBadgeManual('address-sm8-badge');
+  // SM8 has no business contact email field — always manual
+  setBadgeManual('email-sm8-badge');
 
   // Populate sections from SM8 job templates
   const sectionList = document.getElementById('section-list');
@@ -789,9 +790,9 @@ function setFieldValue(id, val) {
   if (el) el.value = val;
 }
 
-function setBadgeVerify(id) {
+function setBadgeManual(id) {
   const el = document.getElementById(id);
-  if (el) { el.className = 'source-badge badge-verify'; el.textContent = 'ServiceM8 — verify'; }
+  if (el) { el.className = 'source-badge badge-manual'; el.textContent = 'Not in ServiceM8'; }
 }
 
 function formatAbn(raw) {
