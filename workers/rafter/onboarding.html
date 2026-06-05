@@ -99,11 +99,24 @@ body {
   gap: 7px;
 }
 .section-title i { font-size: 15px; }
+.section-title .optional-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
+  color: var(--rf-muted);
+  background: var(--rf-row-bg);
+  border: 1px solid var(--rf-border);
+  border-radius: 10px;
+  padding: 1px 7px;
+  margin-left: 4px;
+}
 
 /* ===== Fields ===== */
 .field { margin-bottom: 14px; }
 .field:last-child { margin-bottom: 0; }
 .field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field-row-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
 
 label {
   display: block;
@@ -189,6 +202,91 @@ textarea { resize: vertical; min-height: 68px; }
 .tier-sum.ok { color: var(--rf-lime); }
 .tier-sum.bad { color: var(--rf-danger); }
 .tier-sum.empty { color: var(--rf-muted); font-weight: 400; }
+
+/* ===== Email template ===== */
+.merge-fields { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
+.merge-tag {
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  font-size: 11px;
+  background: var(--rf-teal-bg);
+  border: 1px solid var(--rf-teal-border);
+  border-radius: 4px;
+  padding: 3px 8px;
+  color: var(--rf-navy);
+  cursor: pointer;
+  user-select: none;
+  transition: background 0.1s;
+}
+.merge-tag:hover { background: var(--rf-teal-border); }
+#email_template { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; min-height: 160px; }
+
+/* ===== Repeater ===== */
+.repeater-list { display: flex; flex-direction: column; gap: 10px; }
+.rep-item {
+  border: 1px solid var(--rf-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: #fff;
+}
+.rep-item-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 6px 0 10px;
+  background: var(--rf-row-bg);
+  border-bottom: 1px solid var(--rf-divider);
+  min-height: 40px;
+}
+.rep-item-head input[type=text] {
+  flex: 1;
+  border: none;
+  background: transparent;
+  padding: 8px 0;
+  font-weight: 600;
+  font-size: 13px;
+  box-shadow: none;
+}
+.rep-item-head input[type=text]:focus { outline: none; box-shadow: none; border: none; }
+.rep-body-pad { padding: 10px; }
+.rep-body-pad textarea { min-height: 72px; }
+.rep-body-pad input[type=text] { font-size: 13px; }
+.rep-del {
+  flex-shrink: 0;
+  width: 30px; height: 30px;
+  border: none;
+  background: transparent;
+  border-radius: 4px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--rf-muted);
+  font-size: 14px;
+  transition: background 0.1s, color 0.1s;
+  padding: 0;
+}
+.rep-del:hover { background: var(--rf-danger-bg); color: var(--rf-danger); }
+.rep-clause-label { flex: 1; font-size: 12px; color: var(--rf-muted); }
+.btn-rep-add {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 8px 12px;
+  border: 1.5px dashed var(--rf-border);
+  border-radius: 7px;
+  background: transparent;
+  font-size: 13px;
+  font-family: inherit;
+  color: var(--rf-ocean);
+  cursor: pointer;
+  width: 100%;
+  margin-top: 10px;
+  transition: border-color 0.15s, background 0.15s;
+}
+.btn-rep-add:hover { border-color: var(--rf-ocean); background: var(--rf-teal-bg); }
+.btn-rep-add i { font-size: 15px; }
+.rep-count { font-size: 10px; color: var(--rf-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
 
 /* ===== Admin section ===== */
 .admin-box {
@@ -316,13 +414,13 @@ textarea { resize: vertical; min-height: 68px; }
         </div>
         <div class="field">
           <label>Phone</label>
-          <input type="tel" id="phone" placeholder="0400 000 000" autocomplete="tel">
+          <input type="tel" id="phone" placeholder="(03) 9000 0000" autocomplete="tel">
         </div>
       </div>
 
       <div class="field">
         <label>Business Address</label>
-        <textarea id="business_address" placeholder="123 Main St, Melbourne VIC 3000" rows="2" autocomplete="street-address"></textarea>
+        <textarea id="business_address" placeholder="123 Main St&#10;Melbourne VIC 3000" rows="2" autocomplete="street-address"></textarea>
       </div>
 
       <div class="field-row">
@@ -355,28 +453,56 @@ textarea { resize: vertical; min-height: 68px; }
           </div>
           <div id="logo-filename" class="logo-filename" hidden></div>
         </div>
-        <div class="field-hint">Appears on PDF quotes and the quoting form header</div>
+        <div class="field-hint">Appears on PDF quotes, the quoting form, and customer emails</div>
       </div>
     </div>
 
-    <!-- 3 · Quote Settings -->
+    <!-- 3 · Bank Details -->
+    <div class="section">
+      <div class="section-title"><i class="ti ti-building-bank"></i> Bank Details</div>
+      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">Shown on PDF quotes in the payment section so customers can make direct transfers.</p>
+
+      <div class="field">
+        <label>Account Name</label>
+        <input type="text" id="bank_name" placeholder="2 Men and a Shovel" autocomplete="off">
+      </div>
+      <div class="field-row">
+        <div class="field">
+          <label>BSB</label>
+          <input type="text" id="bank_bsb" placeholder="083-231" maxlength="7" autocomplete="off">
+        </div>
+        <div class="field">
+          <label>Account Number</label>
+          <input type="text" id="bank_account" placeholder="123456789" maxlength="12" autocomplete="off">
+        </div>
+      </div>
+    </div>
+
+    <!-- 4 · Quote Settings -->
     <div class="section">
       <div class="section-title"><i class="ti ti-settings-2"></i> Quote Settings</div>
 
       <div class="field">
         <label>Proposal Types</label>
         <input type="text" id="proposal_types" placeholder="LC, GM">
-        <div class="field-hint">Comma-separated codes — e.g. "LC" for Landscaping, "GM" for Garden Maintenance</div>
+        <div class="field-hint">Comma-separated codes shown in the quote builder — e.g. "LC" for Landscaping, "GM" for Garden Maintenance</div>
       </div>
 
-      <div class="field">
-        <label>Job Categories</label>
-        <input type="text" id="job_categories" placeholder="Garden Maintenance, Landscaping">
-        <div class="field-hint">Comma-separated — must match your ServiceM8 job categories exactly</div>
+      <div class="field-row">
+        <div class="field">
+          <label>Job Categories</label>
+          <input type="text" id="job_categories" placeholder="Garden Maintenance, Landscaping">
+          <div class="field-hint">Must match your ServiceM8 job categories exactly</div>
+        </div>
+        <div class="field">
+          <label>Job Queues</label>
+          <input type="text" id="job_queues" placeholder="Leads - New, Quotes - Accepted">
+          <div class="field-hint">Must match your ServiceM8 job queues exactly</div>
+        </div>
       </div>
     </div>
 
-    <!-- 4 · Payment Schedule -->
+    <!-- 5 · Payment Schedule -->
     <div class="section">
       <div class="section-title"><i class="ti ti-cash"></i> Payment Schedule</div>
       <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
@@ -397,7 +523,83 @@ textarea { resize: vertical; min-height: 68px; }
       </table>
     </div>
 
-    <!-- 5 · Administrator Setup -->
+    <!-- 6 · Customer Email Template -->
+    <div class="section">
+      <div class="section-title"><i class="ti ti-mail"></i> Customer Email Template <span class="optional-badge">optional</span></div>
+      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 12px;">
+        The HTML email sent to customers with their quote attached. Your logo is embedded automatically.
+        Leave blank to use a sensible default.
+      </p>
+
+      <div class="merge-fields">
+        <span style="font-size:11px;color:var(--rf-muted);align-self:center;">Insert:</span>
+        <span class="merge-tag" data-field="{client_name}">{client_name}</span>
+        <span class="merge-tag" data-field="{job_address}">{job_address}</span>
+        <span class="merge-tag" data-field="{quote_ref}">{quote_ref}</span>
+        <span class="merge-tag" data-field="{total}">{total}</span>
+      </div>
+
+      <div class="field">
+        <label>Email HTML</label>
+        <textarea id="email_template" rows="10" placeholder="Leave blank — a default will be generated with your logo and contact details."></textarea>
+        <div class="field-hint">Click a merge tag above to insert it at the cursor. HTML is supported for formatting.</div>
+      </div>
+    </div>
+
+    <!-- 7 · Quote Templates -->
+    <div class="section">
+      <div class="section-title">
+        <i class="ti ti-template"></i> Quote Templates
+        <span class="optional-badge">optional — can add later</span>
+        <span class="rep-count" id="template-count"></span>
+      </div>
+      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+        Reusable section templates that appear in the quote builder. Each template has a name (e.g. EXCAVATION) and
+        a default materials and scope block that operators edit per job.
+      </p>
+
+      <div id="template-list" class="repeater-list"></div>
+      <button type="button" class="btn-rep-add" id="template-add">
+        <i class="ti ti-plus"></i> Add template
+      </button>
+    </div>
+
+    <!-- 8 · Credentials -->
+    <div class="section">
+      <div class="section-title">
+        <i class="ti ti-award"></i> Credentials
+        <span class="optional-badge">optional — can add later</span>
+        <span class="rep-count" id="credential-count"></span>
+      </div>
+      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+        Qualifications, guarantees, and points of difference shown on PDF quotes.
+        Each entry has a title and an optional detail line.
+      </p>
+
+      <div id="credential-list" class="repeater-list"></div>
+      <button type="button" class="btn-rep-add" id="credential-add">
+        <i class="ti ti-plus"></i> Add credential
+      </button>
+    </div>
+
+    <!-- 9 · Terms & Conditions -->
+    <div class="section">
+      <div class="section-title">
+        <i class="ti ti-file-text"></i> Terms &amp; Conditions
+        <span class="optional-badge">optional — can add later</span>
+        <span class="rep-count" id="tc-count"></span>
+      </div>
+      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+        Shown at the bottom of PDF quotes. Add one clause per entry.
+      </p>
+
+      <div id="tc-list" class="repeater-list"></div>
+      <button type="button" class="btn-rep-add" id="tc-add">
+        <i class="ti ti-plus"></i> Add term
+      </button>
+    </div>
+
+    <!-- 10 · Administrator Setup -->
     <div class="section">
       <div class="admin-box">
         <div class="admin-box-title"><i class="ti ti-shield-lock"></i> Administrator Setup</div>
@@ -444,8 +646,7 @@ textarea { resize: vertical; min-height: 68px; }
 <script>
 'use strict';
 
-const CLERK_KEY  = 'pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ';
-const ADMIN_API  = 'https://rafter-admin-api.will-8e8.workers.dev';
+const ADMIN_API = 'https://rafter-admin-api.will-8e8.workers.dev';
 
 const TIERS = [
   { key: 'under_20k',     label: 'Under $20,000',       def: '50, 50' },
@@ -473,8 +674,8 @@ function buildThresholdTable() {
     `;
     tbody.appendChild(tr);
 
-    const input  = document.getElementById('tier_' + tier.key);
-    const sumEl  = document.getElementById('sum_'  + tier.key);
+    const input = document.getElementById('tier_' + tier.key);
+    const sumEl = document.getElementById('sum_'  + tier.key);
 
     function refreshSum() {
       const raw = input.value.trim();
@@ -487,6 +688,20 @@ function buildThresholdTable() {
     input.addEventListener('input', refreshSum);
     refreshSum();
   });
+}
+
+function readThresholds() {
+  const thresholds = {};
+  let allValid = true;
+  TIERS.forEach(tier => {
+    const raw = document.getElementById('tier_' + tier.key).value.trim();
+    if (!raw) { thresholds[tier.key] = ''; return; }
+    const parts = raw.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+    const sum   = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
+    if (Math.abs(sum - 100) >= 0.05) allValid = false;
+    thresholds[tier.key] = parts.join('/'); // slash-delimited string — index.html parseSplit() requires this
+  });
+  return { thresholds, valid: allValid };
 }
 
 // ── Logo upload ──────────────────────────────────────────────────────────────
@@ -518,10 +733,7 @@ function initLogoUpload() {
   });
 
   function loadLogoFile(file) {
-    if (file.size > 2 * 1024 * 1024) {
-      alert('Logo file must be under 2 MB.');
-      return;
-    }
+    if (file.size > 2 * 1024 * 1024) { alert('Logo file must be under 2 MB.'); return; }
     const reader = new FileReader();
     reader.onload = ev => {
       logoBase64      = ev.target.result;
@@ -543,12 +755,10 @@ function initSlugLogic() {
   const slugPreview = document.getElementById('slug-preview');
   const nameInput   = document.getElementById('company_name');
 
-  // Live URL preview on every keystroke
   slugInput.addEventListener('input', () => {
     slugPreview.textContent = slugInput.value.trim() || 'yourcompany';
   });
 
-  // Suggest slug from company name — auto-fills only while operator hasn't customised it
   let lastSuggested = '';
   nameInput.addEventListener('input', () => {
     const suggested = nameInput.value.trim()
@@ -579,20 +789,106 @@ function prefillFromParams() {
   }
 }
 
-// ── Read threshold inputs ────────────────────────────────────────────────────
+// ── Email template merge-field insertion ─────────────────────────────────────
 
-function readThresholds() {
-  const thresholds = {};
-  let allValid = true;
-  TIERS.forEach(tier => {
-    const raw = document.getElementById('tier_' + tier.key).value.trim();
-    if (!raw) { thresholds[tier.key] = []; return; }
-    const parts = raw.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
-    const sum   = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
-    if (Math.abs(sum - 100) >= 0.05) allValid = false;
-    thresholds[tier.key] = parts;
+function initEmailTemplate() {
+  const ta = document.getElementById('email_template');
+  document.querySelectorAll('.merge-tag').forEach(tag => {
+    tag.addEventListener('click', () => {
+      const field = tag.dataset.field;
+      const start = ta.selectionStart ?? ta.value.length;
+      const end   = ta.selectionEnd   ?? ta.value.length;
+      ta.value = ta.value.slice(0, start) + field + ta.value.slice(end);
+      ta.selectionStart = ta.selectionEnd = start + field.length;
+      ta.focus();
+    });
   });
-  return { thresholds, valid: allValid };
+}
+
+// ── Repeater ─────────────────────────────────────────────────────────────────
+
+function addRepItem(listId, type, data) {
+  const list = document.getElementById(listId);
+  const n    = list.children.length + 1;
+  const item = document.createElement('div');
+  item.className = 'rep-item';
+
+  if (type === 'template') {
+    item.innerHTML = `
+      <div class="rep-item-head">
+        <input type="text" class="rep-name" placeholder="Template name (e.g. EXCAVATION)" value="${esc(data?.name ?? '')}">
+        <button type="button" class="rep-del" title="Remove"><i class="ti ti-trash"></i></button>
+      </div>
+      <div class="rep-body-pad">
+        <textarea class="rep-body" rows="5" placeholder="Materials and scope text…">${esc(data?.text ?? '')}</textarea>
+      </div>`;
+  } else if (type === 'credential') {
+    item.innerHTML = `
+      <div class="rep-item-head">
+        <input type="text" class="rep-name" placeholder="Credential or guarantee title" value="${esc(data?.name ?? '')}">
+        <button type="button" class="rep-del" title="Remove"><i class="ti ti-trash"></i></button>
+      </div>
+      <div class="rep-body-pad">
+        <input type="text" class="rep-detail" placeholder="Optional detail or condition" value="${esc(data?.detail ?? '')}">
+      </div>`;
+  } else if (type === 'tc') {
+    item.innerHTML = `
+      <div class="rep-item-head">
+        <span class="rep-clause-label">Clause ${n}</span>
+        <button type="button" class="rep-del" title="Remove"><i class="ti ti-trash"></i></button>
+      </div>
+      <div class="rep-body-pad">
+        <textarea class="rep-body" rows="2" placeholder="Enter this clause…">${esc(data ?? '')}</textarea>
+      </div>`;
+  }
+
+  item.querySelector('.rep-del').addEventListener('click', () => {
+    item.remove();
+    updateRepCount(listId, type);
+  });
+
+  list.appendChild(item);
+  updateRepCount(listId, type);
+}
+
+function updateRepCount(listId, type) {
+  const countId = listId.replace('-list', '-count');
+  const el = document.getElementById(countId);
+  if (el) {
+    const n = document.getElementById(listId).children.length;
+    el.textContent = n ? `(${n})` : '';
+  }
+  if (type === 'tc') {
+    document.querySelectorAll(`#${listId} .rep-clause-label`).forEach((span, i) => {
+      span.textContent = `Clause ${i + 1}`;
+    });
+  }
+}
+
+function readRep(listId, type) {
+  const items  = document.querySelectorAll(`#${listId} .rep-item`);
+  const result = [];
+  items.forEach(item => {
+    if (type === 'template') {
+      const name = item.querySelector('.rep-name').value.trim();
+      const text = item.querySelector('.rep-body').value.trim();
+      if (name || text) result.push({ name, text });
+    } else if (type === 'credential') {
+      const name   = item.querySelector('.rep-name').value.trim();
+      const detail = (item.querySelector('.rep-detail')?.value ?? '').trim();
+      if (name) result.push({ name, detail });
+    } else if (type === 'tc') {
+      const text = item.querySelector('.rep-body').value.trim();
+      if (text) result.push(text);
+    }
+  });
+  return result;
+}
+
+function initRepeaters() {
+  document.getElementById('template-add').addEventListener('click',   () => addRepItem('template-list',   'template'));
+  document.getElementById('credential-add').addEventListener('click', () => addRepItem('credential-list', 'credential'));
+  document.getElementById('tc-add').addEventListener('click',         () => addRepItem('tc-list',         'tc'));
 }
 
 // ── Form submission ──────────────────────────────────────────────────────────
@@ -607,7 +903,6 @@ async function handleSubmit(e, clerk) {
   const slug         = document.getElementById('slug').value.trim();
   const webhookUrl   = document.getElementById('webhook_url').value.trim();
 
-  // Validate
   const errors = [];
   if (!companyName) errors.push('Company name is required.');
   if (!slug)        errors.push('URL slug is required.');
@@ -616,27 +911,21 @@ async function handleSubmit(e, clerk) {
   const { thresholds, valid: thresholdValid } = readThresholds();
   if (!thresholdValid) errors.push('Each non-empty payment tier must sum to 100%.');
 
-  if (errors.length) {
-    setResult('error', null, errors.join('\n'));
-    return;
-  }
+  if (errors.length) { setResult('error', null, errors.join('\n')); return; }
 
-  btn.disabled   = true;
+  btn.disabled       = true;
   status.textContent = 'Authenticating…';
 
-  // Get Clerk session token
   let token;
   try {
     token = await clerk.session.getToken();
     if (!token) throw new Error('No active session — please sign in again.');
   } catch (err) {
     setResult('error', null, 'Authentication error: ' + err.message);
-    btn.disabled = false;
-    status.textContent = '';
-    return;
+    btn.disabled = false; status.textContent = ''; return;
   }
 
-  // Build payload
+  // ── Build payload ───────────────────────────────────────────────────────
   const payload = { slug, company_name: companyName, webhook_url: webhookUrl };
 
   const abn             = document.getElementById('abn').value.trim();
@@ -658,20 +947,39 @@ async function handleSubmit(e, clerk) {
   const catRaw = document.getElementById('job_categories').value.trim();
   if (catRaw) payload.job_categories = catRaw.split(',').map(s => s.trim()).filter(Boolean);
 
+  const queueRaw = document.getElementById('job_queues').value.trim();
+  if (queueRaw) payload.job_queues = queueRaw.split(',').map(s => s.trim()).filter(Boolean);
+
+  const bankName    = document.getElementById('bank_name').value.trim();
+  const bankBsb     = document.getElementById('bank_bsb').value.trim();
+  const bankAccount = document.getElementById('bank_account').value.trim();
+  if (bankName || bankBsb || bankAccount) {
+    payload.bank_details = { name: bankName, bsb: bankBsb, account: bankAccount };
+  }
+
+  const emailTemplate = document.getElementById('email_template').value.trim();
+  if (emailTemplate) payload.email_template = emailTemplate;
+
+  const templates = readRep('template-list', 'template');
+  if (templates.length) payload.templates = templates;
+
+  const credentials = readRep('credential-list', 'credential');
+  if (credentials.length) payload.credentials = credentials;
+
+  const termsAndConditions = readRep('tc-list', 'tc');
+  if (termsAndConditions.length) payload.terms_and_conditions = termsAndConditions;
+
   if (logoBase64) {
-    payload.logo_base64      = logoBase64;
+    payload.logo_base64       = logoBase64;
     payload.logo_content_type = logoContentType;
   }
 
+  // ── POST to Admin API ───────────────────────────────────────────────────
   status.textContent = 'Provisioning…';
-
   try {
     const res  = await fetch(ADMIN_API + '/onboarding/provision', {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer ' + token,
-      },
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + token },
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
@@ -688,8 +996,7 @@ async function handleSubmit(e, clerk) {
     setResult('error', null, 'Network error: ' + err.message);
   }
 
-  btn.disabled = false;
-  status.textContent = '';
+  btn.disabled = false; status.textContent = '';
 }
 
 function showSlugError(msg) {
@@ -761,34 +1068,27 @@ function setResult(kind, data, errorMsg) {
     return;
   }
 
-  console.log('[Rafter] onboarding init, window.Clerk =', typeof window.Clerk);
-  const clerk = window.Clerk; // instance pre-configured by data-clerk-publishable-key
-  console.log('[Rafter] calling clerk.load()');
+  const clerk = window.Clerk;
   try {
     await Promise.race([
       clerk.load(),
-      new Promise((_, reject) => setTimeout(() => reject(new Error('clerk.load() timed out — check Network tab for blocked requests')), 10000)),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('clerk.load() timed out')), 10000)),
     ]);
   } catch (err) {
-    console.error('[Rafter] clerk.load() failed:', err);
     loadingEl.querySelector('p').textContent = 'Authentication error: ' + err.message;
     return;
   }
-  console.log('[Rafter] clerk.load() complete, user =', clerk.user?.id ?? 'none');
 
   if (!clerk.user) {
-    console.log('[Rafter] no user, redirecting to sign-in');
     clerk.redirectToSignIn({ redirectUrl: window.location.href });
     return;
   }
 
-  // Activate correct org — safe for multi-org accounts
   if (!clerk.organization) {
     const params      = new URLSearchParams(window.location.search);
     const paramOrgId  = params.get('org_id');
     const memberships = clerk.user.organizationMemberships ?? [];
 
-    // Priority: explicit ?org_id= URL param → single membership auto-activate → error
     let targetOrgId = paramOrgId;
     if (!targetOrgId) {
       if (memberships.length === 1) {
@@ -798,23 +1098,22 @@ function setResult(kind, data, errorMsg) {
           'Multiple organisations found. Open this page from your Rafter organisation dashboard, or ask your administrator for a link with ?org_id= specified.';
         return;
       }
-      // length === 0: no org yet — form proceeds with clerk_org_id null
     }
     if (targetOrgId) {
       try { await clerk.setActive({ organization: targetOrgId }); } catch {}
     }
   }
 
-  // Show user badge
   const email   = clerk.user.primaryEmailAddress?.emailAddress ?? '';
   const orgName = clerk.organization?.name ?? '';
   document.getElementById('user-badge').innerHTML =
     esc(email) + (orgName ? `<br><span class="org-name">${esc(orgName)}</span>` : '');
 
-  // Build UI
   buildThresholdTable();
   initLogoUpload();
   initSlugLogic();
+  initEmailTemplate();
+  initRepeaters();
   prefillFromParams();
 
   document.getElementById('onboarding-form').addEventListener('submit', e => handleSubmit(e, clerk));

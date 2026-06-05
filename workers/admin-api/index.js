@@ -267,6 +267,19 @@ async function provisionClient(body, env) {
     await env.RAFTER_CLIENTS.delete(SLUG_PREFIX + existing.slug).catch(() => {});
   }
 
+  // Auto-generate email_template if not supplied — embeds the correct logo URL (requires uuid to be finalised)
+  if (!record.email_template) {
+    const co    = record.company_name || 'Your company';
+    const phone = record.phone ? `<br>${record.phone}` : '';
+    record.email_template =
+      `<img src="${MATERIALS_SYNC}/logo/${uuid}" alt="${co.replace(/"/g, '&quot;')}" style="max-width:200px;height:auto;display:block;margin-bottom:20px;">\n` +
+      `<p>Hi {client_name},</p>\n\n` +
+      `<p>Please find attached your quote for the work at {job_address}.</p>\n\n` +
+      `<p>To accept this quote, simply reply to this email or give us a call and we'll confirm the schedule and get started.</p>\n\n` +
+      `<p>If you have any questions about the quote, we're happy to talk through them.</p>\n\n` +
+      `<p>Thanks,<br>${co}${phone}</p>`;
+  }
+
   // REQ-On-30: upload logo to R2 if provided as base64
   let logo_uploaded = false;
   if (body.logo_base64) {
