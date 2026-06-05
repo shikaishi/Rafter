@@ -248,10 +248,13 @@ textarea { resize: vertical; min-height: 68px; }
   background: var(--rf-row-bg); border-bottom: 1px solid var(--rf-divider); min-height: 40px;
 }
 .rep-item-head input[type=text] {
-  flex: 1; border: none; background: transparent; padding: 8px 0;
+  flex: 1; border: none; border-bottom: 1.5px dashed var(--rf-border); border-radius: 0;
+  background: transparent; padding: 8px 0;
   font-weight: 700; font-size: 13px; box-shadow: none;
+  transition: border-color 0.15s;
 }
-.rep-item-head input[type=text]:focus { outline: none; box-shadow: none; border: none; }
+.rep-item-head input[type=text]:hover { border-bottom-color: var(--rf-muted); }
+.rep-item-head input[type=text]:focus { outline: none; box-shadow: none; border: none; border-bottom: 1.5px solid var(--rf-ocean); }
 .rep-body-pad { padding: 10px; }
 .rep-body-pad textarea { min-height: 72px; }
 .rep-body-pad input[type=text] { font-size: 13px; }
@@ -618,7 +621,21 @@ textarea { resize: vertical; min-height: 68px; }
           <span class="optional-badge">optional — can add later</span>
           <span class="rep-count" id="tc-count"></span>
         </div>
-        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">Shown at the bottom of PDF quotes. Add one clause per entry.</p>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">Shown at the bottom of PDF quotes. Add one clause per entry, or paste your full T&Cs as a block.</p>
+        <div id="tc-paste-toggle-wrap" style="margin-bottom:10px;">
+          <button type="button" id="tc-paste-toggle" class="btn-secondary" style="font-size:12px;padding:6px 14px;">
+            <i class="ti ti-clipboard-text"></i> Paste T&Cs text
+          </button>
+        </div>
+        <div id="tc-paste-area" hidden>
+          <textarea id="tc-paste-input" rows="8" placeholder="Paste your full Terms &amp; Conditions here. Each paragraph (blank line between paragraphs) becomes a separate clause." style="margin-bottom:8px;"></textarea>
+          <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;">
+            <button type="button" id="tc-paste-apply" class="btn-primary" style="font-size:13px;padding:8px 16px;">
+              <i class="ti ti-plus"></i> Add as clauses
+            </button>
+            <button type="button" id="tc-paste-cancel" class="btn-secondary" style="font-size:12px;padding:6px 12px;">Cancel</button>
+          </div>
+        </div>
         <div id="tc-list" class="repeater-list"></div>
         <button type="button" class="btn-rep-add" id="tc-add">
           <i class="ti ti-plus"></i> Add term
@@ -645,7 +662,7 @@ textarea { resize: vertical; min-height: 68px; }
           <div class="field">
             <label>Operator Email</label>
             <input type="email" id="operator_email" placeholder="admin@yourcompany.com.au" autocomplete="off">
-            <div class="field-hint">Your ServiceM8 admin login email</div>
+            <div class="field-hint">Rafter admin contact for this account</div>
           </div>
         </div>
       </div>
@@ -1143,6 +1160,25 @@ function initRepeaters() {
   document.getElementById('tc-add').addEventListener('click',         () => addRepItem('tc-list', 'tc'));
 }
 
+function initTcPaste() {
+  const toggle   = document.getElementById('tc-paste-toggle');
+  const area     = document.getElementById('tc-paste-area');
+  const input    = document.getElementById('tc-paste-input');
+  const apply    = document.getElementById('tc-paste-apply');
+  const cancel   = document.getElementById('tc-paste-cancel');
+  toggle.addEventListener('click', () => { area.hidden = false; toggle.closest('#tc-paste-toggle-wrap').hidden = true; input.focus(); });
+  cancel.addEventListener('click', () => { area.hidden = true; toggle.closest('#tc-paste-toggle-wrap').hidden = false; input.value = ''; });
+  apply.addEventListener('click', () => {
+    const raw = input.value.trim();
+    if (raw) {
+      raw.split(/\n{2,}/).map(p => p.trim()).filter(Boolean).forEach(p => addRepItem('tc-list', 'tc', p));
+    }
+    area.hidden = true;
+    toggle.closest('#tc-paste-toggle-wrap').hidden = false;
+    input.value = '';
+  });
+}
+
 function initCredentialExamples() {
   addRepItem('credential-list', 'credential', { name: 'Fully Licensed & Insured', detail: 'Public liability up to $10M' });
   addRepItem('credential-list', 'credential', { name: '10-Year Workmanship Guarantee', detail: 'All work backed by our satisfaction guarantee' });
@@ -1373,6 +1409,7 @@ function setResult(kind, data, errorMsg) {
   initEmailTemplate();
   initEmailPreview();
   initRepeaters();
+  initTcPaste();
   initCredentialExamples();
   initAbnValidation();
   initPhoneValidation();
