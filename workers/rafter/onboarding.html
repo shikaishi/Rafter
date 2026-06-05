@@ -364,6 +364,57 @@ textarea { resize: vertical; min-height: 68px; }
 .pac-item { padding: 8px 12px; font-size: 13px; }
 .pac-item:first-child { background: var(--rf-teal-bg); }
 .pac-item-query { font-size: 13px; }
+
+/* ===== Photo upload (Step 4) ===== */
+.photo-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.photo-controls .field { margin: 0; flex: 1; min-width: 160px; }
+.btn-add-photos {
+  flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 700;
+  background: var(--rf-navy); color: #fff; border: none; cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-add-photos:hover { background: var(--rf-ocean); }
+.btn-add-photos:disabled { background: var(--rf-border); cursor: default; }
+.photo-chip-list { display: flex; flex-direction: column; gap: 6px; margin-bottom: 12px; }
+.photo-chip {
+  display: flex; align-items: center; gap: 8px;
+  padding: 6px 10px; border-radius: 6px;
+  border: 1px solid var(--rf-border); background: var(--rf-row-bg);
+  font-size: 12px; position: relative; overflow: hidden; min-height: 34px;
+}
+.photo-chip.state-resizing { border-color: var(--rf-teal-border); background: #f0f8fc; }
+.photo-chip.state-uploading { border-color: var(--rf-ocean); background: #eef7fb; }
+.photo-chip.state-done { border-color: #c8e6c9; background: #f1f8f2; }
+.photo-chip.state-failed { border-color: #ef9a9a; background: #fff5f5; }
+.chip-icon-wrap { flex-shrink: 0; width: 16px; text-align: center; color: var(--rf-muted); }
+.chip-icon { font-size: 14px; display: block; }
+.state-resizing .chip-icon,
+.state-uploading .chip-icon { animation: spin 0.75s linear infinite; }
+.state-done .chip-icon-wrap { color: var(--rf-lime); }
+.state-failed .chip-icon-wrap { color: var(--rf-danger); }
+.chip-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-cat { flex-shrink: 0; font-size: 10px; color: var(--rf-muted); background: var(--rf-border); border-radius: 8px; padding: 1px 6px; }
+.chip-err { flex-shrink: 0; font-size: 10px; color: var(--rf-danger); max-width: 120px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.chip-retry {
+  flex-shrink: 0; background: none; border: 1px solid var(--rf-danger); color: var(--rf-danger);
+  border-radius: 4px; padding: 1px 7px; cursor: pointer; font-size: 11px; font-weight: 700;
+  transition: background 0.1s;
+}
+.chip-retry:hover { background: var(--rf-danger-bg); }
+.chip-bar {
+  position: absolute; bottom: 0; left: 0; right: 0; height: 3px;
+  background: rgba(0,0,0,0.06);
+}
+.chip-bar-fill {
+  height: 100%; width: 0; background: var(--rf-ocean);
+  transition: width 0.15s linear;
+}
+.state-done .chip-bar-fill { width: 100% !important; background: var(--rf-lime); }
+.photo-status-bar {
+  font-size: 12px; color: var(--rf-muted); min-height: 18px;
+  padding: 4px 0; margin-bottom: 4px;
+}
 </style>
 </head>
 <body>
@@ -398,6 +449,8 @@ textarea { resize: vertical; min-height: 68px; }
       <div class="step-item" id="s2"><span class="step-num">2</span> Review details</div>
       <div class="step-sep"></div>
       <div class="step-item" id="s3"><span class="step-num">3</span> Configure Rafter</div>
+      <div class="step-sep"></div>
+      <div class="step-item" id="s4"><span class="step-num">4</span> Photos</div>
     </div>
   </div>
 
@@ -717,6 +770,44 @@ textarea { resize: vertical; min-height: 68px; }
     </form>
   </div><!-- /#step-3 -->
 
+  <!-- ── Step 4: Photos ── -->
+  <div id="step-4" class="card step-panel" hidden>
+    <div class="section">
+      <div class="section-title">
+        <i class="ti ti-photo"></i> Upload Photos
+        <span class="optional-badge">optional — skip and return later</span>
+      </div>
+      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 16px;">
+        Photos are organised by category and appear in the photo picker when building a quote.
+        Select a category matching your quote sections, then add photos for that category.
+        Repeat for each category. You can skip now and upload later.
+      </p>
+
+      <div class="photo-controls">
+        <div class="field">
+          <label for="photo-category">Category</label>
+          <select id="photo-category"></select>
+        </div>
+        <button type="button" class="btn-add-photos" id="photo-add-btn">
+          <i class="ti ti-plus"></i> Add photos
+        </button>
+        <input type="file" id="photo-file-input" multiple accept="image/*" style="display:none">
+      </div>
+
+      <div class="photo-chip-list" id="photo-chip-list"></div>
+      <div class="photo-status-bar" id="photo-status-bar"></div>
+
+      <div class="form-footer" style="border-top:1px solid var(--rf-divider);padding-top:20px;margin-top:4px;">
+        <button type="button" id="photo-skip-btn" class="btn-secondary" style="margin-right:auto;">
+          Skip for now →
+        </button>
+        <button type="button" id="photo-done-btn" class="btn-primary" disabled>
+          <i class="ti ti-circle-check"></i> Done
+        </button>
+      </div>
+    </div>
+  </div><!-- /#step-4 -->
+
   <!-- Result (shown after submission) -->
   <div id="result-area" class="card" hidden>
     <div class="result-body" id="result-content"></div>
@@ -761,7 +852,7 @@ function esc(s) {
 // ── Step navigation ──────────────────────────────────────────────────────────
 
 function showStep(n) {
-  [1, 2, 3].forEach(i => {
+  [1, 2, 3, 4].forEach(i => {
     const panel = document.getElementById('step-' + i);
     if (panel) panel.hidden = (i !== n);
     const si = document.getElementById('s' + i);
@@ -1387,11 +1478,25 @@ function showSlugError(msg) {
   }, { once: true });
 }
 
+let _provisionData = null;
+
 function setResult(kind, data, errorMsg) {
+  if (kind === 'ok') {
+    // Provision succeeded — enter photo upload step before showing the final result screen
+    _provisionData = data;
+    showStep(4);
+    enterPhotoStep();
+    return;
+  }
+  showResultArea(kind, data, errorMsg);
+}
+
+function showResultArea(kind, data, errorMsg) {
   const area    = document.getElementById('result-area');
   const content = document.getElementById('result-content');
+  const d = data ?? _provisionData ?? {};
   if (kind === 'ok') {
-    const checks     = data.gate?.checks ?? {};
+    const checks     = d.gate?.checks ?? {};
     const checkItems = Object.entries(checks).map(([k, v]) =>
       `<li><i class="ti ${v ? 'ti-circle-check c-ok' : 'ti-circle-x c-fail'}"></i> ${esc(k)}</li>`
     ).join('');
@@ -1399,10 +1504,10 @@ function setResult(kind, data, errorMsg) {
       <div class="result-ok">
         <div class="result-heading"><i class="ti ti-circle-check c-ok"></i> Account provisioned</div>
         <div class="result-meta">
-          <p><strong>UUID:</strong> <code>${esc(data.uuid)}</code></p>
-          <p><strong>Slug:</strong> <code>${esc(data.slug)}</code></p>
-          <p><strong>Logo uploaded:</strong> ${data.logo_uploaded ? 'Yes' : 'Not yet — upload a logo to complete branding'}</p>
-          <p><strong>Materials sync:</strong> ${data.sync_ok ? 'Started successfully' : 'Pending — run sync from admin panel'}</p>
+          <p><strong>UUID:</strong> <code>${esc(d.uuid)}</code></p>
+          <p><strong>Slug:</strong> <code>${esc(d.slug)}</code></p>
+          <p><strong>Logo uploaded:</strong> ${d.logo_uploaded ? 'Yes' : 'Not yet — upload a logo to complete branding'}</p>
+          <p><strong>Materials sync:</strong> ${d.sync_ok ? 'Started successfully' : 'Pending — run sync from admin panel'}</p>
           ${checkItems ? `<ul class="gate-checks">${checkItems}</ul>` : ''}
         </div>
         <div class="next-step">
@@ -1417,8 +1522,234 @@ function setResult(kind, data, errorMsg) {
         <div class="err-pre">${esc(errorMsg)}</div>
       </div>`;
   }
+  // Hide all step panels so result stands alone
+  [1, 2, 3, 4].forEach(i => {
+    const p = document.getElementById('step-' + i);
+    if (p) p.hidden = true;
+  });
   area.hidden = false;
   area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+}
+
+// ── Photo upload (Step 4) ────────────────────────────────────────────────────
+
+const PHOTO_CONCURRENCY = 10;
+const PHOTO_UPLOAD_TIMEOUT = 30_000; // 30s watchdog per file
+
+// Chip state machine entries
+let _photoChips = []; // { file, chipEl, barFillEl, state, retryFn }
+
+function enterPhotoStep() {
+  // Build category dropdown from Step 2 section names + "General"
+  const sel = document.getElementById('photo-category');
+  sel.innerHTML = '';
+  const sectionNames = Array.from(document.querySelectorAll('#section-list .rep-name'))
+    .map(el => el.value.trim()).filter(Boolean);
+  const categories = [...new Set([...sectionNames, 'General'])];
+  categories.forEach(name => {
+    const opt = document.createElement('option');
+    opt.value = name; opt.textContent = name;
+    sel.appendChild(opt);
+  });
+
+  const addBtn = document.getElementById('photo-add-btn');
+  const fileInput = document.getElementById('photo-file-input');
+  const doneBtn = document.getElementById('photo-done-btn');
+  const skipBtn = document.getElementById('photo-skip-btn');
+
+  addBtn.addEventListener('click', () => fileInput.click());
+  fileInput.addEventListener('change', () => {
+    const files = Array.from(fileInput.files ?? []);
+    fileInput.value = ''; // reset so same file can be added again
+    if (!files.length) return;
+    const category = sel.value || 'General';
+    enqueuePhotos(files, category);
+  });
+  doneBtn.addEventListener('click', () => showResultArea('ok', null, null));
+  skipBtn.addEventListener('click', () => showResultArea('ok', null, null));
+}
+
+function enqueuePhotos(files, category) {
+  const chipList = document.getElementById('photo-chip-list');
+  const newEntries = files.map(file => {
+    const chipEl = document.createElement('div');
+    chipEl.className = 'photo-chip state-queued';
+    const shortName = file.name.length > 32 ? file.name.slice(0, 29) + '…' : file.name;
+    chipEl.innerHTML = `
+      <span class="chip-icon-wrap"><i class="ti ti-clock chip-icon"></i></span>
+      <span class="chip-name">${esc(shortName)}</span>
+      <span class="chip-cat">${esc(category)}</span>
+      <span class="chip-err"></span>
+      <button type="button" class="chip-retry" hidden><i class="ti ti-refresh"></i> Retry</button>
+      <div class="chip-bar"><div class="chip-bar-fill"></div></div>`;
+    chipList.appendChild(chipEl);
+    const entry = {
+      file, category, chipEl,
+      barFillEl: chipEl.querySelector('.chip-bar-fill'),
+      state: 'queued',
+    };
+    entry.retryFn = () => retryChip(entry);
+    chipEl.querySelector('.chip-retry').addEventListener('click', () => entry.retryFn());
+    return entry;
+  });
+  _photoChips.push(...newEntries);
+  updatePhotoStatus();
+  runPhotoBatch(newEntries);
+}
+
+async function runPhotoBatch(entries) {
+  const queue = [...entries];
+  async function worker() {
+    let entry;
+    while ((entry = queue.shift())) {
+      if (entry.state !== 'queued') continue; // already retried/processed
+      await processOnePhoto(entry);
+    }
+  }
+  await Promise.all(Array.from({ length: Math.min(PHOTO_CONCURRENCY, queue.length) }, worker));
+}
+
+async function retryChip(entry) {
+  if (entry.state !== 'failed') return;
+  setChipState(entry, 'queued');
+  await processOnePhoto(entry);
+}
+
+async function processOnePhoto(entry) {
+  const { file, category, chipEl } = entry;
+  const token = await getClerkToken();
+  if (!token) { setChipState(entry, 'failed', 'No session'); return; }
+
+  // ── 1. Resize (EXIF-corrected via createImageBitmap) ──
+  setChipState(entry, 'resizing');
+  let blob;
+  try {
+    blob = await resizePhoto(file);
+  } catch (err) {
+    setChipState(entry, 'failed', 'Resize error');
+    return;
+  }
+
+  // ── 2. Upload with byte-level XHR progress + watchdog ──
+  setChipState(entry, 'uploading');
+  const controller = new AbortController();
+  const watchdog = setTimeout(() => controller.abort(), PHOTO_UPLOAD_TIMEOUT);
+  const fd = new FormData();
+  fd.append('file', blob, photoFilename(file.name));
+  fd.append('category', category);
+  try {
+    await xhrUpload(
+      ADMIN_API + '/onboarding/photos',
+      fd,
+      token,
+      pct => { entry.barFillEl.style.width = pct + '%'; },
+      controller.signal,
+    );
+    setChipState(entry, 'done');
+  } catch (err) {
+    const msg = err.name === 'AbortError' ? 'Timed out' : (err.message || 'Upload failed');
+    setChipState(entry, 'failed', msg);
+  } finally {
+    clearTimeout(watchdog);
+  }
+}
+
+function setChipState(entry, state, errorMsg) {
+  entry.state = state;
+  const { chipEl, barFillEl } = entry;
+  chipEl.className = 'photo-chip state-' + state;
+  const iconEl  = chipEl.querySelector('.chip-icon');
+  const errEl   = chipEl.querySelector('.chip-err');
+  const retryEl = chipEl.querySelector('.chip-retry');
+  const icons   = { queued: 'ti-clock', resizing: 'ti-rotate-clockwise', uploading: 'ti-upload', done: 'ti-circle-check', failed: 'ti-alert-circle' };
+  iconEl.className  = 'ti ' + (icons[state] ?? 'ti-clock') + ' chip-icon';
+  errEl.textContent = errorMsg || '';
+  retryEl.hidden    = (state !== 'failed');
+  if (state !== 'uploading') barFillEl.style.width = (state === 'done' ? '100' : '0') + '%';
+  updatePhotoStatus();
+}
+
+function updatePhotoStatus() {
+  const counts = { queued: 0, resizing: 0, uploading: 0, done: 0, failed: 0 };
+  _photoChips.forEach(c => counts[c.state] = (counts[c.state] ?? 0) + 1);
+  const total = _photoChips.length;
+  const finished = counts.done + counts.failed;
+  const doneBtn = document.getElementById('photo-done-btn');
+  const statusEl = document.getElementById('photo-status-bar');
+  if (!statusEl) return;
+
+  let msg;
+  if (total === 0) {
+    msg = '';
+  } else if (finished === total) {
+    msg = counts.failed
+      ? `${counts.done} uploaded · ${counts.failed} failed — retry or skip.`
+      : `${counts.done} of ${total} uploaded. ✓`;
+  } else {
+    const parts = [];
+    if (counts.resizing)  parts.push(`Optimising ${counts.resizing}`);
+    if (counts.uploading) parts.push(`Uploading ${counts.uploading}`);
+    if (counts.done)      parts.push(`${counts.done} done`);
+    if (counts.queued)    parts.push(`${counts.queued} queued`);
+    msg = parts.join(' · ');
+  }
+  statusEl.textContent = msg;
+
+  // Enable Done once everything is finished (or nothing queued)
+  if (doneBtn) doneBtn.disabled = (total > 0 && finished < total);
+}
+
+// ── Image resize (EXIF-safe via createImageBitmap) ───────────────────────────
+// imageOrientation:'from-image' applies EXIF rotation before canvas draw
+// so portrait photos taken in landscape-raw storage come out correctly.
+async function resizePhoto(file) {
+  const bmp = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const maxW = 400;
+  const scale = Math.min(1, maxW / bmp.width);
+  const w = Math.max(1, Math.round(bmp.width * scale));
+  const h = Math.max(1, Math.round(bmp.height * scale));
+  const canvas = document.createElement('canvas');
+  canvas.width = w; canvas.height = h;
+  canvas.getContext('2d').drawImage(bmp, 0, 0, w, h);
+  bmp.close();
+  return new Promise((resolve, reject) =>
+    canvas.toBlob(b => b ? resolve(b) : reject(new Error('toBlob failed')), 'image/jpeg', 0.78)
+  );
+}
+
+// ── XHR upload with byte-level progress events ────────────────────────────────
+function xhrUpload(url, formData, token, onProgress, signal) {
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open('POST', url);
+    xhr.setRequestHeader('Authorization', 'Bearer ' + token);
+    // Do NOT set Content-Type — browser sets multipart boundary automatically
+    xhr.upload.addEventListener('progress', e => {
+      if (e.lengthComputable) onProgress(Math.round(e.loaded / e.total * 100));
+    });
+    xhr.addEventListener('load', () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        try { resolve(JSON.parse(xhr.responseText)); } catch { resolve({}); }
+      } else {
+        reject(new Error('HTTP ' + xhr.status));
+      }
+    });
+    xhr.addEventListener('error', () => reject(new Error('Network error')));
+    xhr.addEventListener('abort', () => {
+      const e = new Error('Aborted'); e.name = 'AbortError'; reject(e);
+    });
+    if (signal) signal.addEventListener('abort', () => xhr.abort());
+    xhr.send(formData);
+  });
+}
+
+// ── Filename helpers (browser side) ──────────────────────────────────────────
+function photoFilename(originalName) {
+  const base = (originalName || 'photo').replace(/\.[^.]+$/, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-')
+    .replace(/^-|-$/g, '').slice(0, 30) || 'photo';
+  const id = Math.random().toString(36).slice(2, 8);
+  return `${base}-${id}.jpg`;
 }
 
 // ── Bootstrap ────────────────────────────────────────────────────────────────

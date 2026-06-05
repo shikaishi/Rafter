@@ -214,7 +214,57 @@ async function handleOnboarding(request, env, url, jwtPayload) {
     return handleSm8Prefill(jwtPayload, env);
   }
 
+  if (method === 'POST' && path === '/onboarding/photos') {
+    return handleOnboardingPhotos(request, env, jwtPayload);
+  }
+
   return json({ ok: false, error: 'Not Found' }, 404);
+}
+
+// ── Photo upload ─────────────────────────────────────────────────────────────
+
+async function handleOnboardingPhotos(request, env, jwtPayload) {
+  const orgId = jwtPayload.org_id;
+  if (!orgId) return json({ ok: false, error: 'No org_id in JWT' }, 401);
+
+  const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+  if (!uuid) return json({ ok: false, error: 'Client not provisioned — complete Step 3 first' }, 404);
+
+  let formData;
+  try { formData = await request.formData(); } catch {
+    return json({ ok: false, error: 'Invalid multipart body' }, 400);
+  }
+
+  const file     = formData.get('file');
+  const category = formData.get('category');
+
+  if (!file || typeof file === 'string') return json({ ok: false, error: 'missing_file' }, 400);
+  if (!category)                         return json({ ok: false, error: 'missing_category' }, 400);
+
+  const safeCategory = sanitisePathSegment(category);
+  const safeFilename = makePhotoFilename(file.name || 'photo');
+  const key = `clients/${uuid}/photos/${safeCategory}/${safeFilename}`;
+
+  const buffer = await file.arrayBuffer();
+  await env.RAFTER_ASSETS.put(key, buffer, { httpMetadata: { contentType: 'image/jpeg' } });
+
+  console.log(JSON.stringify({ event: 'photo_uploaded', uuid, key }));
+  return json({ ok: true, key });
+}
+
+function sanitisePathSegment(s) {
+  return (s ?? '').trim().toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '') || 'general';
+}
+
+function makePhotoFilename(originalName) {
+  const base = originalName.replace(/\.[^.]+$/, '')
+    .replace(/[^a-zA-Z0-9._-]/g, '-').replace(/-+/g, '-')
+    .replace(/^-|-$/g, '').slice(0, 30) || 'photo';
+  const id = Math.random().toString(36).slice(2, 8);
+  return `${base}-${id}.jpg`;
 }
 
 // ── Provisioning — REQ-On-29 to 34 ──────────────────────────────────────────
