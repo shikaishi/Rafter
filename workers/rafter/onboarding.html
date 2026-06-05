@@ -153,6 +153,7 @@ input.invalid { border-color: var(--rf-danger); }
 textarea { resize: vertical; min-height: 68px; }
 .field-hint { font-size: 11px; color: var(--rf-muted); margin-top: 4px; }
 .field-error { font-size: 11px; color: var(--rf-danger); font-weight: 600; margin-top: 4px; }
+.field-hint-ok { font-size: 11px; color: var(--rf-lime); font-weight: 600; margin-top: 4px; }
 
 /* ===== Logo upload ===== */
 .logo-drop-zone {
@@ -675,6 +676,11 @@ textarea { resize: vertical; min-height: 68px; }
 <script>
 'use strict';
 
+let _clerkInstance = null;
+async function getClerkToken() {
+  try { return await (_clerkInstance?.session?.getToken() ?? null); } catch { return null; }
+}
+
 const ADMIN_API = 'https://rafter-admin-api.will-8e8.workers.dev';
 
 const TIERS = [
@@ -733,7 +739,7 @@ function readThresholds() {
   return { thresholds, valid: allValid };
 }
 
-// ── ABN validation ───────────────────────────────────────────────────────────
+// ── ABN validation + live ABR lookup ────────────────────────────────────────
 
 function validateAbnChecksum(digits) {
   const weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19];
@@ -743,9 +749,20 @@ function validateAbnChecksum(digits) {
   return sum % 89 === 0;
 }
 
+function clearAbnStatus() {
+  const el = document.getElementById('abn-hint');
+  el.textContent = ''; el.className = 'field-hint';
+  document.getElementById('abn').classList.remove('invalid');
+}
+
+function setAbnError(msg) {
+  const el = document.getElementById('abn-hint');
+  el.textContent = msg; el.className = 'field-error';
+  document.getElementById('abn').classList.add('invalid');
+}
+
 function initAbnValidation() {
   const input = document.getElementById('abn');
-  const hint  = document.getElementById('abn-hint');
 
   input.addEventListener('input', () => {
     const digits = input.value.replace(/\D/g, '').slice(0, 11);
@@ -754,29 +771,54 @@ function initAbnValidation() {
     if (digits.length > 5) fmt = digits.slice(0,2) + ' ' + digits.slice(2,5) + ' ' + digits.slice(5);
     if (digits.length > 8) fmt = digits.slice(0,2) + ' ' + digits.slice(2,5) + ' ' + digits.slice(5,8) + ' ' + digits.slice(8);
     input.value = fmt;
-    if (input.classList.contains('invalid')) { hint.textContent = ''; hint.className = 'field-hint'; input.classList.remove('invalid'); }
+    clearAbnStatus();
   });
 
   input.addEventListener('blur', () => {
     const digits = input.value.replace(/\D/g, '');
-    if (!digits) { hint.textContent = ''; hint.className = 'field-hint'; input.classList.remove('invalid'); return; }
-    if (digits.length !== 11) {
-      hint.textContent = 'ABN must be 11 digits';
-      hint.className = 'field-error';
-      input.classList.add('invalid');
-      return;
-    }
-    if (!validateAbnChecksum(digits)) {
-      hint.textContent = 'Invalid ABN — please check and re-enter';
-      hint.className = 'field-error';
-      input.classList.add('invalid');
-      return;
-    }
-    hint.textContent = 'Valid ABN';
-    hint.className = 'field-hint';
-    hint.style.color = 'var(--rf-lime)';
-    input.classList.remove('invalid');
+    if (!digits) { clearAbnStatus(); return; }
+    if (digits.length !== 11) { setAbnError('ABN must be 11 digits'); return; }
+    if (!validateAbnChecksum(digits)) { setAbnError('Invalid ABN — please check and re-enter'); return; }
+    liveAbnLookup(digits);
   });
+}
+
+async function liveAbnLookup(digits) {
+  const hint  = document.getElementById('abn-hint');
+  const input = document.getElementById('abn');
+  hint.textContent = 'Checking…'; hint.className = 'field-hint';
+  input.classList.remove('invalid');
+
+  let token = null;
+  try { token = await getClerkToken(); } catch {}
+
+  if (!token) {
+    hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok';
+    return;
+  }
+
+  try {
+    const res  = await fetch(`${ADMIN_API}/onboarding/abn-lookup?abn=${digits}`, {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error ?? 'lookup failed');
+
+    if (data.mode === 'checksum_only') {
+      hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok';
+      return;
+    }
+
+    if (!data.valid) {
+      setAbnError(`ABN ${data.entityStatus ?? 'not found'}${data.reason ? ': ' + data.reason : ''}`);
+    } else {
+      hint.textContent = `✓ Active${data.entityName ? ' — ' + data.entityName : ''}`;
+      hint.className = 'field-hint-ok';
+    }
+  } catch {
+    // Network/server error — degrade to checksum-only result
+    hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok';
+  }
 }
 
 // ── Phone validation ─────────────────────────────────────────────────────────
@@ -1222,6 +1264,7 @@ function setResult(kind, data, errorMsg) {
   }
 
   const clerk = window.Clerk;
+  _clerkInstance = clerk;
   try {
     await Promise.race([
       clerk.load(),

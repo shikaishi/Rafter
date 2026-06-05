@@ -29,7 +29,7 @@ export default {
       if (authErr) return authErr;
       return handleAdmin(request, env, url);
     }
-    if (request.method === 'POST' && pathname.startsWith('/onboarding/')) {
+    if ((request.method === 'POST' || request.method === 'GET') && pathname.startsWith('/onboarding/')) {
       const { error, payload } = await requireClerkJWT(request, env);
       if (error) return error;
       return handleOnboarding(request, env, url, payload);
@@ -174,10 +174,13 @@ async function handleOnboarding(request, env, url, jwtPayload) {
 
   if (method === 'POST' && path === '/onboarding/verify') {
     const body = await parseBody(request) ?? {};
-    // uuid from body or derive from clerk_org_id lookup (full impl at Clerk wiring step)
     const uuid = body.uuid;
     if (!uuid) return json({ ok: false, error: 'uuid required in body' }, 400);
     return handleVerify(uuid, url, env);
+  }
+
+  if (method === 'GET' && path === '/onboarding/abn-lookup') {
+    return handleAbnLookup(url, env);
   }
 
   return json({ ok: false, error: 'Not Found' }, 404);
@@ -798,6 +801,45 @@ async function runSmoketest(uuid, { destructive }, env) {
   }
 
   return { passed: hardPassed, uuid, destructive, assertions };
+}
+
+// ── ABN live lookup — Track C (RFT-53) ──────────────────────────────────────
+// Proxies ABR SimpleProtocol to keep ABR_GUID server-side.
+// Returns checksum_only mode when ABR_GUID is unset — form stays functional pre-GUID.
+// Source: abr.business.gov.au/Documentation/WebServiceMethods (SearchByABNv201408 HTTP GET)
+async function handleAbnLookup(url, env) {
+  const abn = (url.searchParams.get('abn') ?? '').replace(/\D/g, '');
+  if (abn.length !== 11) return json({ ok: false, error: 'abn must be 11 digits' }, 400);
+
+  if (!env.ABR_GUID) {
+    return json({ ok: true, mode: 'checksum_only', detail: 'ABR_GUID not set — set secret to enable live lookup' });
+  }
+
+  try {
+    const abrUrl = 'https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/SearchByABNv201408' +
+      `?searchString=${abn}&includeHistoricalDetails=N&authenticationGuid=${encodeURIComponent(env.ABR_GUID)}`;
+    const res = await fetch(abrUrl, { headers: { Accept: 'application/xml' } });
+    if (!res.ok) return json({ ok: false, error: `ABR service returned ${res.status}` }, 502);
+    const xml = await res.text();
+    return json({ ok: true, ...parseAbrXml(xml) });
+  } catch (err) {
+    return json({ ok: false, error: `ABR lookup failed: ${err.message}` }, 502);
+  }
+}
+
+function parseAbrXml(xml) {
+  // ABR SimpleProtocol v201408 XML response — regex extraction (structure is stable)
+  // Source: abr.business.gov.au/Documentation/WebServiceResponse
+  const exception = xml.match(/<exceptionDescription>([^<]+)<\/exceptionDescription>/)?.[1];
+  if (exception) return { valid: false, reason: exception };
+
+  const statusCode = xml.match(/<entityStatusCode>([^<]+)<\/entityStatusCode>/)?.[1] ?? 'Unknown';
+  const orgName    = xml.match(/<organisationName>([^<]+)<\/organisationName>/)?.[1] ?? null;
+  const givenName  = xml.match(/<givenName>([^<]+)<\/givenName>/)?.[1] ?? null;
+  const familyName = xml.match(/<familyName>([^<]+)<\/familyName>/)?.[1] ?? null;
+  const entityName = orgName ?? ([givenName, familyName].filter(Boolean).join(' ') || null);
+
+  return { valid: statusCode === 'Active', entityName, entityStatus: statusCode };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
