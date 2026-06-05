@@ -139,6 +139,10 @@ async function handleAdmin(request, env, url) {
     return handleListClients(env);
   }
 
+  if (method === 'GET' && path === '/admin/abn-lookup') {
+    return handleAbnLookup(url, env);
+  }
+
   const m = path.match(/^\/admin\/clients\/([0-9a-f-]{36})\/(verify|sync|rotate-secret)$/i);
   if (m) {
     const [, uuid, action] = m;
@@ -806,7 +810,7 @@ async function runSmoketest(uuid, { destructive }, env) {
 // ── ABN live lookup — Track C (RFT-53) ──────────────────────────────────────
 // Proxies ABR SimpleProtocol to keep ABR_GUID server-side.
 // Returns checksum_only mode when ABR_GUID is unset — form stays functional pre-GUID.
-// Source: abr.business.gov.au/Documentation/WebServiceMethods (SearchByABNv201408 HTTP GET)
+// Source: abr.business.gov.au/Documentation/WebServiceMethods (SearchByABNv202001 HTTP GET)
 async function handleAbnLookup(url, env) {
   const abn = (url.searchParams.get('abn') ?? '').replace(/\D/g, '');
   if (abn.length !== 11) return json({ ok: false, error: 'abn must be 11 digits' }, 400);
@@ -816,7 +820,7 @@ async function handleAbnLookup(url, env) {
   }
 
   try {
-    const abrUrl = 'https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/SearchByABNv201408' +
+    const abrUrl = 'https://abr.business.gov.au/abrxmlsearch/AbrXmlSearch.asmx/SearchByABNv202001' +
       `?searchString=${abn}&includeHistoricalDetails=N&authenticationGuid=${encodeURIComponent(env.ABR_GUID)}`;
     const res = await fetch(abrUrl, { headers: { Accept: 'application/xml' } });
     if (!res.ok) return json({ ok: false, error: `ABR service returned ${res.status}` }, 502);
@@ -828,7 +832,7 @@ async function handleAbnLookup(url, env) {
 }
 
 function parseAbrXml(xml) {
-  // ABR SimpleProtocol v201408 XML response — regex extraction (structure is stable)
+  // ABR SimpleProtocol v202001 XML response — regex extraction (structure is stable)
   // Source: abr.business.gov.au/Documentation/WebServiceResponse
   const exception = xml.match(/<exceptionDescription>([^<]+)<\/exceptionDescription>/)?.[1];
   if (exception) return { valid: false, reason: exception };
