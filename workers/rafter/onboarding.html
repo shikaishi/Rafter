@@ -276,6 +276,19 @@ textarea { resize: vertical; min-height: 68px; }
 .btn-rep-add i { font-size: 15px; }
 .rep-count { font-size: 10px; color: var(--rf-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
 
+/* ===== Webhook environment selector ===== */
+.webhook-options { display: flex; flex-direction: column; gap: 6px; }
+.webhook-opt {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; border: 1px solid var(--rf-border); border-radius: 6px;
+  cursor: pointer; background: #fff; user-select: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.webhook-opt.selected { border-color: var(--rf-ocean); background: var(--rf-teal-bg); }
+.webhook-opt input[type=radio] { margin: 0; flex-shrink: 0; accent-color: var(--rf-ocean); }
+.webhook-opt-name { font-size: 13px; font-weight: 700; color: var(--rf-text); }
+.webhook-opt-url { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; color: var(--rf-muted); }
+
 /* ===== Admin section ===== */
 .admin-box { background: var(--rf-teal-bg); border: 1px solid var(--rf-teal-border); border-radius: 8px; padding: 16px; }
 .admin-box-title {
@@ -647,17 +660,26 @@ textarea { resize: vertical; min-height: 68px; }
         <div class="admin-box">
           <div class="admin-box-title"><i class="ti ti-shield-lock"></i> Administrator Setup</div>
           <p class="admin-note">Pre-configured by your Rafter administrator. Do not change unless instructed.</p>
-          <div class="field-row">
-            <div class="field">
-              <label>URL Slug <span class="req">*</span></label>
-              <input type="text" id="slug" placeholder="yourcompany" required pattern="[a-z0-9-]+" autocomplete="off">
-              <div class="field-hint">Form URL: rafter.deepgreensea.au/<strong id="slug-preview">yourcompany</strong></div>
+          <div class="field">
+            <label>URL Slug <span class="req">*</span></label>
+            <input type="text" id="slug" placeholder="yourcompany" required pattern="[a-z0-9-]+" autocomplete="off">
+            <div class="field-hint">Form URL: rafter.deepgreensea.au/<strong id="slug-preview">yourcompany</strong></div>
+          </div>
+          <div class="field">
+            <label>Webhook Environment <span class="req">*</span></label>
+            <div class="webhook-options">
+              <div class="webhook-opt selected" data-env="prod">
+                <input type="radio" name="webhook_env" value="prod" checked>
+                <span class="webhook-opt-name">Production</span>
+                <span class="webhook-opt-url">hook.eu1.make.com/oh8gh9i7…</span>
+              </div>
+              <div class="webhook-opt" data-env="dev">
+                <input type="radio" name="webhook_env" value="dev">
+                <span class="webhook-opt-name">Development</span>
+                <span class="webhook-opt-url">hook.eu1.make.com/i8gukma8…</span>
+              </div>
             </div>
-            <div class="field">
-              <label>Webhook URL <span class="req">*</span></label>
-              <input type="url" id="webhook_url" placeholder="https://hook.eu1.make.com/…" required autocomplete="off">
-              <div class="field-hint">Make.com scenario webhook</div>
-            </div>
+            <div class="field-hint">Make.com scenario — routes quote submissions for this account</div>
           </div>
           <div class="field">
             <label>Operator Email</label>
@@ -700,6 +722,11 @@ async function getClerkToken() {
 }
 
 const ADMIN_API = 'https://rafter-admin-api.will-8e8.workers.dev';
+
+const WEBHOOK_URLS = {
+  prod: 'https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4',
+  dev:  'https://hook.eu1.make.com/i8gukma8y3vs1gff7dihku8inotgy7lg',
+};
 
 const TIERS = [
   { key: 'under_20k',     label: 'Under $20,000',       def: '50, 50' },
@@ -1039,16 +1066,21 @@ function initSlugLogic() {
 
 function prefillFromParams() {
   const p = new URLSearchParams(window.location.search);
-  const slug    = p.get('slug');
-  const webhook = p.get('webhook_url');
+  const slug = p.get('slug');
   if (slug) {
     const si = document.getElementById('slug');
     if (si) { si.value = slug; document.getElementById('slug-preview').textContent = slug; }
   }
-  if (webhook) {
-    const wi = document.getElementById('webhook_url');
-    if (wi) wi.value = webhook;
-  }
+}
+
+function initWebhookSelector() {
+  document.querySelectorAll('.webhook-opt').forEach(opt => {
+    opt.addEventListener('click', () => {
+      document.querySelectorAll('.webhook-opt').forEach(o => o.classList.remove('selected'));
+      opt.classList.add('selected');
+      opt.querySelector('input[type=radio]').checked = true;
+    });
+  });
 }
 
 // ── Email template ───────────────────────────────────────────────────────────
@@ -1213,15 +1245,15 @@ async function handleSubmit(e, clerk) {
   const btn    = document.getElementById('submit-btn');
   const status = document.getElementById('submit-status');
 
-  const slug       = document.getElementById('slug').value.trim();
-  const webhookUrl = document.getElementById('webhook_url').value.trim();
-  // company_name comes from step 2 prefill review
+  const slug        = document.getElementById('slug').value.trim();
+  const envRadio    = document.querySelector('input[name="webhook_env"]:checked');
+  const webhookUrl  = envRadio ? WEBHOOK_URLS[envRadio.value] : '';
   const companyName = document.getElementById('p_company_name').value.trim();
 
   const errors = [];
   if (!companyName) errors.push('Company name is required (review Step 2).');
   if (!slug)        errors.push('URL slug is required.');
-  if (!webhookUrl)  errors.push('Webhook URL is required.');
+  if (!webhookUrl)  errors.push('Webhook environment is required.');
 
   const { thresholds, valid: thresholdValid } = readThresholds();
   if (!thresholdValid) errors.push('Each non-empty payment tier must sum to 100%.');
@@ -1414,6 +1446,7 @@ function setResult(kind, data, errorMsg) {
   initAbnValidation();
   initPhoneValidation();
   initStep1Button();
+  initWebhookSelector();
   prefillFromParams();
 
   document.getElementById('step2-continue').addEventListener('click', () => showStep(3));
