@@ -239,6 +239,10 @@ async function handleStoreToken(request, env) {
   config.token_updated_at = new Date().toISOString();
 
   await writeClient(env, uuid, config);
+  // Keep clerk_org reverse index in sync whenever the record has clerk_org_id set
+  if (config.clerk_org_id) {
+    await env.RAFTER_CLIENTS.put('clerk_org:' + config.clerk_org_id, uuid).catch(() => {});
+  }
   return json({ ok: true, uuid, token_updated_at: config.token_updated_at });
 }
 
