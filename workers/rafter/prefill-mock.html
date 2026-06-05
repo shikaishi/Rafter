@@ -1,0 +1,725 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rafter Setup — Review your ServiceM8 data [MOCK]</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  :root {
+    --ink: #0F1117;
+    --ink-soft: #52585F;
+    --ink-faint: #9AA0A6;
+    --canvas: #F7F5F0;
+    --white: #FFFFFF;
+    --green: #1D9E75;
+    --green-dark: #085041;
+    --green-light: #E1F5EE;
+    --amber: #B76800;
+    --amber-bg: #FFF8E8;
+    --border: #E2DDD6;
+    --radius: 10px;
+    --shadow: 0 4px 32px rgba(15,17,23,0.06), 0 1px 4px rgba(15,17,23,0.04);
+  }
+
+  html, body {
+    min-height: 100vh;
+    background: var(--canvas);
+    font-family: 'DM Sans', sans-serif;
+    color: var(--ink);
+    -webkit-font-smoothing: antialiased;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)' opacity='0.03'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .page {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+
+  /* ── Header ── */
+  header {
+    padding: 20px 40px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    border-bottom: 1px solid var(--border);
+    background: rgba(247,245,240,0.85);
+    backdrop-filter: blur(8px);
+    position: sticky;
+    top: 0;
+    z-index: 10;
+  }
+  .logo-img { max-height: 28px; width: auto; display: block; }
+  .logo-name { font-family: 'Instrument Serif', serif; font-size: 17px; color: var(--ink); letter-spacing: -0.02em; }
+  .logo-sep { color: var(--border); margin: 0 4px; }
+  .logo-sub { font-size: 12px; color: var(--ink-soft); font-family: 'DM Mono', monospace; }
+
+  /* ── Layout ── */
+  main {
+    flex: 1;
+    padding: 40px 24px 72px;
+    max-width: 660px;
+    margin: 0 auto;
+    width: 100%;
+  }
+
+  /* ── Stepper ── */
+  .stepper {
+    display: flex;
+    align-items: center;
+    gap: 0;
+    margin-bottom: 32px;
+  }
+  .step {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .step-dot {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 600;
+    font-family: 'DM Mono', monospace;
+  }
+  .step-label {
+    font-size: 10px;
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+  .step.done .step-dot {
+    background: var(--green);
+    color: var(--white);
+    font-size: 13px;
+  }
+  .step.done .step-label { color: var(--green); }
+  .step.active .step-dot {
+    background: var(--ink);
+    color: var(--white);
+  }
+  .step.active .step-label { color: var(--ink); font-weight: 600; }
+  .step.upcoming .step-dot {
+    background: var(--border);
+    color: var(--ink-faint);
+  }
+  .step.upcoming .step-label { color: var(--ink-faint); }
+  .step-connector {
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+    margin: 0 6px;
+    margin-bottom: 22px;
+  }
+  .step-connector.done-line { background: var(--green); }
+
+  /* ── Connected banner ── */
+  .connected-banner {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    background: var(--green-light);
+    border: 1px solid rgba(29,158,117,0.25);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    margin-bottom: 28px;
+    font-size: 13px;
+    color: var(--green-dark);
+  }
+  .connected-banner .cb-check {
+    width: 20px;
+    height: 20px;
+    background: var(--green);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    font-size: 11px;
+    color: white;
+    font-weight: 700;
+  }
+  .connected-banner strong { color: var(--ink); }
+
+  /* ── Page heading ── */
+  .eyebrow {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--green);
+    margin-bottom: 10px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .eyebrow::before {
+    content: '';
+    width: 16px;
+    height: 2px;
+    background: var(--green);
+    display: inline-block;
+    border-radius: 2px;
+  }
+  h1 {
+    font-family: 'Instrument Serif', serif;
+    font-size: 32px;
+    font-weight: 400;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    color: var(--ink);
+    margin-bottom: 10px;
+  }
+  .page-desc {
+    font-size: 14px;
+    line-height: 1.7;
+    color: var(--ink-soft);
+    margin-bottom: 32px;
+  }
+
+  /* ── Form sections ── */
+  .form-block {
+    background: var(--white);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 28px;
+    margin-bottom: 16px;
+    box-shadow: var(--shadow);
+  }
+  .form-block-header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+  .form-block-title {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    font-weight: 500;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+  }
+  .sm8-count {
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    color: var(--green);
+    background: var(--green-light);
+    padding: 2px 8px;
+    border-radius: 20px;
+    letter-spacing: 0.04em;
+  }
+
+  /* ── Field ── */
+  .field { margin-bottom: 18px; }
+  .field:last-child { margin-bottom: 0; }
+  .field-label {
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--ink-soft);
+    margin-bottom: 6px;
+    display: block;
+    letter-spacing: 0.01em;
+  }
+  .field-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .field-row input, .field-row textarea {
+    flex: 1;
+    padding: 10px 12px;
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 14px;
+    color: var(--ink);
+    outline: none;
+    transition: border-color 0.15s;
+    min-height: 40px;
+  }
+  .field-row input:focus, .field-row textarea:focus {
+    border-color: var(--green);
+    background: var(--white);
+  }
+  .field-hint {
+    font-size: 11px;
+    color: var(--ink-faint);
+    margin-top: 5px;
+    line-height: 1.5;
+  }
+  .field-hint.ok { color: var(--green); font-weight: 500; }
+
+  /* ── Source badge ── */
+  .src {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 8px;
+    border-radius: 20px;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .src.reliable {
+    background: var(--green-light);
+    color: var(--green-dark);
+  }
+  .src.best-effort {
+    background: #F2F2F2;
+    color: var(--ink-soft);
+  }
+  .src.verify {
+    background: var(--amber-bg);
+    color: var(--amber);
+  }
+  .src.manual {
+    background: transparent;
+    border: 1px dashed var(--border);
+    color: var(--ink-faint);
+  }
+
+  /* ── Logo upload ── */
+  .logo-upload {
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 20px;
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    cursor: pointer;
+    transition: border-color 0.15s;
+  }
+  .logo-upload:hover { border-color: var(--green); }
+  .logo-upload-icon {
+    width: 44px;
+    height: 44px;
+    border-radius: 8px;
+    background: var(--canvas);
+    border: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    color: var(--ink-faint);
+    font-size: 18px;
+  }
+  .logo-upload-text { flex: 1; }
+  .logo-upload-text strong { font-size: 13px; display: block; margin-bottom: 3px; }
+  .logo-upload-text span { font-size: 12px; color: var(--ink-soft); }
+  .logo-upload-note {
+    margin-top: 10px;
+    font-size: 11px;
+    color: var(--ink-faint);
+  }
+
+  /* ── Sections ── */
+  .sections-desc {
+    font-size: 13px;
+    color: var(--ink-soft);
+    line-height: 1.6;
+    margin-bottom: 16px;
+  }
+  .section-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 12px; }
+  .section-row {
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    overflow: hidden;
+    background: var(--canvas);
+  }
+  .section-top {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    background: var(--white);
+  }
+  .section-name {
+    flex: 1;
+    border: none;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--ink);
+    outline: none;
+    min-width: 0;
+  }
+  .section-src {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--green);
+    flex-shrink: 0;
+  }
+  .section-remove {
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: none;
+    background: transparent;
+    color: var(--ink-faint);
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 1;
+    transition: background 0.12s, color 0.12s;
+  }
+  .section-remove:hover { background: #FFECEC; color: #C0392B; }
+  .section-scope-wrap { padding: 10px 12px; }
+  .section-scope {
+    width: 100%;
+    border: none;
+    background: transparent;
+    font-family: 'DM Sans', sans-serif;
+    font-size: 12px;
+    color: var(--ink-soft);
+    outline: none;
+    resize: none;
+    min-height: 44px;
+    line-height: 1.6;
+  }
+  .section-scope-label {
+    font-family: 'DM Mono', monospace;
+    font-size: 9px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    display: block;
+    margin-bottom: 4px;
+  }
+
+  .sections-collapsed {
+    border: 1px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 12px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: var(--canvas);
+  }
+  .sections-collapsed span {
+    font-size: 12px;
+    color: var(--ink-faint);
+    font-family: 'DM Mono', monospace;
+    letter-spacing: 0.03em;
+  }
+  .btn-show-all {
+    font-size: 12px;
+    color: var(--green);
+    background: none;
+    border: 1px solid var(--green);
+    border-radius: 6px;
+    padding: 4px 12px;
+    cursor: pointer;
+    font-family: 'DM Sans', sans-serif;
+    font-weight: 500;
+    transition: background 0.12s;
+  }
+  .btn-show-all:hover { background: var(--green-light); }
+
+  .btn-add-section {
+    width: 100%;
+    padding: 10px;
+    border: 1.5px dashed var(--border);
+    border-radius: var(--radius);
+    background: transparent;
+    color: var(--ink-soft);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.12s, color 0.12s;
+    text-align: center;
+  }
+  .btn-add-section:hover { border-color: var(--green); color: var(--green); }
+
+  /* ── Continue ── */
+  .btn-continue {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    padding: 15px 24px;
+    margin-top: 24px;
+    background: var(--ink);
+    color: var(--white);
+    border: none;
+    border-radius: var(--radius);
+    font-family: 'DM Sans', sans-serif;
+    font-size: 15px;
+    font-weight: 500;
+    cursor: pointer;
+    letter-spacing: -0.01em;
+    transition: background 0.15s, transform 0.1s;
+  }
+  .btn-continue:hover { background: #1a2030; transform: translateY(-1px); }
+  .btn-continue:active { transform: translateY(0); }
+  .continue-hint {
+    text-align: center;
+    font-size: 12px;
+    color: var(--ink-faint);
+    margin-top: 12px;
+    line-height: 1.5;
+  }
+
+  /* ── Footer ── */
+  footer {
+    padding: 18px 40px;
+    border-top: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+  .footer-brand { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--ink-faint); letter-spacing: 0.06em; }
+  .footer-note { font-size: 11px; color: var(--ink-faint); }
+
+  /* ── Mock banner ── */
+  .mock-banner {
+    background: #1a2030;
+    color: #aab4c8;
+    text-align: center;
+    padding: 8px 16px;
+    font-family: 'DM Mono', monospace;
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .mock-banner strong { color: #fff; }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="mock-banner"><strong>MOCK</strong> — Static design checkpoint for Will's review. Data is hardcoded from Andy's known ground truth (trial trial trial — no live writes).</div>
+
+  <header>
+    <img src="https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png" alt="Rafter" class="logo-img">
+    <span class="logo-name">Rafter</span>
+    <span class="logo-sep">·</span>
+    <span class="logo-sub">Account Setup</span>
+  </header>
+
+  <main>
+
+    <!-- Stepper -->
+    <div class="stepper">
+      <div class="step done">
+        <div class="step-dot">✓</div>
+        <div class="step-label">Connect</div>
+      </div>
+      <div class="step-connector done-line"></div>
+      <div class="step active">
+        <div class="step-dot">2</div>
+        <div class="step-label">Review</div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step upcoming">
+        <div class="step-dot">3</div>
+        <div class="step-label">Your details</div>
+      </div>
+      <div class="step-connector"></div>
+      <div class="step upcoming">
+        <div class="step-dot">4</div>
+        <div class="step-label">Done</div>
+      </div>
+    </div>
+
+    <!-- Connected banner -->
+    <div class="connected-banner">
+      <div class="cb-check">✓</div>
+      <span>Connected to <strong>2 Men and a Shovel</strong> on ServiceM8</span>
+    </div>
+
+    <!-- Heading -->
+    <div class="eyebrow">Step 2 of 4 — ServiceM8 data</div>
+    <h1>Review what we found</h1>
+    <p class="page-desc">We've pre-filled the fields we could read from your ServiceM8 account. Everything is editable — check that it's correct before continuing.</p>
+
+    <!-- Business details -->
+    <div class="form-block">
+      <div class="form-block-header">
+        <div class="form-block-title">Your business</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Business name</label>
+        <div class="field-row">
+          <input type="text" value="2 Men and a Shovel">
+          <span class="src reliable">SM8 ✓</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">ABN</label>
+        <div class="field-row">
+          <input type="text" value="18 652 417 171">
+          <span class="src reliable">SM8 ✓</span>
+        </div>
+        <div class="field-hint ok">✓ Active — Australian Taxation Office</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Business email</label>
+        <div class="field-row">
+          <input type="email" value="hello@2menandashovel.com">
+          <span class="src best-effort">SM8</span>
+        </div>
+        <div class="field-hint">From your ServiceM8 email accounts. Edit if this isn't your quote reply address.</div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Business address</label>
+        <div class="field-row">
+          <input type="text" value="61 Aileen Avenue, Caulfield South VIC 3162">
+          <span class="src best-effort">SM8</span>
+        </div>
+      </div>
+
+      <div class="field">
+        <label class="field-label">Default tax rate</label>
+        <div class="field-row">
+          <input type="text" value="GST — 10%">
+          <span class="src verify">SM8 — verify</span>
+        </div>
+        <div class="field-hint">Confirm this is the tax rate that appears on your quotes.</div>
+      </div>
+    </div>
+
+    <!-- Logo -->
+    <div class="form-block">
+      <div class="form-block-header">
+        <div class="form-block-title">Your logo</div>
+        <span class="src manual">Not in SM8</span>
+      </div>
+      <div class="logo-upload">
+        <div class="logo-upload-icon">
+          <svg width="20" height="20" viewBox="0 0 20 20" fill="none"><path d="M10 3v9m0-9L7 6m3-3l3 3" stroke="#9AA0A6" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 14v1a2 2 0 002 2h10a2 2 0 002-2v-1" stroke="#9AA0A6" stroke-width="1.5" stroke-linecap="round"/></svg>
+        </div>
+        <div class="logo-upload-text">
+          <strong>Upload your logo</strong>
+          <span>PNG or JPG, square recommended — appears on PDFs and quote emails.</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Sections -->
+    <div class="form-block">
+      <div class="form-block-header">
+        <div class="form-block-title">Service sections</div>
+        <span class="sm8-count">22 found in SM8</span>
+      </div>
+      <p class="sections-desc">
+        We found 22 service types in your ServiceM8. Each has a starter scope description — edit them to match your real scope, remove ones you don't use, and add any that are missing.
+      </p>
+
+      <div class="section-list">
+
+        <div class="section-row">
+          <div class="section-top">
+            <input type="text" class="section-name" value="Excavation">
+            <span class="section-src">from SM8</span>
+            <button class="section-remove" title="Remove">×</button>
+          </div>
+          <div class="section-scope-wrap">
+            <span class="section-scope-label">Scope description</span>
+            <textarea class="section-scope" rows="2">Supply and installation of materials as specified for this section of works.</textarea>
+          </div>
+        </div>
+
+        <div class="section-row">
+          <div class="section-top">
+            <input type="text" class="section-name" value="Concreting">
+            <span class="section-src">from SM8</span>
+            <button class="section-remove" title="Remove">×</button>
+          </div>
+          <div class="section-scope-wrap">
+            <span class="section-scope-label">Scope description</span>
+            <textarea class="section-scope" rows="2">Supply and installation of materials as specified for this section of works.</textarea>
+          </div>
+        </div>
+
+        <div class="section-row">
+          <div class="section-top">
+            <input type="text" class="section-name" value="Instant Turf">
+            <span class="section-src">from SM8</span>
+            <button class="section-remove" title="Remove">×</button>
+          </div>
+          <div class="section-scope-wrap">
+            <span class="section-scope-label">Scope description</span>
+            <textarea class="section-scope" rows="2">Supply and installation of materials as specified for this section of works.</textarea>
+          </div>
+        </div>
+
+        <div class="section-row">
+          <div class="section-top">
+            <input type="text" class="section-name" value="Irrigation">
+            <span class="section-src">from SM8</span>
+            <button class="section-remove" title="Remove">×</button>
+          </div>
+          <div class="section-scope-wrap">
+            <span class="section-scope-label">Scope description</span>
+            <textarea class="section-scope" rows="2">Supply and installation of materials as specified for this section of works.</textarea>
+          </div>
+        </div>
+
+        <div class="sections-collapsed">
+          <span>+ 18 more sections loaded from ServiceM8</span>
+          <button class="btn-show-all">Show all 22</button>
+        </div>
+
+      </div>
+
+      <button class="btn-add-section">+ Add a section not in ServiceM8</button>
+    </div>
+
+    <!-- Continue -->
+    <button class="btn-continue">
+      Looks good — continue
+      <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M3 8h10M9 4l4 4-4 4" stroke="white" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+    </button>
+    <p class="continue-hint">Next: bank details, payment schedule, email template, credentials and T&Cs.</p>
+
+  </main>
+
+  <footer>
+    <span class="footer-brand">DEEP GREEN SEA · RAFTER</span>
+    <span class="footer-note">All pre-filled values are editable</span>
+  </footer>
+
+</div>
+</body>
+</html>
