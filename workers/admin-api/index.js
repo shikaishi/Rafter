@@ -223,7 +223,7 @@ async function provisionClient(body, env) {
     phone: '', business_address: '', abn: '', business_email: '', operator_email: '',
     payment_thresholds: {}, proposal_types: [], job_categories: [], job_queues: [],
     templates: [], credentials: [], terms_and_conditions: [], staff_uuid: '',
-    email_template: '', clerk_org_id: null,
+    email_template: '', bank_details: {}, clerk_org_id: null,
   };
 
   // REQ-On-29: build record — defaults → existing (preserves OAuth tokens etc.) → required body fields
@@ -232,9 +232,19 @@ async function provisionClient(body, env) {
   // Optional fields: only override if explicitly provided in body
   const OPTIONAL_FIELDS = ['phone','business_address','abn','business_email','operator_email',
     'payment_thresholds','proposal_types','job_categories','job_queues','templates',
-    'credentials','terms_and_conditions','staff_uuid','email_template','clerk_org_id'];
+    'credentials','terms_and_conditions','staff_uuid','email_template','bank_details','clerk_org_id'];
   for (const f of OPTIONAL_FIELDS) {
     if (body[f] !== undefined) record[f] = body[f];
+  }
+
+  // Normalise payment_thresholds: onboarding form sends arrays [50,50] → store as "50/50" strings
+  // index.html parseSplit() calls .split("/") so KV must hold slash-delimited strings, not arrays.
+  if (record.payment_thresholds && typeof record.payment_thresholds === 'object') {
+    const normalised = {};
+    for (const [k, v] of Object.entries(record.payment_thresholds)) {
+      normalised[k] = Array.isArray(v) ? v.join('/') : v;
+    }
+    record.payment_thresholds = normalised;
   }
 
   // REQ-On-29: uniqueness guard before any write — fail fast so no partial state is left
@@ -642,6 +652,83 @@ async function runSmoketest(uuid, { destructive }, env) {
       fail('clerk_org_binding', 'clerk_org_id not set in KV — complete Clerk onboarding flow first');
     } else {
       pass('clerk_org_binding', { clerk_org_id: record.clerk_org_id });
+    }
+  }
+
+  // ── Payment thresholds shape ──────────────────────────────────────────────
+  // index.html parseSplit() requires slash-delimited strings e.g. "50/50", not arrays or empty object.
+  {
+    const pt = record.payment_thresholds;
+    const TIERS = ['under_20k','20k_to_35k','35k_to_50k','50k_to_100k','100k_to_200k','over_200k'];
+    if (!pt || typeof pt !== 'object' || Object.keys(pt).length === 0) {
+      fail('payment_thresholds_shape', 'payment_thresholds is missing or empty — quoting form cannot render payment schedule');
+    } else {
+      const badTiers = TIERS.filter(t => {
+        const v = pt[t];
+        if (!v) return true;
+        if (Array.isArray(v)) return true; // should have been normalised — onboarding bug
+        if (typeof v !== 'string' || !v.includes('/')) return true;
+        return false;
+      });
+      if (badTiers.length) {
+        fail('payment_thresholds_shape', `tiers with wrong format (expected "50/50" strings): ${badTiers.join(', ')}`);
+      } else {
+        pass('payment_thresholds_shape', { tiers: Object.keys(pt).length });
+      }
+    }
+  }
+
+  // ── Templates present ─────────────────────────────────────────────────────
+  {
+    const t = record.templates;
+    if (!Array.isArray(t) || t.length === 0) {
+      fail('templates_present', 'templates array is empty — quote form scope/description builder will have no options');
+    } else {
+      const malformed = t.filter(item => !item.name || !item.text).length;
+      if (malformed) {
+        fail('templates_present', `${malformed} of ${t.length} templates are missing name or text fields`);
+      } else {
+        pass('templates_present', { count: t.length });
+      }
+    }
+  }
+
+  // ── Email template present ────────────────────────────────────────────────
+  {
+    const et = record.email_template;
+    if (!et || typeof et !== 'string' || et.trim().length === 0) {
+      fail('email_template_present', 'email_template is empty — Make /render-email will return blank email HTML');
+    } else {
+      const hasMergeFields = et.includes('{client_name}') && et.includes('{job_address}');
+      if (!hasMergeFields) {
+        fail('email_template_present', 'email_template missing {client_name} or {job_address} merge fields — email will lack customer details');
+      } else {
+        pass('email_template_present', { length: et.length });
+      }
+    }
+  }
+
+  // ── Bank details present ──────────────────────────────────────────────────
+  {
+    const bd = record.bank_details;
+    if (!bd || typeof bd !== 'object' || (!bd.name && !bd.bsb && !bd.account)) {
+      fail('bank_details_present', 'bank_details empty — PDF will not render payment section (rafter-pdf checks bank_details.name/bsb/account)');
+    } else {
+      const missing = ['name','bsb','account'].filter(k => !bd[k]);
+      if (missing.length) {
+        fail('bank_details_present', `bank_details missing fields: ${missing.join(', ')}`);
+      } else {
+        pass('bank_details_present', { bank_name: bd.name });
+      }
+    }
+  }
+
+  // ── Staff UUID present ────────────────────────────────────────────────────
+  {
+    if (!record.staff_uuid) {
+      fail('staff_uuid_present', 'staff_uuid is empty — Make will assign jobs to no staff member; set via setup.html OAuth callback picker');
+    } else {
+      pass('staff_uuid_present', { staff_uuid: record.staff_uuid });
     }
   }
 

@@ -403,13 +403,15 @@ CREATE TABLE events (
 
 **Trial UUID token:** Trial UUID `010895db-e06c-465d-bce9-2424477be15b` is provisioned — KV record created, OAuth done (will@thurlow.net), 114 materials synced (2026-05-30). Use `slug:dev` for all dev/test SM8 API calls. Andy's live token at `client:0e604a45-…` is read-only — never use for writes that create jobs, clients, or attachments.
 
-### OAuth scopes (current)
+### OAuth scopes (current — updated 2026-06-05)
 ```
 vendor, vendor_logo, read_staff, read_inventory, read_job_categories, read_job_queues,
-manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, read_jobs
+manage_templates, manage_badges, read_tax_rates, read_forms, read_customers, read_jobs,
+publish_email, create_jobs, manage_customers, manage_schedule, publish_job_attachments,
+manage_job_materials, manage_jobs, manage_attachments
 ```
 
-**`create_jobs`:** present on trial, working (RFT-26). **For edit-quote (RFT-32), three further scopes are required and currently MISSING:** `manage_jobs` (update job_description), `publish_job_attachments` (create attachment + upload binary), `read_attachments` (list attachments — runtime-confirmed name; docs say `read_job_attachments`, runtime error is authoritative). Add to the scope string in `workers/rafter/setup.html`, then re-auth (Flow D — human, ~1 min). No scope elevation without a new grant.
+**`create_jobs`:** present on trial, working (RFT-26). **RFT-32 scopes (`manage_jobs`, `publish_job_attachments`, `manage_attachments`) are already in the scope string in `workers/rafter/setup.html` (added 2026-06-04).** New clients who complete OAuth via setup.html will receive the full scope set automatically. **Andy specifically needs to re-auth** via setup.html to gain these scopes — Flow D (~1 min). Note: the runtime-confirmed scope name is `manage_attachments`, not `read_attachments`.
 **Inbox scope:** `publish_inbox` — undocumented on public scopes page, defined in OpenAPI only. Moot until VER-01 resolved.
 
 ---
@@ -616,7 +618,7 @@ CONTEXT: See CLAUDE.md
 **SM8 verifications — answered 2026-05-14:**
 - **Inbox-attach delivery not supported** (VER-01 closed negative). No file field on `createInboxMessage`. D5 delivery path is unresolved — must be re-examined before T1-E1.
 - **`publish_inbox`** scope is moot (VER-02 closed).
-- **`create_jobs`** present and working (RFT-26). Edit-quote (RFT-32) additionally needs `manage_jobs`, `publish_job_attachments`, `read_attachments` — currently missing, re-auth required before amend testing.
+- **`create_jobs`** present and working (RFT-26). Edit-quote (RFT-32) scopes (`manage_jobs`, `publish_job_attachments`, `manage_attachments`) are **already in setup.html scope string** (added 2026-06-04) — new clients get them automatically. **Andy needs to re-auth** via setup.html to gain these scopes.
 - **New job UUID** in `x-record-uuid` response header, not body.
 
 **v2.0 items requiring verification before building:**
