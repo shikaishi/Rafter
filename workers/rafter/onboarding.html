@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rafter — Account Setup</title>
 <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;1,400&family=Mulish:wght@400;600;700&display=swap" rel="stylesheet">
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
 <style>
 :root {
@@ -32,7 +34,7 @@ html, body { margin: 0; padding: 0; }
 body {
   background: var(--rf-outer);
   min-height: 100vh;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+  font-family: 'Mulish', sans-serif;
   font-size: 14px;
   color: var(--rf-text);
   line-height: 1.45;
@@ -44,13 +46,8 @@ body {
 
 /* ===== Loading ===== */
 .state-loading {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  min-height: 100vh;
-  gap: 16px;
-  color: rgba(255,255,255,0.65);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  min-height: 100vh; gap: 16px; color: rgba(255,255,255,0.65);
 }
 .spinner {
   width: 36px; height: 36px;
@@ -71,45 +68,50 @@ body {
 }
 
 /* ===== Page header ===== */
-.page-header {
-  padding: 20px 24px;
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
+.page-header { padding: 20px 24px; display: flex; align-items: center; gap: 16px; }
 .header-text { flex: 1; }
-.header-text h1 { margin: 0; font-size: 19px; font-weight: 700; color: var(--rf-green); }
+.header-text h1 { margin: 0; font-family: 'Playfair Display', serif; font-size: 22px; font-weight: 600; color: var(--rf-green); }
 .header-text p { margin: 3px 0 0; font-size: 13px; color: var(--rf-muted); }
 .user-badge { font-size: 12px; color: var(--rf-muted); text-align: right; line-height: 1.5; }
-.user-badge .org-name { color: var(--rf-lime); font-weight: 600; }
+.user-badge .org-name { color: var(--rf-lime); font-weight: 700; }
 
-/* ===== Form sections ===== */
+/* ===== Stepper ===== */
+.stepper-card { padding: 16px 24px; }
+.stepper { display: flex; align-items: center; gap: 0; }
+.step-item {
+  display: flex; align-items: center; gap: 6px;
+  font-size: 12px; font-weight: 700; color: var(--rf-muted);
+  white-space: nowrap;
+}
+.step-num {
+  width: 22px; height: 22px; border-radius: 50%;
+  background: var(--rf-border); color: #fff;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+  transition: background 0.2s;
+}
+.step-item.active .step-num { background: var(--rf-navy); }
+.step-item.active { color: var(--rf-navy); }
+.step-item.done .step-num { background: var(--rf-lime); }
+.step-item.done { color: var(--rf-muted); }
+.step-sep {
+  flex: 1; height: 1px; background: var(--rf-border);
+  margin: 0 10px; min-width: 20px;
+}
+
+/* ===== Sections ===== */
 .section { padding: 24px; }
 .section + .section { border-top: 1px solid var(--rf-divider); }
-
 .section-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.07em;
-  color: var(--rf-navy);
-  margin: 0 0 16px;
-  display: flex;
-  align-items: center;
-  gap: 7px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--rf-navy);
+  margin: 0 0 16px; display: flex; align-items: center; gap: 7px;
 }
 .section-title i { font-size: 15px; }
 .section-title .optional-badge {
-  font-size: 10px;
-  font-weight: 600;
-  text-transform: none;
-  letter-spacing: 0;
-  color: var(--rf-muted);
-  background: var(--rf-row-bg);
-  border: 1px solid var(--rf-border);
-  border-radius: 10px;
-  padding: 1px 7px;
-  margin-left: 4px;
+  font-size: 10px; font-weight: 600; text-transform: none; letter-spacing: 0;
+  color: var(--rf-muted); background: var(--rf-row-bg); border: 1px solid var(--rf-border);
+  border-radius: 10px; padding: 1px 7px; margin-left: 4px;
 }
 
 /* ===== Fields ===== */
@@ -119,35 +121,19 @@ body {
 .field-row-3 { display: grid; grid-template-columns: 2fr 1fr 1fr; gap: 12px; }
 
 label {
-  display: block;
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--rf-muted);
-  margin-bottom: 5px;
+  display: block; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--rf-muted); margin-bottom: 5px;
 }
 label .req { color: var(--rf-danger); margin-left: 2px; }
 
-input[type=text],
-input[type=email],
-input[type=tel],
-input[type=url],
-textarea {
-  width: 100%;
-  padding: 8px 10px;
-  border: 1px solid var(--rf-border);
-  border-radius: 6px;
-  font-size: 14px;
-  color: var(--rf-text);
-  background: #fff;
-  font-family: inherit;
+input[type=text], input[type=email], input[type=tel], input[type=url], textarea {
+  width: 100%; padding: 8px 10px; border: 1px solid var(--rf-border); border-radius: 6px;
+  font-size: 14px; color: var(--rf-text); background: #fff; font-family: 'Mulish', sans-serif;
   transition: border-color 0.15s, box-shadow 0.15s;
 }
 input:focus, textarea:focus {
-  outline: none;
-  border-color: var(--rf-ocean);
-  box-shadow: 0 0 0 3px rgba(46,134,171,0.12);
+  outline: none; border-color: var(--rf-ocean); box-shadow: 0 0 0 3px rgba(46,134,171,0.12);
 }
 input.invalid { border-color: var(--rf-danger); }
 textarea { resize: vertical; min-height: 68px; }
@@ -155,19 +141,61 @@ textarea { resize: vertical; min-height: 68px; }
 .field-error { font-size: 11px; color: var(--rf-danger); font-weight: 600; margin-top: 4px; }
 .field-hint-ok { font-size: 11px; color: var(--rf-lime); font-weight: 600; margin-top: 4px; }
 
+/* ===== Source badges ===== */
+.source-badge {
+  display: inline-flex; align-items: center; gap: 3px;
+  font-size: 10px; font-weight: 700; text-transform: none;
+  letter-spacing: 0; border-radius: 10px; padding: 1px 7px;
+  vertical-align: middle; margin-left: 6px;
+  font-family: 'Mulish', sans-serif;
+}
+.badge-sm8 { background: #e8f5e9; color: #2e7d32; border: 1px solid #c8e6c9; }
+.badge-manual { background: transparent; color: var(--rf-muted); border: 1px dashed var(--rf-border); }
+.badge-verify { background: #fff8e1; color: #e65100; border: 1px solid #ffe082; }
+
+/* ===== Connected banner ===== */
+.connected-banner {
+  background: #e8f5e9; border: 1px solid #c8e6c9;
+  border-radius: 8px; padding: 12px 16px;
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 20px; font-size: 13px; color: #1b5e20; font-weight: 600;
+}
+.connected-banner i { font-size: 18px; color: #2e7d32; }
+.prefill-intro {
+  font-size: 13px; color: var(--rf-muted); line-height: 1.6;
+  margin: 0 0 20px; padding: 0 24px;
+}
+.prefill-loading {
+  padding: 20px 24px; font-size: 13px; color: var(--rf-muted);
+  display: flex; align-items: center; gap: 8px;
+}
+.inline-spinner {
+  width: 16px; height: 16px;
+  border: 2px solid var(--rf-border);
+  border-top-color: var(--rf-ocean);
+  border-radius: 50%;
+  animation: spin 0.75s linear infinite;
+  flex-shrink: 0;
+}
+.prefill-error-box {
+  margin: 0 24px 16px;
+  background: var(--rf-danger-bg); border: 1px solid var(--rf-danger);
+  border-radius: 8px; padding: 14px 16px;
+  font-size: 13px; color: #b71c1c;
+}
+.prefill-error-box .btn-retry {
+  margin-top: 10px; font-size: 12px; font-weight: 700;
+  color: var(--rf-ocean); cursor: pointer; background: none; border: none;
+  padding: 0; font-family: 'Mulish', sans-serif; text-decoration: underline;
+}
+
 /* ===== Logo upload ===== */
 .logo-drop-zone {
-  border: 2px dashed var(--rf-border);
-  border-radius: 8px;
-  padding: 24px 16px;
-  text-align: center;
-  cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
-  background: var(--rf-row-bg);
-  position: relative;
+  border: 2px dashed var(--rf-border); border-radius: 8px; padding: 24px 16px;
+  text-align: center; cursor: pointer; transition: border-color 0.15s, background 0.15s;
+  background: var(--rf-row-bg); position: relative;
 }
-.logo-drop-zone:hover,
-.logo-drop-zone.drag-over { border-color: var(--rf-ocean); background: var(--rf-teal-bg); }
+.logo-drop-zone:hover, .logo-drop-zone.drag-over { border-color: var(--rf-ocean); background: var(--rf-teal-bg); }
 .logo-drop-zone input[type=file] { display: none; }
 #logo-preview { max-height: 72px; max-width: 200px; display: block; margin: 0 auto 10px; border-radius: 4px; }
 .upload-prompt i { font-size: 28px; color: var(--rf-muted); display: block; margin-bottom: 6px; }
@@ -176,29 +204,15 @@ textarea { resize: vertical; min-height: 68px; }
 .logo-filename { font-size: 12px; color: var(--rf-muted); margin-top: 4px; }
 
 /* ===== Payment threshold table ===== */
-.threshold-table {
-  width: 100%;
-  border-collapse: collapse;
-  font-size: 13px;
-}
+.threshold-table { width: 100%; border-collapse: collapse; font-size: 13px; }
 .threshold-table th {
-  font-size: 10px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  color: var(--rf-muted);
-  padding: 0 8px 8px 4px;
-  text-align: left;
-  border-bottom: 1px solid var(--rf-divider);
+  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+  color: var(--rf-muted); padding: 0 8px 8px 4px; text-align: left; border-bottom: 1px solid var(--rf-divider);
 }
 .threshold-table th.col-sum { text-align: right; }
-.threshold-table td {
-  padding: 5px 8px 5px 4px;
-  vertical-align: middle;
-  border-bottom: 1px solid var(--rf-row-bg);
-}
+.threshold-table td { padding: 5px 8px 5px 4px; vertical-align: middle; border-bottom: 1px solid var(--rf-row-bg); }
 .threshold-table tr:last-child td { border-bottom: none; }
-.tier-label { font-weight: 500; color: var(--rf-text); white-space: nowrap; width: 170px; }
+.tier-label { font-weight: 600; color: var(--rf-text); white-space: nowrap; width: 170px; }
 .threshold-table input[type=text] { padding: 6px 8px; font-size: 13px; }
 .tier-sum { font-weight: 700; font-size: 12px; text-align: right; white-space: nowrap; min-width: 44px; }
 .tier-sum.ok { color: var(--rf-lime); }
@@ -208,101 +222,51 @@ textarea { resize: vertical; min-height: 68px; }
 /* ===== Email template ===== */
 .merge-fields { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
 .merge-tag {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 11px;
-  background: var(--rf-teal-bg);
-  border: 1px solid var(--rf-teal-border);
-  border-radius: 4px;
-  padding: 3px 8px;
-  color: var(--rf-navy);
-  cursor: pointer;
-  user-select: none;
-  transition: background 0.1s;
+  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px;
+  background: var(--rf-teal-bg); border: 1px solid var(--rf-teal-border); border-radius: 4px;
+  padding: 3px 8px; color: var(--rf-navy); cursor: pointer; user-select: none; transition: background 0.1s;
 }
 .merge-tag:hover { background: var(--rf-teal-border); }
 #email_template { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; min-height: 160px; }
 .label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
 .label-row label { margin-bottom: 0; }
 .btn-preview {
-  font-size: 11px; font-weight: 600; padding: 3px 10px;
-  border: 1px solid var(--rf-teal-border); border-radius: 5px;
-  background: var(--rf-teal-bg); color: var(--rf-navy);
-  cursor: pointer; font-family: inherit; transition: background 0.1s;
-  display: inline-flex; align-items: center; gap: 4px;
+  font-size: 11px; font-weight: 600; padding: 3px 10px; border: 1px solid var(--rf-teal-border);
+  border-radius: 5px; background: var(--rf-teal-bg); color: var(--rf-navy); cursor: pointer;
+  font-family: 'Mulish', sans-serif; transition: background 0.1s; display: inline-flex; align-items: center; gap: 4px;
 }
 .btn-preview:hover { background: var(--rf-teal-border); }
-.preview-separator {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; color: var(--rf-muted); margin: 12px 0 6px;
-}
-.email-preview-box {
-  border: 1px solid var(--rf-border); border-radius: 6px; padding: 16px;
-  background: #fff; font-size: 14px; min-height: 60px;
-}
+.preview-separator { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: var(--rf-muted); margin: 12px 0 6px; }
+.email-preview-box { border: 1px solid var(--rf-border); border-radius: 6px; padding: 16px; background: #fff; font-size: 14px; min-height: 60px; }
 .email-preview-box mark { background: #fffde7; color: inherit; padding: 0 2px; border-radius: 2px; }
 
 /* ===== Repeater ===== */
 .repeater-list { display: flex; flex-direction: column; gap: 10px; }
-.rep-item {
-  border: 1px solid var(--rf-border);
-  border-radius: 8px;
-  overflow: hidden;
-  background: #fff;
-}
+.rep-item { border: 1px solid var(--rf-border); border-radius: 8px; overflow: hidden; background: #fff; }
 .rep-item-head {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 0 6px 0 10px;
-  background: var(--rf-row-bg);
-  border-bottom: 1px solid var(--rf-divider);
-  min-height: 40px;
+  display: flex; align-items: center; gap: 8px; padding: 0 6px 0 10px;
+  background: var(--rf-row-bg); border-bottom: 1px solid var(--rf-divider); min-height: 40px;
 }
 .rep-item-head input[type=text] {
-  flex: 1;
-  border: none;
-  background: transparent;
-  padding: 8px 0;
-  font-weight: 600;
-  font-size: 13px;
-  box-shadow: none;
+  flex: 1; border: none; background: transparent; padding: 8px 0;
+  font-weight: 700; font-size: 13px; box-shadow: none;
 }
 .rep-item-head input[type=text]:focus { outline: none; box-shadow: none; border: none; }
 .rep-body-pad { padding: 10px; }
 .rep-body-pad textarea { min-height: 72px; }
 .rep-body-pad input[type=text] { font-size: 13px; }
 .rep-del {
-  flex-shrink: 0;
-  width: 30px; height: 30px;
-  border: none;
-  background: transparent;
-  border-radius: 4px;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--rf-muted);
-  font-size: 14px;
-  transition: background 0.1s, color 0.1s;
-  padding: 0;
+  flex-shrink: 0; width: 30px; height: 30px; border: none; background: transparent;
+  border-radius: 4px; cursor: pointer; display: flex; align-items: center; justify-content: center;
+  color: var(--rf-muted); font-size: 14px; transition: background 0.1s, color 0.1s; padding: 0;
 }
 .rep-del:hover { background: var(--rf-danger-bg); color: var(--rf-danger); }
 .rep-clause-label { flex: 1; font-size: 12px; color: var(--rf-muted); }
 .btn-rep-add {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 6px;
-  padding: 8px 12px;
-  border: 1.5px dashed var(--rf-border);
-  border-radius: 7px;
-  background: transparent;
-  font-size: 13px;
-  font-family: inherit;
-  color: var(--rf-ocean);
-  cursor: pointer;
-  width: 100%;
-  margin-top: 10px;
+  display: flex; align-items: center; justify-content: center; gap: 6px;
+  padding: 8px 12px; border: 1.5px dashed var(--rf-border); border-radius: 7px;
+  background: transparent; font-size: 13px; font-family: 'Mulish', sans-serif;
+  color: var(--rf-ocean); cursor: pointer; width: 100%; margin-top: 10px;
   transition: border-color 0.15s, background 0.15s;
 }
 .btn-rep-add:hover { border-color: var(--rf-ocean); background: var(--rf-teal-bg); }
@@ -310,91 +274,77 @@ textarea { resize: vertical; min-height: 68px; }
 .rep-count { font-size: 10px; color: var(--rf-muted); font-weight: 400; text-transform: none; letter-spacing: 0; margin-left: 4px; }
 
 /* ===== Admin section ===== */
-.admin-box {
-  background: var(--rf-teal-bg);
-  border: 1px solid var(--rf-teal-border);
-  border-radius: 8px;
-  padding: 16px;
-}
+.admin-box { background: var(--rf-teal-bg); border: 1px solid var(--rf-teal-border); border-radius: 8px; padding: 16px; }
 .admin-box-title {
-  font-size: 11px;
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--rf-navy);
-  margin: 0 0 10px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
+  font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em;
+  color: var(--rf-navy); margin: 0 0 10px; display: flex; align-items: center; gap: 6px;
 }
 .admin-note { font-size: 12px; color: var(--rf-muted); margin: 0 0 14px; }
 
-/* ===== Submit ===== */
+/* ===== Buttons ===== */
 .form-footer {
-  padding: 20px 24px;
-  border-top: 1px solid var(--rf-divider);
-  display: flex;
-  align-items: center;
-  gap: 16px;
+  padding: 20px 24px; border-top: 1px solid var(--rf-divider);
+  display: flex; align-items: center; gap: 16px;
 }
 .btn-primary {
-  background: var(--rf-green);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  padding: 11px 26px;
-  font-size: 15px;
-  font-weight: 600;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  transition: opacity 0.15s;
-  font-family: inherit;
+  background: var(--rf-green); color: #fff; border: none; border-radius: 8px;
+  padding: 11px 26px; font-size: 15px; font-weight: 700; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 8px; transition: opacity 0.15s;
+  font-family: 'Mulish', sans-serif;
 }
 .btn-primary:hover { opacity: 0.88; }
 .btn-primary:disabled { opacity: 0.45; cursor: not-allowed; }
 .btn-primary i { font-size: 17px; }
+.btn-secondary {
+  background: transparent; color: var(--rf-navy); border: 1px solid var(--rf-teal-border);
+  border-radius: 8px; padding: 10px 20px; font-size: 14px; font-weight: 600; cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px; transition: background 0.15s;
+  font-family: 'Mulish', sans-serif;
+}
+.btn-secondary:hover { background: var(--rf-teal-bg); }
 #submit-status { font-size: 13px; color: var(--rf-muted); }
+
+/* ===== Step 1 — connect ===== */
+.connect-hero { padding: 40px 24px; text-align: center; }
+.connect-hero h2 { font-family: 'Playfair Display', serif; font-size: 24px; font-weight: 600; color: var(--rf-green); margin: 0 0 12px; }
+.connect-hero p { font-size: 14px; color: var(--rf-muted); line-height: 1.7; max-width: 440px; margin: 0 auto 28px; }
+.btn-connect-sm8 {
+  display: inline-flex; align-items: center; gap: 10px; padding: 14px 28px;
+  background: var(--rf-green); color: #fff; border: none; border-radius: 8px;
+  font-size: 15px; font-weight: 700; cursor: pointer; text-decoration: none;
+  transition: opacity 0.15s; font-family: 'Mulish', sans-serif;
+}
+.btn-connect-sm8:hover { opacity: 0.88; }
+.btn-connect-sm8 i { font-size: 18px; }
+.scope-list {
+  background: var(--rf-row-bg); border: 1px solid var(--rf-border); border-radius: 8px;
+  padding: 16px 20px; margin: 24px auto 0; max-width: 440px; text-align: left; list-style: none;
+}
+.scope-list-label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--rf-muted); margin-bottom: 10px; }
+.scope-item { display: flex; align-items: center; gap: 8px; padding: 5px 0; font-size: 13px; color: var(--rf-muted); border-bottom: 1px solid var(--rf-divider); }
+.scope-item:last-child { border-bottom: none; }
+.scope-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--rf-lime); flex-shrink: 0; }
+.connect-note { font-size: 12px; color: var(--rf-muted); margin-top: 20px; }
 
 /* ===== Result ===== */
 .result-body { padding: 20px 24px; }
 .result-ok .result-heading { color: #2e7d32; }
 .result-err .result-heading { color: var(--rf-danger); }
-.result-heading {
-  font-size: 16px;
-  font-weight: 700;
-  margin: 0 0 10px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
+.result-heading { font-size: 16px; font-weight: 700; margin: 0 0 10px; display: flex; align-items: center; gap: 8px; }
 .result-meta { font-size: 13px; margin: 0; }
 .result-meta p { margin: 4px 0; }
-.result-meta code {
-  font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
-  font-size: 12px;
-  background: var(--rf-row-bg);
-  padding: 1px 5px;
-  border-radius: 4px;
-}
+.result-meta code { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; background: var(--rf-row-bg); padding: 1px 5px; border-radius: 4px; }
 .gate-checks { list-style: none; padding: 0; margin: 14px 0 0; display: flex; flex-direction: column; gap: 4px; }
 .gate-checks li { font-size: 13px; display: flex; align-items: center; gap: 6px; }
 .c-ok { color: #2e7d32; }
 .c-fail { color: var(--rf-danger); }
-.next-step {
-  background: var(--rf-teal-bg);
-  border: 1px solid var(--rf-teal-border);
-  border-radius: 8px;
-  padding: 16px;
-  margin-top: 16px;
-}
+.next-step { background: var(--rf-teal-bg); border: 1px solid var(--rf-teal-border); border-radius: 8px; padding: 16px; margin-top: 16px; }
 .next-step h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--rf-navy); display: flex; align-items: center; gap: 6px; }
 .next-step p { margin: 0; font-size: 13px; color: var(--rf-muted); }
 .err-pre { font-size: 12px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; white-space: pre-wrap; background: var(--rf-danger-bg); padding: 10px; border-radius: 6px; margin: 10px 0 0; }
 
-/* ===== Google Places autocomplete ===== */
-.pac-container { border-radius: 8px; box-shadow: var(--shadow-card); border: 0.5px solid var(--rf-teal-border); margin-top: 4px; font-family: inherit; }
+/* ===== Google Places ===== */
+.pac-container { border-radius: 8px; box-shadow: var(--shadow-card); border: 0.5px solid var(--rf-teal-border); margin-top: 4px; font-family: 'Mulish', sans-serif; }
 .pac-item { padding: 8px 12px; font-size: 13px; }
 .pac-item:first-child { background: var(--rf-teal-bg); }
 .pac-item-query { font-size: 13px; }
@@ -402,15 +352,16 @@ textarea { resize: vertical; min-height: 68px; }
 </head>
 <body>
 
-<!-- Loading state (shown until Clerk resolves) -->
+<!-- Loading state -->
 <div id="state-loading" class="state-loading">
   <div class="spinner"></div>
   <p>Checking authentication…</p>
 </div>
 
-<!-- Main form -->
+<!-- App -->
 <div id="state-form" class="app" hidden>
 
+  <!-- Page header -->
   <div class="card page-header">
     <svg width="40" height="40" viewBox="0 0 32 32" xmlns="http://www.w3.org/2000/svg" style="flex-shrink:0;">
       <rect width="32" height="32" rx="6" fill="#0D2E1C"/>
@@ -418,247 +369,297 @@ textarea { resize: vertical; min-height: 68px; }
     </svg>
     <div class="header-text">
       <h1>Account Setup</h1>
-      <p>Configure your Rafter account</p>
+      <p>Get your Rafter account configured</p>
     </div>
     <div id="user-badge" class="user-badge"></div>
   </div>
 
-  <form id="onboarding-form" class="card" novalidate>
-
-    <!-- 1 · Business Details -->
-    <div class="section">
-      <div class="section-title"><i class="ti ti-building-store"></i> Business Details</div>
-
-      <div class="field">
-        <label>Company name <span class="req">*</span></label>
-        <input type="text" id="company_name" placeholder="e.g. Acme Plumbing Co" required autocomplete="organization">
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>ABN</label>
-          <input type="text" id="abn" placeholder="12 345 678 901" maxlength="14" autocomplete="off" inputmode="numeric">
-          <div id="abn-hint" class="field-hint"></div>
-        </div>
-        <div class="field">
-          <label>Phone</label>
-          <input type="tel" id="phone" placeholder="0412 345 678 or 03 9000 0000" autocomplete="tel">
-          <div id="phone-hint" class="field-hint"></div>
-        </div>
-      </div>
-
-      <div class="field">
-        <label>Business Address</label>
-        <input type="text" id="business_address" placeholder="e.g. 123 Main St, Melbourne VIC 3000" autocomplete="street-address">
-      </div>
-
-      <div class="field-row">
-        <div class="field">
-          <label>Business Email</label>
-          <input type="email" id="business_email" placeholder="info@yourcompany.com.au" autocomplete="email">
-          <div class="field-hint">Shown on PDF quotes</div>
-        </div>
-        <div class="field">
-          <label>Operator Email</label>
-          <input type="email" id="operator_email" placeholder="admin@yourcompany.com.au" autocomplete="off">
-          <div class="field-hint">Your ServiceM8 admin login</div>
-        </div>
-      </div>
+  <!-- Stepper -->
+  <div class="card stepper-card">
+    <div class="stepper">
+      <div class="step-item" id="s1"><span class="step-num">1</span> Connect ServiceM8</div>
+      <div class="step-sep"></div>
+      <div class="step-item" id="s2"><span class="step-num">2</span> Review details</div>
+      <div class="step-sep"></div>
+      <div class="step-item" id="s3"><span class="step-num">3</span> Configure Rafter</div>
     </div>
+  </div>
 
-    <!-- 2 · Branding -->
-    <div class="section">
-      <div class="section-title"><i class="ti ti-photo"></i> Branding</div>
-
-      <div class="field">
-        <label>Company Logo</label>
-        <div class="logo-drop-zone" id="logo-drop-zone">
-          <input type="file" id="logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp">
-          <img id="logo-preview" hidden>
-          <div id="upload-prompt" class="upload-prompt">
-            <i class="ti ti-upload"></i>
-            <p><strong>Click to upload</strong> or drag and drop</p>
-            <p style="font-size:12px;margin-top:4px;">PNG, JPG, SVG or WebP · max 2 MB</p>
-          </div>
-          <div id="logo-filename" class="logo-filename" hidden></div>
-        </div>
-        <div class="field-hint">Appears on PDF quotes, the quoting form, and customer emails</div>
-      </div>
-    </div>
-
-    <!-- 3 · Bank Details -->
-    <div class="section">
-      <div class="section-title"><i class="ti ti-building-bank"></i> Bank Details</div>
-      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">Shown on PDF quotes in the payment section so customers can make direct transfers.</p>
-
-      <div class="field">
-        <label>Account Name</label>
-        <input type="text" id="bank_name" placeholder="e.g. Acme Plumbing Pty Ltd" autocomplete="off">
-      </div>
-      <div class="field-row">
-        <div class="field">
-          <label>BSB</label>
-          <input type="text" id="bank_bsb" placeholder="e.g. 000-000" maxlength="7" autocomplete="off" inputmode="numeric">
-        </div>
-        <div class="field">
-          <label>Account Number</label>
-          <input type="text" id="bank_account" placeholder="123456789" maxlength="12" autocomplete="off" inputmode="numeric">
-        </div>
-      </div>
-    </div>
-
-    <!-- 4 · Quote Settings -->
-    <div class="section">
-      <div class="section-title"><i class="ti ti-settings-2"></i> Quote Settings</div>
-
-      <div class="field">
-        <label>Proposal Types</label>
-        <input type="text" id="proposal_types" placeholder="e.g. STD, PREMIUM">
-        <div class="field-hint">Comma-separated codes shown in the quote builder — e.g. "LC" for Landscaping, "GM" for Garden Maintenance</div>
-      </div>
-
-      <div class="field">
-        <label>Job Categories</label>
-        <input type="text" id="job_categories" placeholder="e.g. Installation, Repairs">
-        <div class="field-hint">Must match your ServiceM8 job categories exactly</div>
-      </div>
-    </div>
-
-    <!-- 5 · Payment Schedule -->
-    <div class="section">
-      <div class="section-title"><i class="ti ti-cash"></i> Payment Schedule</div>
-      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
-        Enter payment percentages for each job value tier as comma-separated values. Each tier must sum to 100.
-        Example: <code style="font-size:12px;background:var(--rf-row-bg);padding:1px 5px;border-radius:3px;">20, 60, 20</code>
-        = 20% deposit · 60% progress · 20% final.
+  <!-- ── Step 1: Connect ServiceM8 ── -->
+  <div id="step-1" class="card step-panel" hidden>
+    <div class="connect-hero">
+      <h2>Connect your ServiceM8 account</h2>
+      <p>
+        Rafter reads your ServiceM8 configuration — company name, ABN, job templates, and more —
+        to pre-fill your account settings. Nothing will be changed in ServiceM8.
       </p>
-
-      <table class="threshold-table">
-        <thead>
-          <tr>
-            <th>Job Value</th>
-            <th>Payment breakdown (comma-separated %)</th>
-            <th class="col-sum">Sum</th>
-          </tr>
-        </thead>
-        <tbody id="threshold-body"></tbody>
-      </table>
-    </div>
-
-    <!-- 6 · Customer Email Template -->
-    <div class="section">
-      <div class="section-title"><i class="ti ti-mail"></i> Customer Email Template <span class="optional-badge">optional</span></div>
-      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 12px;">
-        The HTML email sent to customers with their quote attached. Your logo is embedded automatically.
-        Leave blank to use a sensible default.
-      </p>
-
-      <div class="merge-fields">
-        <span style="font-size:11px;color:var(--rf-muted);align-self:center;">Insert:</span>
-        <span class="merge-tag" data-field="{client_name}">{client_name}</span>
-        <span class="merge-tag" data-field="{job_address}">{job_address}</span>
-        <span class="merge-tag" data-field="{quote_ref}">{quote_ref}</span>
-        <span class="merge-tag" data-field="{total}">{total}</span>
-      </div>
-
-      <div class="field">
-        <div class="label-row">
-          <label>Email HTML</label>
-          <button type="button" id="email-preview-btn" class="btn-preview"><i class="ti ti-eye"></i> Preview</button>
-        </div>
-        <textarea id="email_template" rows="10" placeholder="Leave blank — a default will be generated with your logo and contact details."></textarea>
-        <div class="field-hint">Click a merge tag above to insert it at the cursor. HTML is supported for formatting.</div>
-      </div>
-
-      <div id="email-preview-panel" hidden>
-        <div class="preview-separator">Preview — sample data</div>
-        <div id="email-preview-content" class="email-preview-box"></div>
-      </div>
-    </div>
-
-    <!-- 7 · Quote Templates -->
-    <div class="section">
-      <div class="section-title">
-        <i class="ti ti-template"></i> Quote Templates
-        <span class="optional-badge">optional — can add later</span>
-        <span class="rep-count" id="template-count"></span>
-      </div>
-      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
-        Reusable section templates that appear in the quote builder. Each template has a name (e.g. EXCAVATION) and
-        a default materials and scope block that operators edit per job.
-      </p>
-
-      <div id="template-list" class="repeater-list"></div>
-      <button type="button" class="btn-rep-add" id="template-add">
-        <i class="ti ti-plus"></i> Add template
+      <button type="button" id="connectBtn" class="btn-connect-sm8">
+        <i class="ti ti-brand-oauth"></i>
+        Connect ServiceM8
       </button>
+      <ul class="scope-list">
+        <div class="scope-list-label">Read-only access requested</div>
+        <li class="scope-item"><span class="scope-dot"></span>Company information and ABN</li>
+        <li class="scope-item"><span class="scope-dot"></span>Job templates (for section defaults)</li>
+        <li class="scope-item"><span class="scope-dot"></span>Staff names and IDs</li>
+        <li class="scope-item"><span class="scope-dot"></span>Materials and inventory</li>
+        <li class="scope-item"><span class="scope-dot"></span>Tax rates and categories</li>
+      </ul>
+      <p class="connect-note">You'll be redirected to ServiceM8 to approve access. Your credentials are never seen or stored by Rafter.</p>
+    </div>
+  </div>
+
+  <!-- ── Step 2: Review SM8 prefill ── -->
+  <div id="step-2" class="card step-panel" hidden>
+
+    <!-- Loading / error states -->
+    <div id="prefill-loading" class="prefill-loading">
+      <div class="inline-spinner"></div>
+      Loading your ServiceM8 details…
+    </div>
+    <div id="prefill-error-box" class="prefill-error-box" hidden>
+      <strong>Could not load ServiceM8 data</strong><br>
+      <span id="prefill-error-msg"></span>
+      <br><button type="button" class="btn-retry" id="prefill-retry">Try again</button>
     </div>
 
-    <!-- 8 · Credentials -->
-    <div class="section">
-      <div class="section-title">
-        <i class="ti ti-award"></i> Credentials
-        <span class="optional-badge">optional — can add later</span>
-        <span class="rep-count" id="credential-count"></span>
+    <!-- Prefill content (shown once loaded) -->
+    <div id="prefill-content" hidden>
+      <!-- Connected banner -->
+      <div class="section" style="padding-bottom:0;">
+        <div class="connected-banner" id="connected-banner">
+          <i class="ti ti-circle-check"></i>
+          <span>ServiceM8 connected — <strong id="connected-co"></strong></span>
+        </div>
+        <p style="font-size:13px;color:var(--rf-muted);line-height:1.6;margin:0 0 4px;">
+          We've pre-filled these from your ServiceM8 account to save you typing.
+          Edit anything that's not right — your changes apply to Rafter only and won't change anything on your ServiceM8 account.
+        </p>
       </div>
-      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
-        What makes customers trust this business? Licences, insurance, guarantees, reviews, memberships — shown in the "You can rely on" section of every quote.
-      </p>
 
-      <div id="credential-list" class="repeater-list"></div>
-      <button type="button" class="btn-rep-add" id="credential-add">
-        <i class="ti ti-plus"></i> Add credential
-      </button>
-    </div>
+      <!-- Business details -->
+      <div class="section">
+        <div class="section-title"><i class="ti ti-building-store"></i> Business Details</div>
 
-    <!-- 9 · Terms & Conditions -->
-    <div class="section">
-      <div class="section-title">
-        <i class="ti ti-file-text"></i> Terms &amp; Conditions
-        <span class="optional-badge">optional — can add later</span>
-        <span class="rep-count" id="tc-count"></span>
-      </div>
-      <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
-        Shown at the bottom of PDF quotes. Add one clause per entry.
-      </p>
-
-      <div id="tc-list" class="repeater-list"></div>
-      <button type="button" class="btn-rep-add" id="tc-add">
-        <i class="ti ti-plus"></i> Add term
-      </button>
-    </div>
-
-    <!-- 10 · Administrator Setup -->
-    <div class="section">
-      <div class="admin-box">
-        <div class="admin-box-title"><i class="ti ti-shield-lock"></i> Administrator Setup</div>
-        <p class="admin-note">These fields are pre-configured by your Rafter administrator. Pre-filled values from your onboarding link — do not change unless instructed.</p>
+        <div class="field">
+          <label>Company name <span class="req">*</span>
+            <span class="source-badge badge-sm8">ServiceM8 ✓</span>
+          </label>
+          <input type="text" id="p_company_name" placeholder="Your company name" required autocomplete="organization">
+        </div>
 
         <div class="field-row">
           <div class="field">
-            <label>URL Slug <span class="req">*</span></label>
-            <input type="text" id="slug" placeholder="yourcompany" required pattern="[a-z0-9-]+" autocomplete="off">
-            <div class="field-hint">Form URL: rafter.deepgreensea.au/<strong id="slug-preview">yourcompany</strong></div>
+            <label>ABN
+              <span class="source-badge badge-sm8" id="abn-sm8-badge">ServiceM8 ✓</span>
+            </label>
+            <input type="text" id="abn" placeholder="12 345 678 901" maxlength="14" autocomplete="off" inputmode="numeric">
+            <div id="abn-hint" class="field-hint"></div>
           </div>
           <div class="field">
-            <label>Webhook URL <span class="req">*</span></label>
-            <input type="url" id="webhook_url" placeholder="https://hook.eu1.make.com/…" required autocomplete="off">
-            <div class="field-hint">Make.com scenario webhook</div>
+            <label>Phone <span class="req">*</span>
+              <span class="source-badge badge-manual">Not in ServiceM8</span>
+            </label>
+            <input type="tel" id="phone" placeholder="0412 345 678 or 03 9000 0000" autocomplete="tel">
+            <div id="phone-hint" class="field-hint"></div>
+          </div>
+        </div>
+
+        <div class="field">
+          <label>Business Address
+            <span class="source-badge badge-sm8" id="address-sm8-badge">ServiceM8 ✓</span>
+          </label>
+          <input type="text" id="business_address" placeholder="e.g. 123 Main St, Melbourne VIC 3000" autocomplete="street-address">
+        </div>
+
+        <div class="field-row">
+          <div class="field">
+            <label>Business Email
+              <span class="source-badge badge-sm8" id="email-sm8-badge">ServiceM8 ✓</span>
+            </label>
+            <input type="email" id="business_email" placeholder="info@yourcompany.com.au" autocomplete="email">
+            <div class="field-hint">Shown on PDF quotes</div>
+          </div>
+          <div class="field">
+            <label>Branding</label>
+            <div class="logo-drop-zone" id="logo-drop-zone">
+              <input type="file" id="logo-file" accept="image/png,image/jpeg,image/svg+xml,image/webp">
+              <img id="logo-preview" hidden>
+              <div id="upload-prompt" class="upload-prompt">
+                <i class="ti ti-upload"></i>
+                <p><strong>Click to upload logo</strong></p>
+                <p style="font-size:12px;margin-top:4px;">PNG, JPG, SVG or WebP · max 2 MB</p>
+              </div>
+              <div id="logo-filename" class="logo-filename" hidden></div>
+            </div>
+            <div class="field-hint">Shown on PDFs and emails</div>
           </div>
         </div>
       </div>
-    </div>
 
-    <!-- Submit -->
-    <div class="form-footer">
-      <button type="submit" id="submit-btn" class="btn-primary">
-        <i class="ti ti-check"></i>
-        Set up my account
-      </button>
-      <span id="submit-status"></span>
-    </div>
+      <!-- Sections from SM8 -->
+      <div class="section">
+        <div class="section-title">
+          <i class="ti ti-template"></i> Quote Sections
+          <span class="source-badge badge-sm8" style="margin-left:4px;">ServiceM8 ✓</span>
+          <span class="optional-badge">can edit</span>
+          <span class="rep-count" id="section-count"></span>
+        </div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+          These sections appear in your quote builder. Names come from your ServiceM8 job templates.
+          Edit the scope text — it pre-fills each section when you start a quote.
+        </p>
+        <div id="section-list" class="repeater-list"></div>
+        <button type="button" class="btn-rep-add" id="section-add">
+          <i class="ti ti-plus"></i> Add section
+        </button>
+      </div>
 
-  </form>
+      <div class="form-footer">
+        <button type="button" id="step2-continue" class="btn-primary">
+          <i class="ti ti-arrow-right"></i>
+          Continue to configuration
+        </button>
+      </div>
+    </div><!-- /#prefill-content -->
+  </div><!-- /#step-2 -->
+
+  <!-- ── Step 3: Configure Rafter ── -->
+  <div id="step-3" class="card step-panel" hidden>
+    <form id="onboarding-form" novalidate>
+
+      <!-- Bank Details -->
+      <div class="section">
+        <div class="section-title"><i class="ti ti-building-bank"></i> Bank Details</div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">Shown on PDF quotes so customers can make direct transfers.</p>
+        <div class="field">
+          <label>Account Name</label>
+          <input type="text" id="bank_name" placeholder="e.g. Acme Plumbing Pty Ltd" autocomplete="off">
+        </div>
+        <div class="field-row">
+          <div class="field">
+            <label>BSB</label>
+            <input type="text" id="bank_bsb" placeholder="e.g. 000-000" maxlength="7" autocomplete="off" inputmode="numeric">
+          </div>
+          <div class="field">
+            <label>Account Number</label>
+            <input type="text" id="bank_account" placeholder="123456789" maxlength="12" autocomplete="off" inputmode="numeric">
+          </div>
+        </div>
+      </div>
+
+      <!-- Payment Schedule -->
+      <div class="section">
+        <div class="section-title"><i class="ti ti-cash"></i> Payment Schedule</div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+          Enter payment percentages for each job value tier as comma-separated values. Each tier must sum to 100.
+          Example: <code style="font-size:12px;background:var(--rf-row-bg);padding:1px 5px;border-radius:3px;">20, 60, 20</code>
+          = 20% deposit · 60% progress · 20% final.
+        </p>
+        <table class="threshold-table">
+          <thead>
+            <tr>
+              <th>Job Value</th>
+              <th>Payment breakdown (comma-separated %)</th>
+              <th class="col-sum">Sum</th>
+            </tr>
+          </thead>
+          <tbody id="threshold-body"></tbody>
+        </table>
+      </div>
+
+      <!-- Customer Email Template -->
+      <div class="section">
+        <div class="section-title"><i class="ti ti-mail"></i> Customer Email Template <span class="optional-badge">optional</span></div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 12px;">
+          The HTML email sent to customers with their quote attached. Leave blank to use a sensible default with your logo.
+        </p>
+        <div class="merge-fields">
+          <span style="font-size:11px;color:var(--rf-muted);align-self:center;">Insert:</span>
+          <span class="merge-tag" data-field="{client_name}">{client_name}</span>
+          <span class="merge-tag" data-field="{job_address}">{job_address}</span>
+          <span class="merge-tag" data-field="{quote_ref}">{quote_ref}</span>
+          <span class="merge-tag" data-field="{total}">{total}</span>
+        </div>
+        <div class="field">
+          <div class="label-row">
+            <label>Email HTML</label>
+            <button type="button" id="email-preview-btn" class="btn-preview"><i class="ti ti-eye"></i> Preview</button>
+          </div>
+          <textarea id="email_template" rows="10" placeholder="Leave blank — a default will be generated with your logo and contact details."></textarea>
+          <div class="field-hint">Click a merge tag above to insert it at the cursor.</div>
+        </div>
+        <div id="email-preview-panel" hidden>
+          <div class="preview-separator">Preview — sample data</div>
+          <div id="email-preview-content" class="email-preview-box"></div>
+        </div>
+      </div>
+
+      <!-- Credentials -->
+      <div class="section">
+        <div class="section-title">
+          <i class="ti ti-award"></i> Credentials
+          <span class="optional-badge">optional — can add later</span>
+          <span class="rep-count" id="credential-count"></span>
+        </div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+          Licences, insurance, guarantees, memberships — shown in the "You can rely on" section of every quote.
+        </p>
+        <div id="credential-list" class="repeater-list"></div>
+        <button type="button" class="btn-rep-add" id="credential-add">
+          <i class="ti ti-plus"></i> Add credential
+        </button>
+      </div>
+
+      <!-- Terms & Conditions -->
+      <div class="section">
+        <div class="section-title">
+          <i class="ti ti-file-text"></i> Terms &amp; Conditions
+          <span class="optional-badge">optional — can add later</span>
+          <span class="rep-count" id="tc-count"></span>
+        </div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">Shown at the bottom of PDF quotes. Add one clause per entry.</p>
+        <div id="tc-list" class="repeater-list"></div>
+        <button type="button" class="btn-rep-add" id="tc-add">
+          <i class="ti ti-plus"></i> Add term
+        </button>
+      </div>
+
+      <!-- Administrator Setup -->
+      <div class="section">
+        <div class="admin-box">
+          <div class="admin-box-title"><i class="ti ti-shield-lock"></i> Administrator Setup</div>
+          <p class="admin-note">Pre-configured by your Rafter administrator. Do not change unless instructed.</p>
+          <div class="field-row">
+            <div class="field">
+              <label>URL Slug <span class="req">*</span></label>
+              <input type="text" id="slug" placeholder="yourcompany" required pattern="[a-z0-9-]+" autocomplete="off">
+              <div class="field-hint">Form URL: rafter.deepgreensea.au/<strong id="slug-preview">yourcompany</strong></div>
+            </div>
+            <div class="field">
+              <label>Webhook URL <span class="req">*</span></label>
+              <input type="url" id="webhook_url" placeholder="https://hook.eu1.make.com/…" required autocomplete="off">
+              <div class="field-hint">Make.com scenario webhook</div>
+            </div>
+          </div>
+          <div class="field">
+            <label>Operator Email</label>
+            <input type="email" id="operator_email" placeholder="admin@yourcompany.com.au" autocomplete="off">
+            <div class="field-hint">Your ServiceM8 admin login email</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Submit -->
+      <div class="form-footer">
+        <button type="submit" id="submit-btn" class="btn-primary">
+          <i class="ti ti-check"></i>
+          Set up my account
+        </button>
+        <span id="submit-status"></span>
+      </div>
+    </form>
+  </div><!-- /#step-3 -->
 
   <!-- Result (shown after submission) -->
   <div id="result-area" class="card" hidden>
@@ -696,6 +697,132 @@ function esc(s) {
   return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
 
+// ── Step navigation ──────────────────────────────────────────────────────────
+
+function showStep(n) {
+  [1, 2, 3].forEach(i => {
+    const panel = document.getElementById('step-' + i);
+    if (panel) panel.hidden = (i !== n);
+    const si = document.getElementById('s' + i);
+    if (si) {
+      si.classList.remove('active', 'done');
+      if (i === n) si.classList.add('active');
+      else if (i < n) si.classList.add('done');
+    }
+  });
+}
+
+// ── Section seed text ────────────────────────────────────────────────────────
+// Strips " — Qualifier" or " - Qualifier" suffix, lowercases, inserts into template.
+
+function seedText(name) {
+  const clean = name.replace(/\s*[-—–]\s+\S.*/u, '').trim().toLowerCase();
+  return `Supply and installation of materials as specified for ${clean} related work.`;
+}
+
+// ── SM8 prefill fetch ────────────────────────────────────────────────────────
+
+async function fetchSm8Prefill() {
+  const loadingEl  = document.getElementById('prefill-loading');
+  const errorBox   = document.getElementById('prefill-error-box');
+  const contentEl  = document.getElementById('prefill-content');
+
+  loadingEl.hidden = false;
+  errorBox.hidden  = true;
+  contentEl.hidden = true;
+
+  try {
+    const token = await getClerkToken();
+    if (!token) throw new Error('No active session — please sign in again.');
+
+    const res  = await fetch(ADMIN_API + '/onboarding/sm8-prefill', {
+      headers: { Authorization: 'Bearer ' + token },
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (!res.ok || !data.ok) {
+      throw new Error(data.error ?? `Server error ${res.status}`);
+    }
+
+    populatePrefill(data);
+    loadingEl.hidden = true;
+    contentEl.hidden = false;
+  } catch (err) {
+    loadingEl.hidden = true;
+    document.getElementById('prefill-error-msg').textContent = err.message;
+    errorBox.hidden = false;
+  }
+}
+
+function populatePrefill(data) {
+  const v = data.vendor ?? {};
+
+  // Connected banner
+  const co = v.company_name || 'your account';
+  document.getElementById('connected-co').textContent = co;
+
+  // Field values — only set if non-empty (don't blank out a field that has no SM8 value)
+  if (v.company_name) setFieldValue('p_company_name', v.company_name);
+  if (v.abn) setFieldValue('abn', formatAbn(v.abn));
+  if (v.business_address) setFieldValue('business_address', v.business_address);
+  if (v.business_email) setFieldValue('business_email', v.business_email);
+
+  // Downgrade badges to "verify" when the SM8 value was empty
+  if (!v.business_address) setBadgeVerify('address-sm8-badge');
+  if (!v.business_email)   setBadgeVerify('email-sm8-badge');
+  if (!v.abn)              setBadgeVerify('abn-sm8-badge');
+
+  // Populate sections from SM8 job templates
+  const sectionList = document.getElementById('section-list');
+  sectionList.innerHTML = '';
+  (data.sections ?? []).forEach(s => addSectionRow({ name: s.name, text: seedText(s.name), fromSM8: true }));
+  updateRepCount('section-list', 'section');
+}
+
+function setFieldValue(id, val) {
+  const el = document.getElementById(id);
+  if (el) el.value = val;
+}
+
+function setBadgeVerify(id) {
+  const el = document.getElementById(id);
+  if (el) { el.className = 'source-badge badge-verify'; el.textContent = 'ServiceM8 — verify'; }
+}
+
+function formatAbn(raw) {
+  const d = raw.replace(/\D/g, '').slice(0, 11);
+  if (d.length < 3) return d;
+  if (d.length < 6) return `${d.slice(0,2)} ${d.slice(2)}`;
+  if (d.length < 9) return `${d.slice(0,2)} ${d.slice(2,5)} ${d.slice(5)}`;
+  return `${d.slice(0,2)} ${d.slice(2,5)} ${d.slice(5,8)} ${d.slice(8)}`;
+}
+
+// ── Section repeater (step 2) ────────────────────────────────────────────────
+
+function addSectionRow(data) {
+  const list = document.getElementById('section-list');
+  const item = document.createElement('div');
+  item.className = 'rep-item';
+  const badge = data?.fromSM8
+    ? '<span class="source-badge badge-sm8" style="flex-shrink:0;">ServiceM8 ✓</span>'
+    : '';
+  item.innerHTML = `
+    <div class="rep-item-head">
+      <input type="text" class="rep-name" placeholder="Section name (e.g. EXCAVATION)" value="${esc(data?.name ?? '')}">
+      ${badge}
+      <button type="button" class="rep-del" title="Remove"><i class="ti ti-trash"></i></button>
+    </div>
+    <div class="rep-body-pad">
+      <textarea class="rep-body" rows="3" placeholder="Default scope text for this section…">${esc(data?.text ?? '')}</textarea>
+    </div>`;
+  item.querySelector('.rep-del').addEventListener('click', () => {
+    item.remove();
+    updateRepCount('section-list', 'section');
+  });
+  list.appendChild(item);
+  updateRepCount('section-list', 'section');
+}
+
 // ── Threshold table ──────────────────────────────────────────────────────────
 
 function buildThresholdTable() {
@@ -705,13 +832,10 @@ function buildThresholdTable() {
     tr.innerHTML = `
       <td class="tier-label">${esc(tier.label)}</td>
       <td><input type="text" id="tier_${esc(tier.key)}" value="${esc(tier.def)}" placeholder="e.g. ${esc(tier.def)}"></td>
-      <td><span class="tier-sum" id="sum_${esc(tier.key)}"></span></td>
-    `;
+      <td><span class="tier-sum" id="sum_${esc(tier.key)}"></span></td>`;
     tbody.appendChild(tr);
-
-    const input = document.getElementById('tier_' + tier.key);
-    const sumEl = document.getElementById('sum_'  + tier.key);
-
+    const input  = document.getElementById('tier_' + tier.key);
+    const sumEl  = document.getElementById('sum_' + tier.key);
     function refreshSum() {
       const raw = input.value.trim();
       if (!raw) { sumEl.textContent = '—'; sumEl.className = 'tier-sum empty'; return; }
@@ -734,7 +858,7 @@ function readThresholds() {
     const parts = raw.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
     const sum   = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
     if (Math.abs(sum - 100) >= 0.05) allValid = false;
-    thresholds[tier.key] = parts.join('/'); // slash-delimited string — index.html parseSplit() requires this
+    thresholds[tier.key] = parts.join('/');
   });
   return { thresholds, valid: allValid };
 }
@@ -763,17 +887,11 @@ function setAbnError(msg) {
 
 function initAbnValidation() {
   const input = document.getElementById('abn');
-
   input.addEventListener('input', () => {
     const digits = input.value.replace(/\D/g, '').slice(0, 11);
-    let fmt = digits;
-    if (digits.length > 2) fmt = digits.slice(0,2) + ' ' + digits.slice(2);
-    if (digits.length > 5) fmt = digits.slice(0,2) + ' ' + digits.slice(2,5) + ' ' + digits.slice(5);
-    if (digits.length > 8) fmt = digits.slice(0,2) + ' ' + digits.slice(2,5) + ' ' + digits.slice(5,8) + ' ' + digits.slice(8);
-    input.value = fmt;
+    input.value = formatAbn(digits);
     clearAbnStatus();
   });
-
   input.addEventListener('blur', () => {
     const digits = input.value.replace(/\D/g, '');
     if (!digits) { clearAbnStatus(); return; }
@@ -788,27 +906,16 @@ async function liveAbnLookup(digits) {
   const input = document.getElementById('abn');
   hint.textContent = 'Checking…'; hint.className = 'field-hint';
   input.classList.remove('invalid');
-
   let token = null;
   try { token = await getClerkToken(); } catch {}
-
-  if (!token) {
-    hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok';
-    return;
-  }
-
+  if (!token) { hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok'; return; }
   try {
     const res  = await fetch(`${ADMIN_API}/onboarding/abn-lookup?abn=${digits}`, {
       headers: { Authorization: 'Bearer ' + token },
     });
     const data = await res.json().catch(() => ({}));
     if (!res.ok || !data.ok) throw new Error(data.error ?? 'lookup failed');
-
-    if (data.mode === 'checksum_only') {
-      hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok';
-      return;
-    }
-
+    if (data.mode === 'checksum_only') { hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok'; return; }
     if (!data.valid) {
       setAbnError(`ABN ${data.entityStatus ?? 'not found'}${data.reason ? ': ' + data.reason : ''}`);
     } else {
@@ -816,7 +923,6 @@ async function liveAbnLookup(digits) {
       hint.className = 'field-hint-ok';
     }
   } catch {
-    // Network/server error — degrade to checksum-only result
     hint.textContent = '✓ Valid ABN'; hint.className = 'field-hint-ok';
   }
 }
@@ -826,24 +932,17 @@ async function liveAbnLookup(digits) {
 function initPhoneValidation() {
   const input = document.getElementById('phone');
   const hint  = document.getElementById('phone-hint');
-
-  function clearError() {
-    input.classList.remove('invalid');
-    hint.textContent = '';
-    hint.className = 'field-hint';
-  }
-
+  function clearError() { input.classList.remove('invalid'); hint.textContent = ''; hint.className = 'field-hint'; }
   input.addEventListener('input', clearError);
-
   input.addEventListener('blur', () => {
-    const val    = input.value.trim();
+    const val = input.value.trim();
     if (!val) { clearError(); return; }
     const digits = val.replace(/\D/g, '');
     const valid =
-      /^04\d{8}$/.test(digits) ||       // mobile 04XX XXX XXX
-      /^0[2378]\d{8}$/.test(digits) ||  // landline 02/03/07/08
-      /^1[38]00\d{6}$/.test(digits) ||  // 1300/1800
-      /^13\d{4}$/.test(digits);         // 13XXXX
+      /^04\d{8}$/.test(digits) ||
+      /^0[2378]\d{8}$/.test(digits) ||
+      /^1[38]00\d{6}$/.test(digits) ||
+      /^13\d{4}$/.test(digits);
     if (!valid) {
       hint.textContent = 'Enter a valid Australian phone — e.g. 0412 345 678 or 03 9000 0000';
       hint.className = 'field-error';
@@ -863,23 +962,16 @@ function initLogoUpload() {
   const preview   = document.getElementById('logo-preview');
   const prompt    = document.getElementById('upload-prompt');
   const filename  = document.getElementById('logo-filename');
-
   zone.addEventListener('click', () => fileInput.click());
   fileInput.addEventListener('click', e => e.stopPropagation());
-
   zone.addEventListener('dragover', e => { e.preventDefault(); zone.classList.add('drag-over'); });
   zone.addEventListener('dragleave', () => zone.classList.remove('drag-over'));
   zone.addEventListener('drop', e => {
-    e.preventDefault();
-    zone.classList.remove('drag-over');
+    e.preventDefault(); zone.classList.remove('drag-over');
     const file = e.dataTransfer.files[0];
     if (file) loadLogoFile(file);
   });
-
-  fileInput.addEventListener('change', () => {
-    if (fileInput.files[0]) loadLogoFile(fileInput.files[0]);
-  });
-
+  fileInput.addEventListener('change', () => { if (fileInput.files[0]) loadLogoFile(fileInput.files[0]); });
   function loadLogoFile(file) {
     if (file.size > 2 * 1024 * 1024) { alert('Logo file must be under 2 MB.'); return; }
     const reader = new FileReader();
@@ -896,15 +988,13 @@ function initLogoUpload() {
   }
 }
 
-// ── Address autocomplete (Google Places) ────────────────────────────────────
+// ── Address autocomplete ─────────────────────────────────────────────────────
 
 function initAddressAutocomplete() {
   const input = document.getElementById('business_address');
   if (!input || !window.google?.maps?.places) return;
   const ac = new google.maps.places.Autocomplete(input, {
-    componentRestrictions: { country: 'au' },
-    fields: ['formatted_address'],
-    types: ['address'],
+    componentRestrictions: { country: 'au' }, fields: ['formatted_address'], types: ['address'],
   });
   ac.addListener('place_changed', () => {
     const place = ac.getPlace();
@@ -913,48 +1003,33 @@ function initAddressAutocomplete() {
 }
 window.initMaps = initAddressAutocomplete;
 
-// ── Slug preview + suggestion from company name ──────────────────────────────
+// ── Slug logic ───────────────────────────────────────────────────────────────
 
 function initSlugLogic() {
   const slugInput   = document.getElementById('slug');
   const slugPreview = document.getElementById('slug-preview');
-  const nameInput   = document.getElementById('company_name');
-
   slugInput.addEventListener('input', () => {
     slugPreview.textContent = slugInput.value.trim() || 'yourcompany';
   });
-
-  let lastSuggested = '';
-  nameInput.addEventListener('input', () => {
-    const suggested = nameInput.value.trim()
-      .toLowerCase()
-      .replace(/[^a-z0-9]+/g, '-')
-      .replace(/^-|-$/g, '')
-      .slice(0, 30);
-    if (!slugInput.value || slugInput.value === lastSuggested) {
-      slugInput.value         = suggested;
-      slugPreview.textContent = suggested || 'yourcompany';
-      lastSuggested           = suggested;
-    }
-  });
 }
 
-// ── URL param pre-fill ───────────────────────────────────────────────────────
+// ── URL param prefill (admin use) ────────────────────────────────────────────
 
 function prefillFromParams() {
   const p = new URLSearchParams(window.location.search);
   const slug    = p.get('slug');
   const webhook = p.get('webhook_url');
   if (slug) {
-    document.getElementById('slug').value = slug;
-    document.getElementById('slug-preview').textContent = slug;
+    const si = document.getElementById('slug');
+    if (si) { si.value = slug; document.getElementById('slug-preview').textContent = slug; }
   }
   if (webhook) {
-    document.getElementById('webhook_url').value = webhook;
+    const wi = document.getElementById('webhook_url');
+    if (wi) wi.value = webhook;
   }
 }
 
-// ── Email template merge-field insertion ─────────────────────────────────────
+// ── Email template ───────────────────────────────────────────────────────────
 
 function initEmailTemplate() {
   const ta = document.getElementById('email_template');
@@ -970,21 +1045,14 @@ function initEmailTemplate() {
   });
 }
 
-// ── Email template preview ───────────────────────────────────────────────────
-
 function initEmailPreview() {
   const btn     = document.getElementById('email-preview-btn');
   const panel   = document.getElementById('email-preview-panel');
   const content = document.getElementById('email-preview-content');
   const ta      = document.getElementById('email_template');
-
   btn.addEventListener('click', () => {
     const raw = ta.value.trim();
-    if (!raw) {
-      content.textContent = '(no template entered — a default will be generated on provisioning)';
-      panel.hidden = false;
-      return;
-    }
+    if (!raw) { content.textContent = '(no template entered — a default will be generated on provisioning)'; panel.hidden = false; return; }
     let html = raw;
     html = html.replace(/\{client_name\}/g, '<mark>Jane Smith</mark>');
     html = html.replace(/\{job_address\}/g,  '<mark>45 Collins St, Melbourne VIC 3000</mark>');
@@ -994,28 +1062,17 @@ function initEmailPreview() {
     panel.hidden = false;
     panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
   });
-
   ta.addEventListener('input', () => { panel.hidden = true; });
 }
 
-// ── Repeater ─────────────────────────────────────────────────────────────────
+// ── Credential/TC repeater ───────────────────────────────────────────────────
 
 function addRepItem(listId, type, data) {
   const list = document.getElementById(listId);
   const n    = list.children.length + 1;
   const item = document.createElement('div');
   item.className = 'rep-item';
-
-  if (type === 'template') {
-    item.innerHTML = `
-      <div class="rep-item-head">
-        <input type="text" class="rep-name" placeholder="Template name (e.g. EXCAVATION)" value="${esc(data?.name ?? '')}">
-        <button type="button" class="rep-del" title="Remove"><i class="ti ti-trash"></i></button>
-      </div>
-      <div class="rep-body-pad">
-        <textarea class="rep-body" rows="5" placeholder="Materials and scope text…">${esc(data?.text ?? '')}</textarea>
-      </div>`;
-  } else if (type === 'credential') {
+  if (type === 'credential') {
     item.innerHTML = `
       <div class="rep-item-head">
         <input type="text" class="rep-name" placeholder="e.g. Fully Licensed &amp; Insured" value="${esc(data?.name ?? '')}">
@@ -1034,12 +1091,9 @@ function addRepItem(listId, type, data) {
         <textarea class="rep-body" rows="2" placeholder="Enter this clause…">${esc(data ?? '')}</textarea>
       </div>`;
   }
-
   item.querySelector('.rep-del').addEventListener('click', () => {
-    item.remove();
-    updateRepCount(listId, type);
+    item.remove(); updateRepCount(listId, type);
   });
-
   list.appendChild(item);
   updateRepCount(listId, type);
 }
@@ -1062,7 +1116,7 @@ function readRep(listId, type) {
   const items  = document.querySelectorAll(`#${listId} .rep-item`);
   const result = [];
   items.forEach(item => {
-    if (type === 'template') {
+    if (type === 'section') {
       const name = item.querySelector('.rep-name').value.trim();
       const text = item.querySelector('.rep-body').value.trim();
       if (name || text) result.push({ name, text });
@@ -1079,9 +1133,9 @@ function readRep(listId, type) {
 }
 
 function initRepeaters() {
-  document.getElementById('template-add').addEventListener('click',   () => addRepItem('template-list',   'template'));
+  document.getElementById('section-add').addEventListener('click',    () => addSectionRow({}));
   document.getElementById('credential-add').addEventListener('click', () => addRepItem('credential-list', 'credential'));
-  document.getElementById('tc-add').addEventListener('click',         () => addRepItem('tc-list',         'tc'));
+  document.getElementById('tc-add').addEventListener('click',         () => addRepItem('tc-list', 'tc'));
 }
 
 function initCredentialExamples() {
@@ -1089,20 +1143,42 @@ function initCredentialExamples() {
   addRepItem('credential-list', 'credential', { name: '10-Year Workmanship Guarantee', detail: 'All work backed by our satisfaction guarantee' });
 }
 
+// ── Step 1 button setup ──────────────────────────────────────────────────────
+
+function initStep1Button() {
+  const btn = document.getElementById('connectBtn');
+  const base = 'https://go.servicem8.com/oauth/authorize';
+  const scope = 'vendor vendor_logo vendor_email read_staff read_inventory read_job_categories read_job_queues manage_templates manage_badges read_tax_rates read_forms read_customers read_jobs publish_email create_jobs manage_customers manage_schedule publish_job_attachments manage_job_materials manage_jobs manage_attachments';
+  btn.addEventListener('click', () => {
+    const state = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    sessionStorage.setItem('oauth_state', state);
+    sessionStorage.setItem('oauth_return_to', 'onboarding');
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: '781230',
+      scope,
+      redirect_uri: 'https://rafter.deepgreensea.au/callback',
+      state,
+    });
+    window.location.href = `${base}?${params}`;
+  });
+}
+
 // ── Form submission ──────────────────────────────────────────────────────────
 
 async function handleSubmit(e, clerk) {
   e.preventDefault();
-
   const btn    = document.getElementById('submit-btn');
   const status = document.getElementById('submit-status');
 
-  const companyName  = document.getElementById('company_name').value.trim();
-  const slug         = document.getElementById('slug').value.trim();
-  const webhookUrl   = document.getElementById('webhook_url').value.trim();
+  const slug       = document.getElementById('slug').value.trim();
+  const webhookUrl = document.getElementById('webhook_url').value.trim();
+  // company_name comes from step 2 prefill review
+  const companyName = document.getElementById('p_company_name').value.trim();
 
   const errors = [];
-  if (!companyName) errors.push('Company name is required.');
+  if (!companyName) errors.push('Company name is required (review Step 2).');
   if (!slug)        errors.push('URL slug is required.');
   if (!webhookUrl)  errors.push('Webhook URL is required.');
 
@@ -1111,8 +1187,7 @@ async function handleSubmit(e, clerk) {
 
   if (errors.length) { setResult('error', null, errors.join('\n')); return; }
 
-  btn.disabled       = true;
-  status.textContent = 'Authenticating…';
+  btn.disabled = true; status.textContent = 'Authenticating…';
 
   let token;
   try {
@@ -1123,40 +1198,34 @@ async function handleSubmit(e, clerk) {
     btn.disabled = false; status.textContent = ''; return;
   }
 
-  // ── Build payload ───────────────────────────────────────────────────────
   const payload = { slug, company_name: companyName, webhook_url: webhookUrl };
 
-  const abn             = document.getElementById('abn').value.replace(/\D/g, ''); // strip spaces from formatted ABN
+  // Step 2 fields
+  const abn             = document.getElementById('abn').value.replace(/\D/g, '');
   const phone           = document.getElementById('phone').value.trim();
   const businessAddress = document.getElementById('business_address').value.trim();
   const businessEmail   = document.getElementById('business_email').value.trim();
-  const operatorEmail   = document.getElementById('operator_email').value.trim();
   if (abn)             payload.abn              = abn;
   if (phone)           payload.phone            = phone;
   if (businessAddress) payload.business_address = businessAddress;
   if (businessEmail)   payload.business_email   = businessEmail;
-  if (operatorEmail)   payload.operator_email   = operatorEmail;
 
+  const sections = readRep('section-list', 'section');
+  if (sections.length) payload.templates = sections;
+
+  // Step 3 fields
   payload.payment_thresholds = thresholds;
 
-  const propRaw = document.getElementById('proposal_types').value.trim();
-  if (propRaw) payload.proposal_types = propRaw.split(',').map(s => s.trim()).filter(Boolean);
-
-  const catRaw = document.getElementById('job_categories').value.trim();
-  if (catRaw) payload.job_categories = catRaw.split(',').map(s => s.trim()).filter(Boolean);
+  const operatorEmail = document.getElementById('operator_email').value.trim();
+  if (operatorEmail) payload.operator_email = operatorEmail;
 
   const bankName    = document.getElementById('bank_name').value.trim();
   const bankBsb     = document.getElementById('bank_bsb').value.trim();
   const bankAccount = document.getElementById('bank_account').value.trim();
-  if (bankName || bankBsb || bankAccount) {
-    payload.bank_details = { name: bankName, bsb: bankBsb, account: bankAccount };
-  }
+  if (bankName || bankBsb || bankAccount) payload.bank_details = { name: bankName, bsb: bankBsb, account: bankAccount };
 
   const emailTemplate = document.getElementById('email_template').value.trim();
   if (emailTemplate) payload.email_template = emailTemplate;
-
-  const templates = readRep('template-list', 'template');
-  if (templates.length) payload.templates = templates;
 
   const credentials = readRep('credential-list', 'credential');
   if (credentials.length) payload.credentials = credentials;
@@ -1164,12 +1233,8 @@ async function handleSubmit(e, clerk) {
   const termsAndConditions = readRep('tc-list', 'tc');
   if (termsAndConditions.length) payload.terms_and_conditions = termsAndConditions;
 
-  if (logoBase64) {
-    payload.logo_base64       = logoBase64;
-    payload.logo_content_type = logoContentType;
-  }
+  if (logoBase64) { payload.logo_base64 = logoBase64; payload.logo_content_type = logoContentType; }
 
-  // ── POST to Admin API ───────────────────────────────────────────────────
   status.textContent = 'Provisioning…';
   try {
     const res  = await fetch(ADMIN_API + '/onboarding/provision', {
@@ -1178,7 +1243,6 @@ async function handleSubmit(e, clerk) {
       body: JSON.stringify(payload),
     });
     const data = await res.json().catch(() => ({}));
-
     if (res.ok && data.ok) {
       setResult('ok', data, null);
     } else if (data.code === 'SLUG_TAKEN') {
@@ -1190,7 +1254,6 @@ async function handleSubmit(e, clerk) {
   } catch (err) {
     setResult('error', null, 'Network error: ' + err.message);
   }
-
   btn.disabled = false; status.textContent = '';
 }
 
@@ -1216,13 +1279,11 @@ function showSlugError(msg) {
 function setResult(kind, data, errorMsg) {
   const area    = document.getElementById('result-area');
   const content = document.getElementById('result-content');
-
   if (kind === 'ok') {
     const checks     = data.gate?.checks ?? {};
     const checkItems = Object.entries(checks).map(([k, v]) =>
       `<li><i class="ti ${v ? 'ti-circle-check c-ok' : 'ti-circle-x c-fail'}"></i> ${esc(k)}</li>`
     ).join('');
-
     content.innerHTML = `
       <div class="result-ok">
         <div class="result-heading"><i class="ti ti-circle-check c-ok"></i> Account provisioned</div>
@@ -1234,10 +1295,8 @@ function setResult(kind, data, errorMsg) {
           ${checkItems ? `<ul class="gate-checks">${checkItems}</ul>` : ''}
         </div>
         <div class="next-step">
-          <h3><i class="ti ti-brand-oauth"></i> Next: Connect ServiceM8</h3>
-          <p>To complete setup, authorise Rafter to access your ServiceM8 account.
-             Visit <strong>rafter.deepgreensea.au/setup?uuid=${esc(data.uuid)}</strong>
-             and click <strong>Connect ServiceM8</strong>. Your Rafter administrator will send you this link.</p>
+          <h3><i class="ti ti-circle-check"></i> Setup complete</h3>
+          <p>Your Rafter account is configured and ready. Your Rafter administrator will send you a link to your quoting form.</p>
         </div>
       </div>`;
   } else {
@@ -1247,7 +1306,6 @@ function setResult(kind, data, errorMsg) {
         <div class="err-pre">${esc(errorMsg)}</div>
       </div>`;
   }
-
   area.hidden = false;
   area.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
@@ -1281,10 +1339,9 @@ function setResult(kind, data, errorMsg) {
   }
 
   if (!clerk.organization) {
-    const params      = new URLSearchParams(window.location.search);
-    const paramOrgId  = params.get('org_id');
+    const params     = new URLSearchParams(window.location.search);
+    const paramOrgId = params.get('org_id');
     const memberships = clerk.user.organizationMemberships ?? [];
-
     let targetOrgId = paramOrgId;
     if (!targetOrgId) {
       if (memberships.length === 1) {
@@ -1314,12 +1371,23 @@ function setResult(kind, data, errorMsg) {
   initCredentialExamples();
   initAbnValidation();
   initPhoneValidation();
+  initStep1Button();
   prefillFromParams();
 
+  document.getElementById('step2-continue').addEventListener('click', () => showStep(3));
+  document.getElementById('prefill-retry').addEventListener('click', fetchSm8Prefill);
   document.getElementById('onboarding-form').addEventListener('submit', e => handleSubmit(e, clerk));
 
   loadingEl.hidden = true;
   formEl.hidden    = false;
+
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('oauth_complete') === '1') {
+    showStep(2);
+    await fetchSm8Prefill();
+  } else {
+    showStep(1);
+  }
 })();
 </script>
 </body>

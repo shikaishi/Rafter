@@ -151,6 +151,12 @@
 
       if (!dataRes.ok) throw new Error('Data retrieval failed: ' + dataRes.status);
 
+      const returnTo = sessionStorage.getItem('oauth_return_to');
+      sessionStorage.removeItem('oauth_return_to');
+      if (returnTo === 'onboarding') {
+        window.location.replace('/onboarding.html?oauth_complete=1');
+        return;
+      }
       showComplete();
 
     } catch(err) {

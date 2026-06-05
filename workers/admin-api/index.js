@@ -187,6 +187,10 @@ async function handleOnboarding(request, env, url, jwtPayload) {
     return handleAbnLookup(url, env);
   }
 
+  if (method === 'GET' && path === '/onboarding/sm8-prefill') {
+    return handleSm8Prefill(jwtPayload, env);
+  }
+
   return json({ ok: false, error: 'Not Found' }, 404);
 }
 
@@ -805,6 +809,73 @@ async function runSmoketest(uuid, { destructive }, env) {
   }
 
   return { passed: hardPassed, uuid, destructive, assertions };
+}
+
+// ── SM8 prefill — onboarding connect-first flow ──────────────────────────────
+// Called GET /onboarding/sm8-prefill (Clerk JWT scoped to org).
+// Resolves org → uuid → KV, refreshes SM8 token via materials-sync,
+// then fetches vendor.json + jobtemplate.json from SM8. Returns structured prefill data.
+async function handleSm8Prefill(jwtPayload, env) {
+  const orgId = jwtPayload.org_id ?? null;
+  if (!orgId) return json({ ok: false, error: 'No org_id in JWT — organisation context required' }, 400);
+
+  const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+  if (!uuid) return json({ ok: false, error: 'No client record found for this organisation' }, 404);
+
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return json({ ok: false, error: 'Client record not found in KV' }, 404);
+
+  const record = JSON.parse(raw);
+  if (!record.access_token) {
+    return json({ ok: false, error: 'ServiceM8 not connected — complete OAuth before prefill', code: 'NO_TOKEN' }, 422);
+  }
+
+  // Refresh token via materials-sync (side effect: also syncs materials — fine for onboarding)
+  try {
+    const syncRes = await syncFetch(env, `/refresh-materials?uuid=${uuid}`);
+    if (!syncRes.ok) {
+      const detail = await syncRes.text().catch(() => String(syncRes.status));
+      return json({ ok: false, error: `Token refresh failed: ${detail.slice(0, 200)}`, code: 'REFRESH_FAILED' }, 422);
+    }
+  } catch (err) {
+    return json({ ok: false, error: `Token refresh error: ${err.message}`, code: 'REFRESH_FAILED' }, 502);
+  }
+
+  // Re-read KV to get fresh token after refresh
+  const freshRaw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  const freshRecord = freshRaw ? JSON.parse(freshRaw) : record;
+  const token = freshRecord.access_token;
+
+  try {
+    const [vendorRes, templateRes] = await Promise.all([
+      fetch(`${SM8_BASE}/vendor.json`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${SM8_BASE}/jobtemplate.json?$filter=active eq 1`, { headers: { Authorization: `Bearer ${token}` } }),
+    ]);
+
+    const vendorBody = vendorRes.ok ? await vendorRes.json().catch(() => null) : null;
+    const templatesBody = templateRes.ok ? await templateRes.json().catch(() => []) : [];
+
+    // vendor.json may be array-wrapped or a single object depending on SM8 version
+    const v = Array.isArray(vendorBody) ? (vendorBody[0] ?? {}) : (vendorBody ?? {});
+
+    const sections = Array.isArray(templatesBody)
+      ? templatesBody.filter(t => t.active !== 0 && t.name).map(t => ({ name: t.name }))
+      : [];
+
+    return json({
+      ok: true,
+      uuid,
+      vendor: {
+        company_name: v.name ?? '',
+        abn: v.abn ?? '',
+        business_email: v.email ?? '',
+        business_address: v.address ?? '',
+      },
+      sections,
+    });
+  } catch (err) {
+    return json({ ok: false, error: `SM8 fetch failed: ${err.message}` }, 502);
+  }
 }
 
 // ── ABN live lookup — Track C (RFT-53) ──────────────────────────────────────
