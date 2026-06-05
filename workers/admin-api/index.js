@@ -870,19 +870,28 @@ async function handleSm8Prefill(jwtPayload, env) {
   const token = freshRecord.access_token;
 
   try {
-    const [vendorRes, templateRes] = await Promise.all([
+    const [vendorRes, templateRes, staffRes] = await Promise.all([
       fetch(`${SM8_BASE}/vendor.json`, { headers: { Authorization: `Bearer ${token}` } }),
       fetch(`${SM8_BASE}/jobtemplate.json?$filter=active eq 1`, { headers: { Authorization: `Bearer ${token}` } }),
+      fetch(`${SM8_BASE}/staff.json`, { headers: { Authorization: `Bearer ${token}` } }),
     ]);
 
     const vendorBody = vendorRes.ok ? await vendorRes.json().catch(() => null) : null;
     const templatesBody = templateRes.ok ? await templateRes.json().catch(() => []) : [];
+    const staffBody = staffRes.ok ? await staffRes.json().catch(() => []) : [];
 
     // vendor.json may be array-wrapped or a single object depending on SM8 version
     const v = Array.isArray(vendorBody) ? (vendorBody[0] ?? {}) : (vendorBody ?? {});
 
     const sections = Array.isArray(templatesBody)
       ? templatesBody.filter(t => t.active !== 0 && t.name).map(t => ({ name: t.name }))
+      : [];
+
+    // staff.json: filter active, combine first + last into display name
+    const staff = Array.isArray(staffBody)
+      ? staffBody
+          .filter(s => s && s.active != 0)
+          .map(s => ({ uuid: s.uuid, name: [s.first, s.last].filter(Boolean).join(' ') }))
       : [];
 
     return json({
@@ -895,6 +904,7 @@ async function handleSm8Prefill(jwtPayload, env) {
         business_address: v.billing_address ?? '',  // SM8 field is billing_address, not address
       },
       sections,
+      staff,
     });
   } catch (err) {
     return json({ ok: false, error: `SM8 fetch failed: ${err.message}` }, 502);

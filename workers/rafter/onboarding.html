@@ -531,6 +531,23 @@ textarea { resize: vertical; min-height: 68px; }
         </button>
       </div>
 
+      <!-- Default Staff Member -->
+      <div class="section" id="staff-section" hidden>
+        <div class="section-title">
+          <i class="ti ti-user-check"></i> Default Staff Member
+          <span class="source-badge badge-sm8" style="margin-left:4px;">ServiceM8 ✓</span>
+        </div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+          The staff member assigned to new jobs created from your quotes.
+        </p>
+        <div class="field">
+          <label for="staff_uuid">Staff Member <span style="color:var(--rf-danger)">*</span></label>
+          <select id="staff_uuid">
+            <option value="">— select —</option>
+          </select>
+        </div>
+      </div>
+
       <div class="form-footer">
         <button type="button" id="step2-continue" class="btn-primary">
           <i class="ti ti-arrow-right"></i>
@@ -827,6 +844,21 @@ function populatePrefill(data) {
   sectionList.innerHTML = '';
   (data.sections ?? []).forEach(s => addSectionRow({ name: s.name, text: seedText(s.name), fromSM8: true }));
   updateRepCount('section-list', 'section');
+
+  // Populate staff picker
+  const staffSection = document.getElementById('staff-section');
+  const staffSelect  = document.getElementById('staff_uuid');
+  const staffList = data.staff ?? [];
+  if (staffList.length) {
+    staffSelect.innerHTML = '<option value="">— select —</option>';
+    staffList.forEach(s => {
+      const opt = document.createElement('option');
+      opt.value       = s.uuid;
+      opt.textContent = s.name;
+      staffSelect.appendChild(opt);
+    });
+    staffSection.hidden = false;
+  }
 }
 
 function setFieldValue(id, val) {
@@ -1258,6 +1290,10 @@ async function handleSubmit(e, clerk) {
   const { thresholds, valid: thresholdValid } = readThresholds();
   if (!thresholdValid) errors.push('Each non-empty payment tier must sum to 100%.');
 
+  const staffUuid  = document.getElementById('staff_uuid').value;
+  const staffShown = !document.getElementById('staff-section').hidden;
+  if (staffShown && !staffUuid) errors.push('Default staff member is required — select one from the list.');
+
   if (errors.length) { setResult('error', null, errors.join('\n')); return; }
 
   btn.disabled = true; status.textContent = 'Authenticating…';
@@ -1285,6 +1321,8 @@ async function handleSubmit(e, clerk) {
 
   const sections = readRep('section-list', 'section');
   if (sections.length) payload.templates = sections;
+
+  if (staffUuid) payload.staff_uuid = staffUuid;
 
   // Step 3 fields
   payload.payment_thresholds = thresholds;
