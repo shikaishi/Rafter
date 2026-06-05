@@ -152,6 +152,7 @@ input:focus, textarea:focus {
 input.invalid { border-color: var(--rf-danger); }
 textarea { resize: vertical; min-height: 68px; }
 .field-hint { font-size: 11px; color: var(--rf-muted); margin-top: 4px; }
+.field-error { font-size: 11px; color: var(--rf-danger); font-weight: 600; margin-top: 4px; }
 
 /* ===== Logo upload ===== */
 .logo-drop-zone {
@@ -219,6 +220,25 @@ textarea { resize: vertical; min-height: 68px; }
 }
 .merge-tag:hover { background: var(--rf-teal-border); }
 #email_template { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; min-height: 160px; }
+.label-row { display: flex; align-items: center; justify-content: space-between; margin-bottom: 5px; }
+.label-row label { margin-bottom: 0; }
+.btn-preview {
+  font-size: 11px; font-weight: 600; padding: 3px 10px;
+  border: 1px solid var(--rf-teal-border); border-radius: 5px;
+  background: var(--rf-teal-bg); color: var(--rf-navy);
+  cursor: pointer; font-family: inherit; transition: background 0.1s;
+  display: inline-flex; align-items: center; gap: 4px;
+}
+.btn-preview:hover { background: var(--rf-teal-border); }
+.preview-separator {
+  font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--rf-muted); margin: 12px 0 6px;
+}
+.email-preview-box {
+  border: 1px solid var(--rf-border); border-radius: 6px; padding: 16px;
+  background: #fff; font-size: 14px; min-height: 60px;
+}
+.email-preview-box mark { background: #fffde7; color: inherit; padding: 0 2px; border-radius: 2px; }
 
 /* ===== Repeater ===== */
 .repeater-list { display: flex; flex-direction: column; gap: 10px; }
@@ -371,6 +391,12 @@ textarea { resize: vertical; min-height: 68px; }
 .next-step h3 { margin: 0 0 6px; font-size: 14px; font-weight: 700; color: var(--rf-navy); display: flex; align-items: center; gap: 6px; }
 .next-step p { margin: 0; font-size: 13px; color: var(--rf-muted); }
 .err-pre { font-size: 12px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; white-space: pre-wrap; background: var(--rf-danger-bg); padding: 10px; border-radius: 6px; margin: 10px 0 0; }
+
+/* ===== Google Places autocomplete ===== */
+.pac-container { border-radius: 8px; box-shadow: var(--shadow-card); border: 0.5px solid var(--rf-teal-border); margin-top: 4px; font-family: inherit; }
+.pac-item { padding: 8px 12px; font-size: 13px; }
+.pac-item:first-child { background: var(--rf-teal-bg); }
+.pac-item-query { font-size: 13px; }
 </style>
 </head>
 <body>
@@ -404,23 +430,25 @@ textarea { resize: vertical; min-height: 68px; }
 
       <div class="field">
         <label>Company name <span class="req">*</span></label>
-        <input type="text" id="company_name" placeholder="2 Men and a Shovel" required autocomplete="organization">
+        <input type="text" id="company_name" placeholder="e.g. Acme Plumbing Co" required autocomplete="organization">
       </div>
 
       <div class="field-row">
         <div class="field">
           <label>ABN</label>
-          <input type="text" id="abn" placeholder="12 345 678 901" maxlength="14" autocomplete="off">
+          <input type="text" id="abn" placeholder="12 345 678 901" maxlength="14" autocomplete="off" inputmode="numeric">
+          <div id="abn-hint" class="field-hint"></div>
         </div>
         <div class="field">
           <label>Phone</label>
-          <input type="tel" id="phone" placeholder="(03) 9000 0000" autocomplete="tel">
+          <input type="tel" id="phone" placeholder="0412 345 678 or 03 9000 0000" autocomplete="tel">
+          <div id="phone-hint" class="field-hint"></div>
         </div>
       </div>
 
       <div class="field">
         <label>Business Address</label>
-        <textarea id="business_address" placeholder="123 Main St&#10;Melbourne VIC 3000" rows="2" autocomplete="street-address"></textarea>
+        <input type="text" id="business_address" placeholder="e.g. 123 Main St, Melbourne VIC 3000" autocomplete="street-address">
       </div>
 
       <div class="field-row">
@@ -464,16 +492,16 @@ textarea { resize: vertical; min-height: 68px; }
 
       <div class="field">
         <label>Account Name</label>
-        <input type="text" id="bank_name" placeholder="2 Men and a Shovel" autocomplete="off">
+        <input type="text" id="bank_name" placeholder="e.g. Acme Plumbing Pty Ltd" autocomplete="off">
       </div>
       <div class="field-row">
         <div class="field">
           <label>BSB</label>
-          <input type="text" id="bank_bsb" placeholder="083-231" maxlength="7" autocomplete="off">
+          <input type="text" id="bank_bsb" placeholder="e.g. 000-000" maxlength="7" autocomplete="off" inputmode="numeric">
         </div>
         <div class="field">
           <label>Account Number</label>
-          <input type="text" id="bank_account" placeholder="123456789" maxlength="12" autocomplete="off">
+          <input type="text" id="bank_account" placeholder="123456789" maxlength="12" autocomplete="off" inputmode="numeric">
         </div>
       </div>
     </div>
@@ -484,21 +512,14 @@ textarea { resize: vertical; min-height: 68px; }
 
       <div class="field">
         <label>Proposal Types</label>
-        <input type="text" id="proposal_types" placeholder="LC, GM">
+        <input type="text" id="proposal_types" placeholder="e.g. STD, PREMIUM">
         <div class="field-hint">Comma-separated codes shown in the quote builder — e.g. "LC" for Landscaping, "GM" for Garden Maintenance</div>
       </div>
 
-      <div class="field-row">
-        <div class="field">
-          <label>Job Categories</label>
-          <input type="text" id="job_categories" placeholder="Garden Maintenance, Landscaping">
-          <div class="field-hint">Must match your ServiceM8 job categories exactly</div>
-        </div>
-        <div class="field">
-          <label>Job Queues</label>
-          <input type="text" id="job_queues" placeholder="Leads - New, Quotes - Accepted">
-          <div class="field-hint">Must match your ServiceM8 job queues exactly</div>
-        </div>
+      <div class="field">
+        <label>Job Categories</label>
+        <input type="text" id="job_categories" placeholder="e.g. Installation, Repairs">
+        <div class="field-hint">Must match your ServiceM8 job categories exactly</div>
       </div>
     </div>
 
@@ -540,9 +561,17 @@ textarea { resize: vertical; min-height: 68px; }
       </div>
 
       <div class="field">
-        <label>Email HTML</label>
+        <div class="label-row">
+          <label>Email HTML</label>
+          <button type="button" id="email-preview-btn" class="btn-preview"><i class="ti ti-eye"></i> Preview</button>
+        </div>
         <textarea id="email_template" rows="10" placeholder="Leave blank — a default will be generated with your logo and contact details."></textarea>
         <div class="field-hint">Click a merge tag above to insert it at the cursor. HTML is supported for formatting.</div>
+      </div>
+
+      <div id="email-preview-panel" hidden>
+        <div class="preview-separator">Preview — sample data</div>
+        <div id="email-preview-content" class="email-preview-box"></div>
       </div>
     </div>
 
@@ -572,8 +601,7 @@ textarea { resize: vertical; min-height: 68px; }
         <span class="rep-count" id="credential-count"></span>
       </div>
       <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
-        Qualifications, guarantees, and points of difference shown on PDF quotes.
-        Each entry has a title and an optional detail line.
+        What makes customers trust this business? Licences, insurance, guarantees, reviews, memberships — shown in the "You can rely on" section of every quote.
       </p>
 
       <div id="credential-list" class="repeater-list"></div>
@@ -638,6 +666,7 @@ textarea { resize: vertical; min-height: 68px; }
 
 </div><!-- /#state-form -->
 
+<script src="https://maps.googleapis.com/maps/api/js?key=AIzaSyC0jXEG5nCnpI-Odu8wKLpJc2n3HKRfUdg&libraries=places&callback=initMaps" async defer></script>
 <script
   data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
   src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
@@ -704,6 +733,83 @@ function readThresholds() {
   return { thresholds, valid: allValid };
 }
 
+// ── ABN validation ───────────────────────────────────────────────────────────
+
+function validateAbnChecksum(digits) {
+  const weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19];
+  const d = digits.split('').map(Number);
+  d[0] -= 1;
+  const sum = d.reduce((acc, v, i) => acc + v * weights[i], 0);
+  return sum % 89 === 0;
+}
+
+function initAbnValidation() {
+  const input = document.getElementById('abn');
+  const hint  = document.getElementById('abn-hint');
+
+  input.addEventListener('input', () => {
+    const digits = input.value.replace(/\D/g, '').slice(0, 11);
+    let fmt = digits;
+    if (digits.length > 2) fmt = digits.slice(0,2) + ' ' + digits.slice(2);
+    if (digits.length > 5) fmt = digits.slice(0,2) + ' ' + digits.slice(2,5) + ' ' + digits.slice(5);
+    if (digits.length > 8) fmt = digits.slice(0,2) + ' ' + digits.slice(2,5) + ' ' + digits.slice(5,8) + ' ' + digits.slice(8);
+    input.value = fmt;
+    if (input.classList.contains('invalid')) { hint.textContent = ''; hint.className = 'field-hint'; input.classList.remove('invalid'); }
+  });
+
+  input.addEventListener('blur', () => {
+    const digits = input.value.replace(/\D/g, '');
+    if (!digits) { hint.textContent = ''; hint.className = 'field-hint'; input.classList.remove('invalid'); return; }
+    if (digits.length !== 11) {
+      hint.textContent = 'ABN must be 11 digits';
+      hint.className = 'field-error';
+      input.classList.add('invalid');
+      return;
+    }
+    if (!validateAbnChecksum(digits)) {
+      hint.textContent = 'Invalid ABN — please check and re-enter';
+      hint.className = 'field-error';
+      input.classList.add('invalid');
+      return;
+    }
+    hint.textContent = 'Valid ABN';
+    hint.className = 'field-hint';
+    hint.style.color = 'var(--rf-lime)';
+    input.classList.remove('invalid');
+  });
+}
+
+// ── Phone validation ─────────────────────────────────────────────────────────
+
+function initPhoneValidation() {
+  const input = document.getElementById('phone');
+  const hint  = document.getElementById('phone-hint');
+
+  function clearError() {
+    input.classList.remove('invalid');
+    hint.textContent = '';
+    hint.className = 'field-hint';
+  }
+
+  input.addEventListener('input', clearError);
+
+  input.addEventListener('blur', () => {
+    const val    = input.value.trim();
+    if (!val) { clearError(); return; }
+    const digits = val.replace(/\D/g, '');
+    const valid =
+      /^04\d{8}$/.test(digits) ||       // mobile 04XX XXX XXX
+      /^0[2378]\d{8}$/.test(digits) ||  // landline 02/03/07/08
+      /^1[38]00\d{6}$/.test(digits) ||  // 1300/1800
+      /^13\d{4}$/.test(digits);         // 13XXXX
+    if (!valid) {
+      hint.textContent = 'Enter a valid Australian phone — e.g. 0412 345 678 or 03 9000 0000';
+      hint.className = 'field-error';
+      input.classList.add('invalid');
+    }
+  });
+}
+
 // ── Logo upload ──────────────────────────────────────────────────────────────
 
 let logoBase64      = null;
@@ -747,6 +853,23 @@ function initLogoUpload() {
     reader.readAsDataURL(file);
   }
 }
+
+// ── Address autocomplete (Google Places) ────────────────────────────────────
+
+function initAddressAutocomplete() {
+  const input = document.getElementById('business_address');
+  if (!input || !window.google?.maps?.places) return;
+  const ac = new google.maps.places.Autocomplete(input, {
+    componentRestrictions: { country: 'au' },
+    fields: ['formatted_address'],
+    types: ['address'],
+  });
+  ac.addListener('place_changed', () => {
+    const place = ac.getPlace();
+    input.value = place.formatted_address || input.value;
+  });
+}
+window.initMaps = initAddressAutocomplete;
 
 // ── Slug preview + suggestion from company name ──────────────────────────────
 
@@ -805,6 +928,34 @@ function initEmailTemplate() {
   });
 }
 
+// ── Email template preview ───────────────────────────────────────────────────
+
+function initEmailPreview() {
+  const btn     = document.getElementById('email-preview-btn');
+  const panel   = document.getElementById('email-preview-panel');
+  const content = document.getElementById('email-preview-content');
+  const ta      = document.getElementById('email_template');
+
+  btn.addEventListener('click', () => {
+    const raw = ta.value.trim();
+    if (!raw) {
+      content.textContent = '(no template entered — a default will be generated on provisioning)';
+      panel.hidden = false;
+      return;
+    }
+    let html = raw;
+    html = html.replace(/\{client_name\}/g, '<mark>Jane Smith</mark>');
+    html = html.replace(/\{job_address\}/g,  '<mark>45 Collins St, Melbourne VIC 3000</mark>');
+    html = html.replace(/\{quote_ref\}/g,    '<mark>Q-20260605-1430</mark>');
+    html = html.replace(/\{total\}/g,        '<mark>$8,500</mark>');
+    content.innerHTML = html;
+    panel.hidden = false;
+    panel.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+  });
+
+  ta.addEventListener('input', () => { panel.hidden = true; });
+}
+
 // ── Repeater ─────────────────────────────────────────────────────────────────
 
 function addRepItem(listId, type, data) {
@@ -825,11 +976,11 @@ function addRepItem(listId, type, data) {
   } else if (type === 'credential') {
     item.innerHTML = `
       <div class="rep-item-head">
-        <input type="text" class="rep-name" placeholder="Credential or guarantee title" value="${esc(data?.name ?? '')}">
+        <input type="text" class="rep-name" placeholder="e.g. Fully Licensed &amp; Insured" value="${esc(data?.name ?? '')}">
         <button type="button" class="rep-del" title="Remove"><i class="ti ti-trash"></i></button>
       </div>
       <div class="rep-body-pad">
-        <input type="text" class="rep-detail" placeholder="Optional detail or condition" value="${esc(data?.detail ?? '')}">
+        <input type="text" class="rep-detail" placeholder="Optional detail — e.g. Public liability up to $10M" value="${esc(data?.detail ?? '')}">
       </div>`;
   } else if (type === 'tc') {
     item.innerHTML = `
@@ -891,6 +1042,11 @@ function initRepeaters() {
   document.getElementById('tc-add').addEventListener('click',         () => addRepItem('tc-list',         'tc'));
 }
 
+function initCredentialExamples() {
+  addRepItem('credential-list', 'credential', { name: 'Fully Licensed & Insured', detail: 'Public liability up to $10M' });
+  addRepItem('credential-list', 'credential', { name: '10-Year Workmanship Guarantee', detail: 'All work backed by our satisfaction guarantee' });
+}
+
 // ── Form submission ──────────────────────────────────────────────────────────
 
 async function handleSubmit(e, clerk) {
@@ -928,7 +1084,7 @@ async function handleSubmit(e, clerk) {
   // ── Build payload ───────────────────────────────────────────────────────
   const payload = { slug, company_name: companyName, webhook_url: webhookUrl };
 
-  const abn             = document.getElementById('abn').value.trim();
+  const abn             = document.getElementById('abn').value.replace(/\D/g, ''); // strip spaces from formatted ABN
   const phone           = document.getElementById('phone').value.trim();
   const businessAddress = document.getElementById('business_address').value.trim();
   const businessEmail   = document.getElementById('business_email').value.trim();
@@ -946,9 +1102,6 @@ async function handleSubmit(e, clerk) {
 
   const catRaw = document.getElementById('job_categories').value.trim();
   if (catRaw) payload.job_categories = catRaw.split(',').map(s => s.trim()).filter(Boolean);
-
-  const queueRaw = document.getElementById('job_queues').value.trim();
-  if (queueRaw) payload.job_queues = queueRaw.split(',').map(s => s.trim()).filter(Boolean);
 
   const bankName    = document.getElementById('bank_name').value.trim();
   const bankBsb     = document.getElementById('bank_bsb').value.trim();
@@ -1113,7 +1266,11 @@ function setResult(kind, data, errorMsg) {
   initLogoUpload();
   initSlugLogic();
   initEmailTemplate();
+  initEmailPreview();
   initRepeaters();
+  initCredentialExamples();
+  initAbnValidation();
+  initPhoneValidation();
   prefillFromParams();
 
   document.getElementById('onboarding-form').addEventListener('submit', e => handleSubmit(e, clerk));
