@@ -1,6 +1,7 @@
 # CLAUDE.md — Rafter Platform
 
 @docs/claude-code-tuning.md
+@docs/code-behaviour.md
 
 > **⚠️ SESSION-START PROTOCOL — do this before reading anything else, every session, every machine.**
 >
