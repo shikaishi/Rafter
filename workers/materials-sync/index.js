@@ -1335,16 +1335,21 @@ async function fetchAmendPdf(env, payload) {
 }
 
 async function sm8AttachPdf(accessToken, jobUuid, filename, pdfBytes) {
-  // Step 1: create attachment metadata
+  // Step 1: create attachment metadata. Field shape mirrors Make's M14
+  // (Create Attachment Record) which is verified in production — SM8
+  // displays `attachment_name`, not `name`, and uses `file_type` for the
+  // extension. Setting these via the wrong field name silently produces
+  // an attachment with an auto-generated display name (e.g. "Proposal —
+  // <site address>").
   const createRes = await fetch(`${SM8_BASE}/Attachment.json`, {
     method: "POST",
     headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
     body: JSON.stringify({
       related_object_uuid: jobUuid,
       related_object: "job",
-      attachment_type: "document",
-      name: filename,
-      mime_type: "application/pdf",
+      attachment_name: filename,
+      file_type: ".pdf",
+      active: true,
     }),
   });
   if (createRes.status === 403) {

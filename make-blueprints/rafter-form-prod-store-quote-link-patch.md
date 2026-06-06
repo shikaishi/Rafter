@@ -1,14 +1,23 @@
-# Make patch: add /store-quote-link callback to Rafter Form prod (5537814)
+# Make patch: add /store-quote-link callback to Rafter Form scenarios
 
-Scenario: `5537814` (Rafter Form prod).
+> **VERIFIED 2026-06-06** — recipe below is the one proven against trial dev
+> scenario via full end-to-end (Phase A submit → Phase B amend → SM8 verify).
+> Two earlier drafts of this doc had incorrect Make-template syntax and an
+> unworkable `{{34}}` payload pattern; both corrected here.
+
+Scenarios: **`5537814` Rafter Form prod** (module id `M110`) and
+**`5962197` Rafter Form dev** (module id `M112`). Same patch, different
+module ids — dev got a higher id because the patch was applied after a
+later `idSequence` bump.
+
 Goal: insert one new HTTP module that POSTs to `/store-quote-link` after
 M3 (Create Job) completes — propagates the SM8 job UUID + payload to the
 rafter-quotes D1 store so the finder + amend op work.
 
-**Apply via API-PATCH, not Make UI** (BUG-25: M3 `company_uuid`, M33 / M37
-subject expressions revert when the scenario is opened in UI).
+**Apply via API-PATCH, not Make UI** (BUG-25: M3 `company_uuid` expression
+reverts when the scenario is opened in UI).
 
-## Procedure
+## Procedure (prod example — swap `5537814` for `5962197` for dev)
 
 1. **GET** current blueprint:
    ```
@@ -17,14 +26,15 @@ subject expressions revert when the scenario is opened in UI).
      > rafter-form-prod-pre-store-quote-link.json
    ```
 
-2. **Edit** the downloaded JSON in-place. Two changes only:
+2. **Edit** the downloaded JSON in-place. Two changes:
 
    **a.** Insert the new module object (see below) into `response.blueprint.flow`
-   at array index `6` (i.e., immediately after the M3 Create Job module at
-   index 5, immediately before the M13 Job Note module which becomes index 7).
+   at array index `6` (immediately after M3 Create Job at index 5, immediately
+   before M13 Job Note which becomes index 7).
 
-   **b.** Bump `response.idSequence` from `110` to `111` to reserve module id 110
-   for the new module.
+   **b.** Bump `response.idSequence` to reserve the new id. Use the value the
+   blueprint currently shows as `idSequence` for the new module's `"id"` field,
+   then increment `idSequence` by one in the same edit.
 
 3. **PATCH** the modified blueprint back:
    ```
@@ -34,11 +44,15 @@ subject expressions revert when the scenario is opened in UI).
      "https://eu1.make.com/api/v2/scenarios/5537814"
    ```
 
-4. **Verify** M3 / M33 / M37 expressions did NOT revert: re-export the
-   blueprint and diff against the pre-patch file. Only differences expected:
-   the new M110 module, and `idSequence: 111`.
+4. **Verify** M3's `company_uuid` ifempty expression did NOT revert: re-export
+   the blueprint and diff against the pre-patch file. Only differences expected:
+   the new module, and `idSequence` bumped by one.
 
 ## The new module — paste verbatim, replace the placeholder
+
+> Module `id` in the JSON below is `110` (prod's actual id). For dev, set
+> `"id": 112` (dev's actual id). For any other scenario, set it to whatever
+> `idSequence` currently shows and bump idSequence accordingly.
 
 ```json
 {
@@ -69,7 +83,7 @@ subject expressions revert when the scenario is opened in UI).
     "parseResponse": true,
     "allowRedirects": true,
     "stopOnHttpError": true,
-    "jsonStringBodyContent": "{\n  \"quote_ref\": \"{{34.quote_ref}}\",\n  \"client_uuid\": \"{{34.client_uuid}}\",\n  \"sm8_job_uuid\": \"{{3.headers[`x-record-uuid`]}}\",\n  \"payload\": {{34}}\n}",
+    "jsonStringBodyContent": "{\n  \"quote_ref\": \"{{1.quote_ref}}\",\n  \"client_uuid\": \"{{34.client_uuid}}\",\n  \"sm8_job_uuid\": \"{{3.headers.`x-record-uuid`}}\",\n  \"payload\": {{1.payload}}\n}",
     "requestCompressedContent": true
   },
   "metadata": {
@@ -131,10 +145,23 @@ subject expressions revert when the scenario is opened in UI).
 
 | JSON field | Make ref | Source |
 |------------|----------|--------|
-| `quote_ref` | `{{34.quote_ref}}` | M34 (ParseJSON of M1's `payload` form field). Same field name as `payload.quote_ref` from the form. |
-| `client_uuid` | `{{34.client_uuid}}` | M34 parsed object's `client_uuid` field. M1's flat form fields do NOT include client_uuid directly — must come from the parsed payload. |
-| `sm8_job_uuid` | `` {{3.headers[`x-record-uuid`]}} `` | M3 (Create Job) response header. Exact same syntax M14 (Create Attachment Record) already uses for `related_object_uuid` — verified in production. |
-| `payload` | `{{34}}` | M34's full parsed object embedded as inline JSON (no surrounding quotes). The worker re-stores this verbatim into rafter-quotes. |
+| `quote_ref` | `{{1.quote_ref}}` | M1 webhook flat field — set by PDF worker as a form field directly. (M34 also exposes it; either works, M1 is the simpler upstream.) |
+| `client_uuid` | `{{34.client_uuid}}` | **M34 parsed payload — NOT a flat M1 field.** The form's slug-resolved operator UUID (e.g., `010895db-…` for trial). DO NOT map this from `{{1.client_sm8_uuid}}` — that's the *SM8 customer company* UUID (a different identifier with the same format), which would silently break multi-tenant scoping. |
+| `sm8_job_uuid` | `` {{3.headers.`x-record-uuid`}} `` | M3 (Create Job) response header. Use Make's **picker** in the UI (dot + backtick form) — the bracket-quote variant `{{3.headers["x-record-uuid"]}}` works in M14's body but Make's `text:notequal` filter evaluator treats it as a literal string, not a variable. Stick with the picker output. |
+| `payload` | `{{1.payload}}` | **Raw M1 webhook field, unquoted (no surrounding `"…"`).** The form sends `payload` as a stringified JSON form-field; Make substitutes it inline. Worker accepts this as a string and JSON.parses it. |
+
+### Three patterns that DON'T work (learned the hard way 2026-06-06)
+
+| Tried | Result |
+|-------|--------|
+| `"payload": {{34}}` | Make substitutes to the literal number `34`, not M34's bundle. Worker rejects: payload type number. |
+| `"payload": "{{1.payload}}"` (quoted) | Make doesn't escape inner `"` characters of the substituted JSON string. Body becomes invalid JSON, Make errors before sending. |
+| `"payload": {"some": "static"}` | Inner `{` may be interpreted as a variable delimiter. Scenario stalls without sending. |
+
+The verified-working `"payload": {{1.payload}}` (unquoted, raw M1 field) is the
+only shape proven against trial. The worker also has tolerance for `payload`
+sent as an object or for a `payload_b64` alternative, but those code paths are
+unexercised so far.
 
 ## The Authorization header
 
@@ -174,7 +201,7 @@ behaviour but produces an alert-worthy error). To filter:
   "conditions": [
     [
       {
-        "a": "{{3.headers[`x-record-uuid`]}}",
+        "a": "{{3.headers.`x-record-uuid`}}",
         "o": "text:notequal",
         "b": ""
       }
@@ -183,42 +210,66 @@ behaviour but produces an alert-worthy error). To filter:
 }
 ```
 
+**Header reference syntax — picker form (dot + backticks), not bracket form.**
+Make's filter expression evaluator treats `{{3.headers["x-record-uuid"]}}`
+(bracket form) as a literal string, never matching the real header value, so
+the filter always evaluates "literal != """ → true and the filter passes
+trivially (effectively a no-op) — OR, more confusingly, the filter never
+matches when you want it to. The picker output (` `…` ` with dot) is the
+form that actually resolves.
+
 Replace the `"filter": null` field in the module above with this. Without
 the filter, missing-UUID submits still produce a 400 from the worker but
 also surface as a Make scenario error.
 
 ## Verification — what to look for after the PATCH
 
-1. **Re-export blueprint**, diff against `rafter-form-prod-pre-store-quote-link.json`:
-   - Only differences: the new M110 module added at flow index 6, and
-     `idSequence` 110 → 111.
-   - M3 `company_uuid`, M33 subject, M37 subject expressions **must be
-     unchanged**. If any reverted, re-PATCH from
-     `make-blueprints/rafter-form-prod-2026-05-21-final.json` first, then
-     re-apply this patch.
+1. **Re-export blueprint**, diff against the pre-patch file:
+   - Only differences: the new module added at flow index 6, and `idSequence`
+     bumped by one.
+   - M3 `company_uuid` ifempty expression **must be unchanged**. If reverted,
+     re-PATCH from `make-blueprints/rafter-form-prod-2026-05-21-final.json`
+     first, then re-apply this patch.
 
 2. **Run one trial submission** (slug `dev`). Expected:
    - PDF worker `/generate?mode=submit` → 200 (Make accepted).
    - Make M3 creates SM8 job (visible in trial SM8).
-   - **M110 (new)** POSTs to `/store-quote-link` → 200.
+   - **The new module** POSTs to `/store-quote-link` → 200.
    - Make continues M13 → M14 → M15 → router.
-   - Worker log shows `store_quote_link_ok` with the new quote_ref + sm8_job_uuid.
    - Fetch from materials-sync confirms the row exists:
      ```
      curl -H "x-rafter-secret: $RAFTER_INTERNAL_SECRET" \
        "https://rafter-materials-sync.will-8e8.workers.dev/draft/<quote_ref>"
      ```
+   - The row's `client_uuid` MUST be the operator's KV record key
+     (e.g., `010895db-…` for trial). If it shows the SM8 customer's UUID
+     instead, `client_uuid` was mapped from `{{1.client_sm8_uuid}}` —
+     re-map to `{{34.client_uuid}}` (see the variable table above).
    - Finder at `https://rafter.deepgreensea.au/dev?find=1` shows the row.
 
-3. **If M110 returns 400** `payload_not_json`: Make didn't serialise `{{34}}`
-   as inline JSON; instead it interpolated as a stringified-with-quotes
-   string. The worker handles this case (parses the string), so a `400`
-   indicates the string was malformed. Fallback: change the body's payload
-   line from `"payload": {{34}}` (no quotes) to `"payload": "{{1.payload}}"`
-   (quoted, with `{{1.payload}}` being the raw form-field stringified JSON).
-   The worker accepts either shape.
+3. **If returns 400 `invalid_client_uuid`**: `{{34.client_uuid}}` resolved
+   empty (M1's payload field is missing client_uuid, OR M34 ParseJSON didn't
+   parse the payload, OR client_uuid was mapped from the wrong source). Check
+   the variable picker output in the Make UI — it should resolve to a UUID
+   shape `xxxxxxxx-xxxx-xxxx-xxxx-xxxxxxxxxxxx`.
 
-4. **If M110 returns 400** `missing_or_invalid_sm8_job_uuid`: M3 did not
-   return `x-record-uuid`. Most likely SM8 returned an error. Inspect M3's
-   response status. Do not "fix" by sending a placeholder — the worker is
-   right to reject. Real problem upstream.
+4. **If returns 400 `missing_or_invalid_sm8_job_uuid`**: M3 did not return
+   `x-record-uuid`. Most likely SM8 returned an error. Inspect M3's response
+   status in Make's execution log. Do not "fix" by sending a placeholder —
+   the worker is right to reject; the real problem is upstream.
+
+5. **If the new module silently doesn't fire**: the filter expression uses
+   bracket-form `{{3.headers["x-record-uuid"]}}` instead of picker dot-form
+   `` {{3.headers.`x-record-uuid`}} ``. The bracket form evaluates as a
+   literal string in Make filter contexts, never matching the real header.
+   Fix the filter to use the picker form.
+
+## Status as of 2026-06-06
+
+- **Dev `5962197`**: M112 live, full E2E verified (Phase A submit → row stored,
+  Phase B amend → v1 superseded / v2 submitted, SM8 job_description appended
+  with both `RAFTER:Q-…:START/END` blocks, two SM8 attachments coexist).
+- **Prod `5537814`**: M110 present from earlier patch with broken syntax. The
+  filter uses bracket-form which never matches, so M110 is dormant. Andy's
+  submits unaffected (fail-closed). Re-patch with the corrected recipe above
+  to activate.
