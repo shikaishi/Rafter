@@ -1340,6 +1340,72 @@ async function fetchAmendPdf(env, payload) {
   return { ok: true, bytes, filename };
 }
 
+// Send the v2 PDF to the customer via SM8's built-in email (RFT-76).
+// Uses /platform_service_email — same endpoint Make's M33 uses for original
+// submit, verified working in prod. Worker-direct (no Make), so Andy keeps
+// the operator choice on amend the way fresh submit already offers it
+// ("send" vs "job only"). Failure mode is non-blocking: the amend itself
+// already committed (PDF attached, SM8 updated, row stored); a failed email
+// just means the operator needs to follow up out-of-band.
+async function sendSm8AmendEmail({ accessToken, client, payload, sm8_job_uuid, attachment_uuid }) {
+  const to = (payload.customer_email || "").trim();
+  if (!to || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(to)) {
+    return { ok: false, status: 400, detail: "customer_email_missing_or_invalid" };
+  }
+
+  const companyName = client.company_name || "your contractor";
+  const subject = `Your updated quote from ${companyName}`;
+
+  const template = (client.email_template || "").trim();
+  const total = payload.total != null ? payload.total : "";
+  const clientNameSafe = String(payload.client_name || "there").replace(/[<>&]/g, "");
+  const companyNameSafe = String(companyName).replace(/[<>&]/g, "");
+  // Fallback body used when the operator hasn't configured email_template yet.
+  // Plain, neutral, no branding — operators should set their own template via
+  // onboarding for the final voice; this keeps amend-send functional rather
+  // than 400ing on absent template.
+  const fallbackBody = [
+    `<p>Hi ${clientNameSafe},</p>`,
+    `<p>Please find your updated quote attached. Reference: ${payload.quote_ref || ""}.</p>`,
+    total ? `<p>Total (inc. GST): $${total}</p>` : "",
+    `<p>Thanks,<br>${companyNameSafe}</p>`,
+  ].filter(Boolean).join("\n");
+  const htmlBody = template
+    ? template
+        .replace(/\{client_name\}/g, payload.client_name || "")
+        .replace(/\{job_address\}/g, payload.site_address || "")
+        .replace(/\{quote_ref\}/g, payload.quote_ref || "")
+        .replace(/\{total\}/g, String(total))
+    : fallbackBody;
+
+  const headers = {
+    Authorization: `Bearer ${accessToken}`,
+    "Content-Type": "application/json",
+  };
+  if (client.staff_uuid) headers["x-impersonate-uuid"] = client.staff_uuid;
+
+  const body = {
+    to,
+    subject,
+    htmlBody,
+    attachments: [attachment_uuid],
+    regardingJobUUID: sm8_job_uuid,
+  };
+
+  const res = await fetch("https://api.servicem8.com/platform_service_email", {
+    method: "POST",
+    headers,
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { ok: false, status: res.status, detail: detail.slice(0, 500) };
+  }
+  let data;
+  try { data = await res.json(); } catch { data = null; }
+  return { ok: true, sent_to: to, response_status: res.status, response_body: data };
+}
+
 // After amend's new attachment is created, deactivate the prior active
 // attachment(s) on the SM8 job so the customer can never accidentally
 // approve a superseded version (RFT-33 confirmed deactivation works).
@@ -1458,13 +1524,16 @@ async function handleAmendQuote(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: "invalid_json" }, { status: 400 }); }
 
-  const { parent_quote_ref, payload } = body || {};
+  const { parent_quote_ref, payload, send_email } = body || {};
   if (!parent_quote_ref || !QUOTE_REF_RE.test(parent_quote_ref)) {
     return json({ error: "invalid_parent_quote_ref" }, { status: 400 });
   }
   if (!payload || typeof payload !== "object") {
     return json({ error: "missing_field", field: "payload" }, { status: 400 });
   }
+  // send_email honours the operator's per-amend choice the same way original
+  // submit's send_email field does. Default false (job-update-only) if absent.
+  const wantsEmail = send_email === true;
 
   if (!env.RAFTER_QUOTES) {
     return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
@@ -1577,6 +1646,33 @@ async function handleAmendQuote(request, env) {
     console.error(JSON.stringify({ event: "amend_supersede_parent_failed", parent_quote_ref, error: e.message }));
   }
 
+  // Customer email (RFT-76) — Path B: SM8 direct, no Make. Non-blocking;
+  // amend has already committed if this fails.
+  let emailResult = null;
+  if (wantsEmail) {
+    try {
+      emailResult = await sendSm8AmendEmail({
+        accessToken,
+        client,
+        payload: enrichedPayload,
+        sm8_job_uuid,
+        attachment_uuid: attach.attachment_uuid,
+      });
+      if (!emailResult.ok) {
+        console.error(JSON.stringify({
+          event: "amend_email_failed",
+          sm8_job_uuid,
+          new_quote_ref,
+          status: emailResult.status,
+          detail: emailResult.detail,
+        }));
+      }
+    } catch (e) {
+      emailResult = { ok: false, detail: e.message };
+      console.error(JSON.stringify({ event: "amend_email_uncaught", new_quote_ref, error: e.message }));
+    }
+  }
+
   return json({
     ok: true,
     new_quote_ref,
@@ -1589,6 +1685,11 @@ async function handleAmendQuote(request, env) {
     prior_attachments: deact.ok
       ? { total_active: deact.total_prior_active, deactivated: deact.deactivated, failures: deact.failures }
       : { error: deact.detail || `status_${deact.status}` },
+    email: wantsEmail
+      ? (emailResult && emailResult.ok
+          ? { sent: true, to: emailResult.sent_to }
+          : { sent: false, error: (emailResult && emailResult.detail) || "unknown" })
+      : { sent: false, reason: "not_requested" },
   });
 }
 

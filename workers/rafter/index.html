@@ -63,15 +63,18 @@
     display: flex;
     align-items: center;
     gap: 16px;
+    flex-wrap: wrap;  /* tablet: meta drops below brand if it can't fit alongside */
+    row-gap: 12px;
   }
-  .header .brand { display: flex; align-items: center; gap: 12px; flex: 1; min-width: 0; }
+  .header .brand { display: flex; align-items: center; gap: 12px; flex: 1 1 240px; min-width: 0; }
   .logo-mark { flex-shrink: 0; display: flex; align-items: center; }
   .logo-mark img { height: 48px; width: auto; display: block; }
-  .brand-text { display: flex; flex-direction: column; min-width: 0; }
-  .brand-company { font-size: 14px; font-weight: 500; color: var(--rf-text); }
-  .brand-sub { font-size: 11px; color: var(--rf-muted); }
-  .brand-phone { font-size: 11px; color: var(--rf-muted); }
-  .header .meta { display: flex; align-items: center; gap: 10px; }
+  .brand-text { display: flex; flex-direction: column; min-width: 0; flex: 1 1 auto; }
+  /* Prevent "Deep Green Sea" wrapping to three lines when meta squeezes brand-text */
+  .brand-company { font-size: 14px; font-weight: 500; color: var(--rf-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand-sub { font-size: 11px; color: var(--rf-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .brand-phone { font-size: 11px; color: var(--rf-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .header .meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; min-width: 0; }
   .quote-ref {
     font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
     font-size: 12px;
@@ -147,23 +150,39 @@
     margin-right: 8px;
   }
   .find-btn:hover { background: var(--rf-navy); color: #fff; }
-  .finder-view { max-width: 1120px; margin: 0 auto; padding: 24px 16px; }
+  .finder-view { max-width: 1120px; margin: 0 auto; padding: 28px 16px 24px; }
   .finder-header {
     display: flex; align-items: center; justify-content: space-between;
-    margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 12px;
   }
-  .finder-header h2 { margin: 0; font-size: 20px; color: var(--rf-navy); }
+  /* On the navy outer bg, heading needs near-white weight to function as a title.
+     Was muted navy on navy (~invisible). */
+  .finder-header h2 {
+    margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.01em;
+    color: #fff;
+  }
   .finder-header .filter-chip {
     display: inline-flex; align-items: center; gap: 6px;
-    background: rgba(45,80,107,0.08); color: var(--rf-navy);
+    background: rgba(255,255,255,0.12); color: rgba(255,255,255,0.92);
     padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;
   }
+  /* Secondary action — quieter than the primary teal button; sits on navy. */
+  #finderBackBtn {
+    background: transparent;
+    color: rgba(255,255,255,0.92);
+    border: 1px solid rgba(255,255,255,0.32);
+    box-shadow: none;
+    padding: 7px 12px;
+  }
+  #finderBackBtn:hover { background: rgba(255,255,255,0.10); border-color: rgba(255,255,255,0.55); }
   .finder-search { width: 100%; margin-bottom: 16px; }
   .finder-search input {
-    width: 100%; padding: 12px 14px; font-size: 14px;
-    border: 1px solid #d0d7de; border-radius: 8px; box-sizing: border-box;
-    font-family: inherit;
+    width: 100%; padding: 10px 14px; font-size: 14px; line-height: 1.4;
+    border: 1px solid rgba(255,255,255,0.18); border-radius: 8px; box-sizing: border-box;
+    font-family: inherit; background: rgba(255,255,255,0.96); color: var(--rf-text);
   }
+  .finder-search input::placeholder { color: var(--rf-muted); }
+  .finder-search input:focus { outline: none; border-color: var(--rf-teal-border); box-shadow: 0 0 0 3px rgba(168,213,226,0.25); }
   .finder-list { display: flex; flex-direction: column; gap: 8px; }
   .finder-row {
     background: #fff; border: 1px solid #e1e4e8; border-radius: 10px;
@@ -188,7 +207,8 @@
   .finder-row .badge.current { background: rgba(46,160,67,0.18); color: #1a7f37; }
   .finder-row .badge.superseded { background: rgba(154,154,154,0.25); color: #6e7681; }
   .finder-empty, .finder-loading {
-    text-align: center; padding: 48px 16px; color: var(--rf-muted); font-size: 14px;
+    text-align: center; padding: 48px 16px;
+    color: rgba(255,255,255,0.72); font-size: 14px;
   }
   .amend-banner {
     background: rgba(255,176,32,0.12); border: 1px solid rgba(255,176,32,0.4);
@@ -831,7 +851,7 @@
     </div>
     <div class="meta">
       <div class="quote-ref" id="quoteRef">Q-—</div>
-      <button class="find-btn" id="findBtn" type="button" title="Find an existing quote to view or amend">
+      <button class="find-btn" id="findBtn" type="button" aria-label="Find an existing quote">
         <i class="ti ti-search"></i>
         <span>Find quote</span>
       </button>
@@ -930,7 +950,9 @@
       <button class="btn btn-secondary" id="previewBtn" type="button"><i class="ti ti-eye"></i>Preview PDF</button>
       <button class="btn btn-secondary" id="submitJobBtn" type="button"><i class="ti ti-briefcase"></i>Submit Job Only</button>
       <button class="btn btn-primary" id="submitEmailBtn" type="button"><i class="ti ti-mail"></i>Submit &amp; Send Quote</button>
-      <button class="btn btn-primary" id="amendBtn" type="button" style="display:none;"><i class="ti ti-send"></i>Re-send as new version</button>
+      <!-- RFT-76: amend mode mirrors the original submit's job-only / +email pair. -->
+      <button class="btn btn-secondary" id="amendJobBtn" type="button" style="display:none;"><i class="ti ti-briefcase"></i>Re-send (job only)</button>
+      <button class="btn btn-primary" id="amendEmailBtn" type="button" style="display:none;"><i class="ti ti-mail"></i>Re-send &amp; email customer</button>
     </div>
   </footer>
 
@@ -943,10 +965,10 @@
       <h2 id="finderTitle">Find an existing quote</h2>
       <div id="finderFilterChips" style="margin-top:6px;"></div>
     </div>
-    <button class="btn btn-secondary" id="finderBackBtn" type="button"><i class="ti ti-plus"></i>New quote instead</button>
+    <button class="btn" id="finderBackBtn" type="button"><i class="ti ti-plus"></i>New quote</button>
   </div>
   <div class="finder-search">
-    <input id="finderSearch" type="search" autocomplete="off" placeholder="Search by customer name, address, or quote reference…">
+    <input id="finderSearch" type="search" autocomplete="off" placeholder="Search by customer, address, or quote reference">
   </div>
   <div id="finderLoading" class="finder-loading">Loading recent quotes…</div>
   <div id="finderEmpty" class="finder-empty" style="display:none;">No quotes found. Try a different search, or start a new quote.</div>
@@ -1343,7 +1365,8 @@ async function rehydrateFromDraft(quoteRef) {
     state.amendParentVersion = data.version || 1;
     $("amendOfRef").textContent = `${quoteRef} (v${state.amendParentVersion})`;
     $("amendBanner").style.display = "flex";
-    $("amendBtn").style.display = "inline-flex";
+    $("amendJobBtn").style.display = "inline-flex";
+    $("amendEmailBtn").style.display = "inline-flex";
     $("submitJobBtn").style.display = "none";
     $("submitEmailBtn").style.display = "none";
 
@@ -1361,10 +1384,13 @@ async function rehydrateFromDraft(quoteRef) {
   }
 }
 
-// ===== AMEND SUBMIT (RFT-39) =====
-async function doAmend() {
+// ===== AMEND SUBMIT (RFT-39 + RFT-76) =====
+// sendEmail honours operator's per-amend choice — same semantics as the
+// original submit's send_email field.
+async function doAmend(sendEmail) {
   if (!state.amendOf) return;
-  const btn = $("amendBtn");
+  const btn = sendEmail ? $("amendEmailBtn") : $("amendJobBtn");
+  if (btn.disabled) return;
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Re-sending…';
@@ -1374,7 +1400,7 @@ async function doAmend() {
     state.quoteRef = newRef;
     $("quoteRef").textContent = newRef;
 
-    const payload = buildPayload("submit", false);
+    const payload = buildPayload("submit", sendEmail);
     // Override quote_ref in payload — buildPayload uses state.quoteRef but be
     // defensive: amend op requires payload.quote_ref differs from parent.
     payload.quote_ref = newRef;
@@ -1386,20 +1412,44 @@ async function doAmend() {
     const r = await fetch(`${API}/amend-quote`, {
       method: "POST",
       headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
-      body: JSON.stringify({ parent_quote_ref: state.amendOf, payload }),
+      body: JSON.stringify({ parent_quote_ref: state.amendOf, payload, send_email: sendEmail === true }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       const detail = data.detail || data.error || `amend_${r.status}`;
       throw new Error(detail);
     }
-    showSuccess(payload, { amended: true, newVersion: data.new_version });
+    // If the operator opted into email but SM8 send failed, the amend itself
+    // still succeeded — surface the email failure clearly via toast without
+    // masking the success state.
+    if (sendEmail && data.email && data.email.sent === false) {
+      toast(`Re-sent v${data.new_version} but email failed: ${data.email.error || "unknown"}`, "err");
+    }
+    showSuccess(payload, { amended: true, newVersion: data.new_version, emailSent: !!(data.email && data.email.sent) });
   } catch (e) {
     toast(String(e.message || e), "err");
   } finally {
     btn.disabled = false;
     btn.innerHTML = originalHtml;
   }
+}
+
+function amendJobOnly() {
+  $("emailError").style.display = "none";
+  doAmend(false);
+}
+
+function amendWithEmail() {
+  const email = ($("customerEmail").value || state.customerEmail || "").trim();
+  const valid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+  if (!valid) {
+    $("emailError").style.display = "";
+    $("customerEmail").focus();
+    return;
+  }
+  $("emailError").style.display = "none";
+  state.customerEmail = email;
+  doAmend(true);
 }
 
 async function loadClient() {
@@ -2096,7 +2146,11 @@ function returnToQuote() {
 function showSuccess(payload, opts = {}) {
   if (opts.amended) {
     const v = opts.newVersion ? `v${opts.newVersion}` : "new version";
-    $("successMsg").textContent = `Quote re-sent as ${v} on the same ServiceM8 job`;
+    if (opts.emailSent && payload.customer_email) {
+      $("successMsg").textContent = `Quote re-sent as ${v} and emailed to ${payload.customer_email}`;
+    } else {
+      $("successMsg").textContent = `Quote re-sent as ${v} on the same ServiceM8 job`;
+    }
   } else {
     $("successMsg").textContent = payload.send_email && payload.customer_email
       ? `Quote submitted and sent to ${payload.customer_email}`
@@ -2228,7 +2282,8 @@ function bindEvents() {
   $("submitJobBtn").addEventListener("click", submitJobOnly);
   $("submitEmailBtn").addEventListener("click", submitWithEmail);
   $("matBtn").addEventListener("click", refreshMaterials);
-  $("amendBtn").addEventListener("click", doAmend);
+  $("amendJobBtn").addEventListener("click", amendJobOnly);
+  $("amendEmailBtn").addEventListener("click", amendWithEmail);
   $("findBtn").addEventListener("click", () => {
     const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
     window.location.href = `/${encodeURIComponent(slug)}?find=1`;
