@@ -273,8 +273,19 @@ async function handleProvision(body, env) {
   const errors = [];
   if (!body.slug) errors.push('slug required');
   if (!body.company_name) errors.push('company_name required');
-  if (!body.webhook_url) errors.push('webhook_url required');
+  if (body.webhook_url !== undefined) errors.push('webhook_url not allowed — send webhook_env');
+  if (!body.webhook_env) errors.push('webhook_env required');
+  else if (!['prod', 'dev'].includes(body.webhook_env)) errors.push('webhook_env must be "prod" or "dev"');
   if (errors.length) return json({ ok: false, errors }, 400);
+
+  // RFT-58: resolve Make webhook URL from secret, server-side. URL never enters
+  // client code or KV via untrusted input.
+  const envKey = body.webhook_env === 'prod' ? 'MAKE_WEBHOOK_PROD' : 'MAKE_WEBHOOK_DEV';
+  const resolved = env[envKey];
+  if (!resolved) {
+    return json({ ok: false, error: 'server_misconfigured', detail: `${envKey} not set` }, 500);
+  }
+  body.webhook_url = resolved;
 
   try {
     const result = await provisionClient(body, env);

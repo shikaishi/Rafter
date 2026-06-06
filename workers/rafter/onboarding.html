@@ -287,7 +287,6 @@ textarea { resize: vertical; min-height: 68px; }
 .webhook-opt.selected { border-color: var(--rf-ocean); background: var(--rf-teal-bg); }
 .webhook-opt input[type=radio] { margin: 0; flex-shrink: 0; accent-color: var(--rf-ocean); }
 .webhook-opt-name { font-size: 13px; font-weight: 700; color: var(--rf-text); }
-.webhook-opt-url { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 11px; color: var(--rf-muted); }
 
 /* ===== Admin section ===== */
 .admin-box { background: var(--rf-teal-bg); border: 1px solid var(--rf-teal-border); border-radius: 8px; padding: 16px; }
@@ -741,12 +740,10 @@ textarea { resize: vertical; min-height: 68px; }
               <div class="webhook-opt selected" data-env="prod">
                 <input type="radio" name="webhook_env" value="prod" checked>
                 <span class="webhook-opt-name">Production</span>
-                <span class="webhook-opt-url">hook.eu1.make.com/oh8gh9i7…</span>
               </div>
               <div class="webhook-opt" data-env="dev">
                 <input type="radio" name="webhook_env" value="dev">
                 <span class="webhook-opt-name">Development</span>
-                <span class="webhook-opt-url">hook.eu1.make.com/i8gukma8…</span>
               </div>
             </div>
             <div class="field-hint">Make.com scenario — routes quote submissions for this account</div>
@@ -830,11 +827,6 @@ async function getClerkToken() {
 }
 
 const ADMIN_API = 'https://rafter-admin-api.will-8e8.workers.dev';
-
-const WEBHOOK_URLS = {
-  prod: 'https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4',
-  dev:  'https://hook.eu1.make.com/i8gukma8y3vs1gff7dihku8inotgy7lg',
-};
 
 const TIERS = [
   { key: 'under_20k',     label: 'Under $20,000',       def: '50, 50' },
@@ -1370,13 +1362,13 @@ async function handleSubmit(e, clerk) {
 
   const slug        = document.getElementById('slug').value.trim();
   const envRadio    = document.querySelector('input[name="webhook_env"]:checked');
-  const webhookUrl  = envRadio ? WEBHOOK_URLS[envRadio.value] : '';
+  const webhookEnv  = envRadio ? envRadio.value : '';
   const companyName = document.getElementById('p_company_name').value.trim();
 
   const errors = [];
   if (!companyName) errors.push('Company name is required (review Step 2).');
   if (!slug)        errors.push('URL slug is required.');
-  if (!webhookUrl)  errors.push('Webhook environment is required.');
+  if (!webhookEnv)  errors.push('Webhook environment is required.');
 
   const { thresholds, valid: thresholdValid } = readThresholds();
   if (!thresholdValid) errors.push('Each non-empty payment tier must sum to 100%.');
@@ -1398,7 +1390,7 @@ async function handleSubmit(e, clerk) {
     btn.disabled = false; status.textContent = ''; return;
   }
 
-  const payload = { slug, company_name: companyName, webhook_url: webhookUrl };
+  const payload = { slug, company_name: companyName, webhook_env: webhookEnv };
 
   // Step 2 fields
   const abn             = document.getElementById('abn').value.replace(/\D/g, '');
@@ -1506,13 +1498,14 @@ function showResultArea(kind, data, errorMsg) {
         <div class="result-meta">
           <p><strong>UUID:</strong> <code>${esc(d.uuid)}</code></p>
           <p><strong>Slug:</strong> <code>${esc(d.slug)}</code></p>
+          <p><strong>Full URL:</strong> <a href="https://rafter.deepgreensea.au/${esc(d.slug)}" target="_blank" rel="noopener"><code>https://rafter.deepgreensea.au/${esc(d.slug)}</code></a></p>
           <p><strong>Logo uploaded:</strong> ${d.logo_uploaded ? 'Yes' : 'Not yet — upload a logo to complete branding'}</p>
           <p><strong>Materials sync:</strong> ${d.sync_ok ? 'Started successfully' : 'Pending — run sync from admin panel'}</p>
           ${checkItems ? `<ul class="gate-checks">${checkItems}</ul>` : ''}
         </div>
         <div class="next-step">
           <h3><i class="ti ti-circle-check"></i> Setup complete</h3>
-          <p>Your Rafter account is configured and ready. Your Rafter administrator will send you a link to your quoting form.</p>
+          <p>Bookmark the URL above — it's your quoting form. Your Rafter administrator will reach out with onboarding next steps.</p>
         </div>
       </div>`;
   } else {
