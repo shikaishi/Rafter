@@ -164,7 +164,7 @@ async function handleGenerate(request, env, url) {
   const html = buildHtml({ payload, client, logoDataUrl, photoMap });
   const pdf = await renderPdf(env, html);
 
-  const filename = buildPdfFilename(payload);
+  const filename = buildPdfFilename(payload, client);
 
   if (mode === "preview") {
     return new Response(pdf, {
@@ -341,6 +341,13 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   const proposalLabels = buildProposalTypeLabels(client.proposal_types);
   const jobTitle = buildJobTitle(payload, proposalLabels);
 
+  // RFT-32: prominent version marker on PDF face for v>1. Approval-risk
+  // mitigation — if a customer signs the PDF, the document itself must state
+  // which version they signed against. NOT a footer; sits between cover-rule
+  // and job-title so it lands inside the cover's eye-line.
+  const version = Number.isInteger(payload.version) && payload.version >= 1 ? payload.version : 1;
+  const supersedesDate = payload.supersedes_date || "";
+
   const heroLogo = logoDataUrl
     ? `<img class="logo" src="${logoDataUrl}" alt="${escapeHtml(businessName)}">`
     : `<div class="logo-placeholder">${escapeHtml(businessName)}</div>`;
@@ -461,6 +468,31 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   }
 
   .cover-rule { margin-top: 10mm; border-top: 1px solid var(--rule); }
+
+  /* RFT-32 version banner — only rendered for v>1 amendments */
+  .version-banner {
+    margin-top: 7mm;
+    padding: 4mm 6mm;
+    background: var(--dark);
+    color: #fff;
+    border-radius: 1mm;
+    display: flex;
+    flex-direction: column;
+    gap: 1mm;
+  }
+  .version-banner .version-tag {
+    font-family: 'Mulish', sans-serif;
+    font-weight: 700;
+    font-size: 12pt;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+  .version-banner .version-detail {
+    font-family: 'Mulish', sans-serif;
+    font-weight: 400;
+    font-size: 10pt;
+    opacity: 0.92;
+  }
 
   .job-title {
     margin-top: 7mm;
@@ -765,6 +797,13 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
 
   <div class="cover-rule"></div>
 
+  ${version > 1 ? `
+  <div class="version-banner">
+    <span class="version-tag">Version ${version}</span>
+    <span class="version-detail">Supersedes the version dated ${escapeHtml(supersedesDate || "(date unknown)")}</span>
+  </div>
+  ` : ""}
+
   <h1 class="job-title">${escapeHtml(jobTitle)}</h1>
 
   <div class="work">
@@ -940,18 +979,41 @@ function renderTerms(terms) {
   </section>`;
 }
 
-function buildPdfFilename(payload) {
-  const ref = payload.quote_ref || "quote";
-  const name = payload.client_name || "";
-  const base = name ? `${ref} - ${name}` : ref;
-  return `${sanitizeFilenamePart(base)}.pdf`;
+// PDF-as-object naming (RFT-32, 2026-06-06): customer name leads, version
+// token tail, ISO date for sortability. Drops the HHMM-bearing quote_ref
+// from the customer-facing filename — the internal quote_ref still lives
+// in payload.quote_ref, the PDF body, the rafter-quotes row, and the SM8
+// job_description block. The PDF as an object the customer holds shouldn't
+// be tagged with a machine timestamp.
+function buildPdfFilename(payload, client) {
+  const customer = slugForFilename(payload.client_name || "Customer");
+  const dateStr = formatPdfFilenameDate(payload.proposal_date);
+  const labels = buildProposalTypeLabels(client && client.proposal_types);
+  const ptypeRaw = (labels && labels[payload.proposal_type]) || payload.proposal_type || "Quote";
+  const ptype = slugForFilename(ptypeRaw);
+  const v = Number.isInteger(payload.version) && payload.version >= 1 ? payload.version : 1;
+  const parts = [customer, dateStr, ptype, `v${v}`].filter(Boolean);
+  return `${parts.join("-") || "quote"}.pdf`;
 }
 
-function sanitizeFilenamePart(s) {
-  return String(s)
-    .replace(/[\\\/:*?"<>|\x00-\x1f]/g, "")
-    .replace(/\s+/g, " ")
+function slugForFilename(s) {
+  return String(s || "")
+    .replace(/[\\\/:*?"<>|\x00-\x1f]/g, "")  // filesystem-unsafe
+    .replace(/[^\w\s\-]/g, "")                // strip other punctuation
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "")
     .trim();
+}
+
+function formatPdfFilenameDate(s) {
+  if (!s) return "";
+  const d = new Date(s);
+  if (isNaN(d.getTime())) return "";
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${dd}`;
 }
 
 function buildJobDescription(payload, labels) {

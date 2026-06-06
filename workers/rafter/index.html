@@ -175,16 +175,18 @@
   .finder-row .secondary { color: var(--rf-muted); font-size: 12px; margin-top: 2px; }
   .finder-row .right { text-align: right; }
   .finder-row .total { font-weight: 600; font-size: 15px; color: var(--rf-navy); }
-  .finder-row .ts { color: var(--rf-muted); font-size: 11px; margin-top: 2px; }
-  .finder-row .badges { display: inline-flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .finder-row .ts { color: var(--rf-muted); font-size: 10px; opacity: 0.75; margin-top: 4px; }
+  /* RFT-32: badges lead the row content as the version distinguisher; date secondary */
+  .finder-row .badges { display: inline-flex; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
   .finder-row .badge {
     display: inline-flex; align-items: center;
     background: rgba(45,80,107,0.1); color: var(--rf-navy);
-    padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
-    letter-spacing: 0.02em; text-transform: uppercase;
+    padding: 3px 10px; border-radius: 10px; font-size: 11px; font-weight: 700;
+    letter-spacing: 0.04em; text-transform: uppercase;
   }
-  .finder-row .badge.current { background: rgba(46,160,67,0.15); color: #1a7f37; }
-  .finder-row .badge.superseded { background: rgba(154,154,154,0.2); color: #6e7681; }
+  .finder-row .badge.version { background: rgba(45,80,107,0.18); color: var(--rf-navy); }
+  .finder-row .badge.current { background: rgba(46,160,67,0.18); color: #1a7f37; }
+  .finder-row .badge.superseded { background: rgba(154,154,154,0.25); color: #6e7681; }
   .finder-empty, .finder-loading {
     text-align: center; padding: 48px 16px; color: var(--rf-muted); font-size: 14px;
   }
@@ -1217,18 +1219,23 @@ function renderFinderResults(results) {
   $("finderEmpty").style.display = "none";
   for (const r of results) {
     const total = (typeof r.total === "number") ? fmtMoney(r.total) : "";
-    const dateText = formatFinderDate(r.updated_at || r.created_at);
+    // RFT-32: each row's OWN created_at — updated_at gets bumped on the parent
+    // when it's superseded, making both versions look like they were sent at
+    // the amend time. created_at preserves the actual submit time per version.
+    const dateText = formatFinderDate(r.created_at || r.updated_at);
     const isCurrent = r.status !== "superseded";
-    const versionBadge = `<span class="badge">v${r.version || 1}</span>`;
+    const versionBadge = `<span class="badge version">v${r.version || 1}</span>`;
     const statusBadge = isCurrent
       ? `<span class="badge current">Current</span>`
       : `<span class="badge superseded">Superseded</span>`;
+    // Badges lead the row — at minute-apart amend cadence, version+status is
+    // the distinguisher; date alone is ambiguous.
     const row = el(`
       <div class="finder-row" data-ref="${escapeHtml(r.quote_ref)}">
         <div>
+          <div class="badges">${statusBadge}${versionBadge}${r.proposal_type ? `<span class="badge">${escapeHtml(r.proposal_type)}</span>` : ""}</div>
           <div class="primary">${escapeHtml(r.client_name || "(no customer name)")}</div>
           <div class="secondary">${escapeHtml(r.site_address || "")}${r.site_address ? " · " : ""}${escapeHtml(r.quote_ref)}</div>
-          <div class="badges">${statusBadge}${versionBadge}${r.proposal_type ? `<span class="badge">${escapeHtml(r.proposal_type)}</span>` : ""}</div>
         </div>
         <div class="right">
           <div class="total">${total}</div>
@@ -1975,6 +1982,10 @@ function buildPayload(mode, sendEmail) {
 
   return {
     mode,
+    // RFT-32: version=1 default on every fresh submit. /amend-quote
+    // authoritatively overrides this server-side for amends.
+    version: 1,
+    parent_ref: null,
     client_uuid: state.clientUuid,
     customer_email: state.customerEmail || $("customerEmail").value.trim(),
     customer_phone: state.customerPhone || $("customerPhone").value.trim(),

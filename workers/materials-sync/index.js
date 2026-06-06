@@ -1331,7 +1331,46 @@ async function fetchAmendPdf(env, payload) {
     return { ok: false, status: 502, error: { error: "pdf_generate_failed", status: res.status, detail: detail.slice(0, 500) } };
   }
   const bytes = await res.arrayBuffer();
-  return { ok: true, bytes };
+  // Filename is canonical on PDF worker (buildPdfFilename) — read it back via
+  // Content-Disposition so SM8 attachment_name matches the customer-facing
+  // filename verbatim. If header malformed, fall back to a quote_ref shape.
+  const cd = res.headers.get("Content-Disposition") || "";
+  const m = cd.match(/filename="([^"]+)"/);
+  const filename = m ? m[1] : `${payload.quote_ref || "quote"}.pdf`;
+  return { ok: true, bytes, filename };
+}
+
+// After amend's new attachment is created, deactivate the prior active
+// attachment(s) on the SM8 job so the customer can never accidentally
+// approve a superseded version (RFT-33 confirmed deactivation works).
+// Andy may want to override this to keep prior versions visible side-by-side —
+// tracked on RFT-41.
+async function sm8DeactivatePriorAttachments(accessToken, jobUuid, keepAttachmentUuid) {
+  const filterUrl = `${SM8_BASE}/Attachment.json?%24filter=related_object_uuid%20eq%20%27${encodeURIComponent(jobUuid)}%27`;
+  const listRes = await fetch(filterUrl, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  if (!listRes.ok) {
+    return { ok: false, status: listRes.status, detail: "list failed" };
+  }
+  let list;
+  try { list = await listRes.json(); }
+  catch { return { ok: false, status: 502, detail: "list invalid json" }; }
+  if (!Array.isArray(list)) return { ok: false, status: 502, detail: "list not array" };
+
+  const toDeactivate = list.filter((a) => a && a.uuid !== keepAttachmentUuid && a.active != 0);
+  let deactivated = 0;
+  const failures = [];
+  for (const a of toDeactivate) {
+    const r = await fetch(`${SM8_BASE}/Attachment/${a.uuid}.json`, {
+      method: "POST",
+      headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ active: false }),
+    });
+    if (r.ok) deactivated++;
+    else failures.push({ uuid: a.uuid, status: r.status });
+  }
+  return { ok: true, total_prior_active: toDeactivate.length, deactivated, failures };
 }
 
 async function sm8AttachPdf(accessToken, jobUuid, filename, pdfBytes) {
@@ -1462,6 +1501,21 @@ async function handleAmendQuote(request, env) {
   const sm8_job_uuid = parent.sm8_job_uuid;
   const new_version = (parent.version || 1) + 1;
 
+  // Parent's proposal_date for the PDF banner ("supersedes the version dated …")
+  let parentPayload = {};
+  try { parentPayload = JSON.parse(parent.payload || "{}"); } catch { /* parent payload corrupt — banner will say "(date unknown)" */ }
+  const supersedes_date = parentPayload.proposal_date || "";
+
+  // Enrich payload for PDF worker: version + supersedes context drive both
+  // the filename (…-v2.pdf) and the on-face version banner. Stored verbatim
+  // in rafter-quotes so future amends can chain.
+  const enrichedPayload = {
+    ...payload,
+    version: new_version,
+    parent_ref: parent_quote_ref,
+    supersedes_date,
+  };
+
   // Load client config for proposal-type labels + token refresh
   const client = await readClient(env, client_uuid);
   if (!client) return json({ error: "client_not_found", client_uuid }, { status: 404 });
@@ -1471,22 +1525,31 @@ async function handleAmendQuote(request, env) {
   catch (e) { return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 }); }
 
   // Generate PDF via PDF_WORKER service binding
-  const pdf = await fetchAmendPdf(env, payload);
+  const pdf = await fetchAmendPdf(env, enrichedPayload);
   if (!pdf.ok) return json(pdf.error, { status: pdf.status });
 
-  // SM8 attach (two-step). Filename uses new quote_ref so operator sees the
-  // version in the SM8 attachments list.
-  const filename = `${new_quote_ref}.pdf`;
-  const attach = await sm8AttachPdf(accessToken, sm8_job_uuid, filename, pdf.bytes);
+  // SM8 attach (two-step). Filename comes from PDF worker via
+  // Content-Disposition so SM8's attachment_name matches the customer-facing
+  // filename (e.g. Customer-2026-06-06-Quote-v2.pdf).
+  const attach = await sm8AttachPdf(accessToken, sm8_job_uuid, pdf.filename, pdf.bytes);
   if (!attach.ok) return json(attach.error, { status: attach.status });
 
   // Append job_description version block. If this fails the attachment is
   // already on SM8 — surface clearly. (No automatic rollback; operator can
   // delete the orphan attachment via SM8 UI if needed.)
-  const append = await sm8AppendJobDescription(accessToken, sm8_job_uuid, payload, client);
+  const append = await sm8AppendJobDescription(accessToken, sm8_job_uuid, enrichedPayload, client);
   if (!append.ok) {
     // Annotate with the attachment we already created so a human can clean up.
     return json({ ...append.error, attachment_uuid_orphaned: attach.attachment_uuid }, { status: append.status });
+  }
+
+  // Deactivate prior attachments — default behaviour (RFT-33 confirmed; RFT-41
+  // pending Andy on whether side-by-side comparison wins out for some clients).
+  // Non-blocking: if SM8 list/update fails the amend already succeeded; surface
+  // the result for visibility but don't roll the row back.
+  const deact = await sm8DeactivatePriorAttachments(accessToken, sm8_job_uuid, attach.attachment_uuid);
+  if (!deact.ok) {
+    console.error(JSON.stringify({ event: "amend_deactivate_prior_failed", sm8_job_uuid, detail: deact.detail || deact.status }));
   }
 
   // Write new row
@@ -1497,7 +1560,7 @@ async function handleAmendQuote(request, env) {
     version: new_version,
     parent_ref: parent_quote_ref,
     status: "submitted",
-    payload,
+    payload: enrichedPayload,
   });
   if (w.error) {
     // SM8-side committed already — surface but don't roll back. The amend is
@@ -1521,7 +1584,11 @@ async function handleAmendQuote(request, env) {
     parent_quote_ref,
     sm8_job_uuid,
     attachment_uuid: attach.attachment_uuid,
+    filename: pdf.filename,
     job_description: { prior_length: append.prior_length, new_length: append.new_length },
+    prior_attachments: deact.ok
+      ? { total_active: deact.total_prior_active, deactivated: deact.deactivated, failures: deact.failures }
+      : { error: deact.detail || `status_${deact.status}` },
   });
 }
 
