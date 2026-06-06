@@ -53,7 +53,6 @@ Build the JSON record with these fields. Populate what you can before OAuth; tok
 | `branding.background` | string | Client | Light bg hex, e.g. `"#ECF1E8"` |
 | `branding.heading_font` | string | Client | e.g. `"Playfair Display"` |
 | `branding.body_font` | string | Client | e.g. `"Mulish"` |
-| `r2_photo_path` | string | Derived | Always `"clients/{uuid}/photos/"` |
 | `payment_thresholds` | object | Client | Keys: `under_15k`, `between_15k_50k`, `over_50k`. Values: e.g. `"50/50"`, `"20/60/20"`, `"5/progress/final"` |
 | `proposal_types` | array | Client | e.g. `["LC", "GM"]` — abbreviations used in PDF cover title |
 | `job_categories` | array | SM8 | Copy from SM8 → Settings → Job Categories |
@@ -89,7 +88,6 @@ Create this before the OAuth flow. Token fields can be left as empty strings —
     "heading_font": "Playfair Display",
     "body_font": "Mulish"
   },
-  "r2_photo_path": "clients/{uuid}/photos/",
   "payment_thresholds": {
     "under_15k": "50/50",
     "between_15k_50k": "20/60/20",

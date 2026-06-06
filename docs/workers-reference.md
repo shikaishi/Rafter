@@ -23,7 +23,7 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 
 ### KV record contents (`client:0e604a45-…` — verified clean 2026-05-30)
 
-- `uuid`, `company_name` ("2 Men and a Shovel"), branding, `r2_photo_path`
+- `uuid`, `company_name` ("2 Men and a Shovel"), branding
 - `payment_thresholds`: 6-tier — `under_20k` (50/50), `20k_to_35k` (20/60/20), `35k_to_50k` (5/45/45/5), `50k_to_100k` (5/31/31/31/2), `100k_to_200k` (5/27/22/22/22/2), `over_200k` (5/21/18/18/18/18/2). Boundary: `<=` so $20,000 falls in tier 1, $20,001 in tier 2.
 - `proposal_types`: `["LC", "GM"]`
 - `job_categories`: `["Garden Maintenance", "Landscaping"]`
