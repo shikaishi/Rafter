@@ -218,7 +218,93 @@ async function handleOnboarding(request, env, url, jwtPayload) {
     return handleOnboardingPhotos(request, env, jwtPayload);
   }
 
+  if (method === 'POST' && path === '/onboarding/sm8-callback') {
+    return handleSm8Callback(request, env, jwtPayload);
+  }
+
   return json({ ok: false, error: 'Not Found' }, 404);
+}
+
+// ── SM8 OAuth callback (RFT-69 Path 2 — removes Make from the auth path) ────
+
+async function handleSm8Callback(request, env, jwtPayload) {
+  const orgId = jwtPayload.org_id;
+  if (!orgId) return json({ ok: false, error: 'No org_id in JWT' }, 401);
+
+  const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+  if (!uuid) return json({ ok: false, error: 'Client not provisioned — Clerk org webhook may not have fired' }, 404);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'Invalid JSON body' }, 400); }
+
+  const code = body?.code;
+  if (!code || typeof code !== 'string') return json({ ok: false, error: 'missing_code' }, 400);
+
+  if (!env.SERVICEM8_CLIENT_SECRET) {
+    return json({ ok: false, error: 'server_misconfigured', detail: 'SERVICEM8_CLIENT_SECRET not set' }, 500);
+  }
+  if (!env.RAFTER_WORKER_SECRET) {
+    return json({ ok: false, error: 'server_misconfigured', detail: 'RAFTER_WORKER_SECRET not set' }, 500);
+  }
+
+  // Code → tokens via SM8 directly. client_id 781230 is the registered OAuth
+  // app bound to rafter.deepgreensea.au/callback (RFT-69 Decision 2 — SM8
+  // admin confirmed single registered app). Matches setup.html:311 +
+  // materials-sync SM8_CLIENT_ID.
+  const tokenRes = await fetch('https://go.servicem8.com/oauth/access_token', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'authorization_code',
+      code,
+      client_id: '781230',
+      client_secret: env.SERVICEM8_CLIENT_SECRET,
+      redirect_uri: 'https://rafter.deepgreensea.au/callback',
+    }).toString(),
+  });
+
+  if (!tokenRes.ok) {
+    const detail = await tokenRes.text().catch(() => '');
+    return json({ ok: false, error: 'sm8_token_exchange_failed', status: tokenRes.status, detail: detail.slice(0, 500) }, 502);
+  }
+
+  let tokens;
+  try { tokens = await tokenRes.json(); }
+  catch (e) { return json({ ok: false, error: 'sm8_token_exchange_invalid_response', detail: e.message }, 502); }
+
+  if (!tokens.access_token) {
+    return json({ ok: false, error: 'sm8_token_exchange_no_access_token' }, 502);
+  }
+
+  const expires_at = tokens.expires_in
+    ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+    : null;
+
+  // Persist via materials-sync /store-token through the service binding.
+  // The URL host is irrelevant on a service binding — only the path matters.
+  const storeRes = await env.MATERIALS_SYNC_WORKER.fetch('https://internal/store-token', {
+    method: 'POST',
+    headers: {
+      'Authorization': `Bearer ${env.RAFTER_WORKER_SECRET}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      uuid,
+      access_token: tokens.access_token,
+      refresh_token: tokens.refresh_token,
+      expires_at,
+    }),
+  });
+
+  if (!storeRes.ok) {
+    const detail = await storeRes.text().catch(() => '');
+    return json({ ok: false, error: 'store_token_failed', status: storeRes.status, detail: detail.slice(0, 500) }, 502);
+  }
+
+  console.log(JSON.stringify({ event: 'sm8_connected', uuid }));
+
+  return json({ ok: true, uuid });
 }
 
 // ── Photo upload ─────────────────────────────────────────────────────────────

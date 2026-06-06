@@ -61,9 +61,13 @@
   </footer>
 </div>
 
+<script
+  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  crossorigin="anonymous"
+></script>
 <script>
-  const TOKEN_WEBHOOK = 'https://hook.eu1.make.com/38k3vwhijsfun40uu3pmk942gdjnvj32';
-  const DATA_WEBHOOK  = 'https://hook.eu1.make.com/hao3fhj1n2d1il4bhkkabozjwl892ujt';
+  const ADMIN_API = 'https://rafter-admin-api.will-8e8.workers.dev';
 
   function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
@@ -96,6 +100,22 @@
     document.getElementById('card').appendChild(box);
   }
 
+  async function getClerkToken() {
+    if (!window.Clerk) throw new Error('Authentication library failed to load. Please refresh.');
+    try {
+      await Promise.race([
+        Clerk.load(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('Clerk load timed out')), 10000)),
+      ]);
+    } catch (err) {
+      throw new Error('Authentication error: ' + err.message);
+    }
+    if (!Clerk.user) throw new Error('No active session. Please return to onboarding and sign in again.');
+    const token = await Clerk.session.getToken();
+    if (!token) throw new Error('Could not retrieve authentication token.');
+    return token;
+  }
+
   async function run() {
     const params = new URLSearchParams(window.location.search);
     const code = params.get('code');
@@ -120,36 +140,25 @@
     sessionStorage.removeItem('oauth_state');
 
     try {
+      setStatus('Authenticating…');
+      const jwt = await getClerkToken();
+
       setStatus('Exchanging authorisation code…');
-      const tokenRes = await fetch(TOKEN_WEBHOOK, {
+      const res = await fetch(`${ADMIN_API}/onboarding/sm8-callback`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ code })
+        headers: {
+          'Authorization': `Bearer ${jwt}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ code }),
       });
 
-      if (!tokenRes.ok) throw new Error('Token exchange failed: ' + tokenRes.status);
-      const tokenText = await tokenRes.text();
-      let tokenData;
-      try {
-        tokenData = JSON.parse(tokenText);
-      } catch (_) {
-        // Make's Webhook Response sometimes emits "expires_in": } (no value).
-        // Extract access_token directly rather than failing the whole flow.
-        const m = tokenText.match(/"access_token"\s*:\s*"([^"]+)"/);
-        if (!m) throw new Error('Token response parse failed. Raw: ' + tokenText.slice(0, 300));
-        tokenData = { access_token: m[1] };
+      if (!res.ok) {
+        let body = {};
+        try { body = await res.json(); } catch {}
+        const detail = body.detail || body.error || `HTTP ${res.status}`;
+        throw new Error('Token exchange failed: ' + detail);
       }
-      const accessToken = tokenData.access_token;
-      if (!accessToken) throw new Error('No access token returned from Make.');
-
-      setStatus('Sending account data…');
-      const dataRes = await fetch(DATA_WEBHOOK, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ access_token: accessToken })
-      });
-
-      if (!dataRes.ok) throw new Error('Data retrieval failed: ' + dataRes.status);
 
       const returnTo = sessionStorage.getItem('oauth_return_to');
       sessionStorage.removeItem('oauth_return_to');
