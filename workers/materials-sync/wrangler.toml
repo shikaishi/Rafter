@@ -20,5 +20,11 @@ binding = "RAFTER_QUOTES"
 database_name = "rafter-quotes"
 database_id = "71594968-73c4-490a-b4bc-a425b0400402"
 
+# Service binding to PDF worker for amend op (RFT-39). Constraint #11: W2W
+# subrequests via workers.dev URLs are silently dropped — service binding only.
+[[services]]
+binding = "PDF_WORKER"
+service = "rafter-pdf"
+
 [triggers]
 crons = ["0 10 * * *"]

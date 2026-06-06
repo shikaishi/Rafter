@@ -138,6 +138,62 @@
   .mat-btn[disabled] { opacity: 0.7; cursor: progress; }
   .mat-btn.err { background: var(--rf-danger); box-shadow: 0 2px 8px rgba(229,115,115,0.35); }
 
+  /* ===== FIND QUOTE BUTTON + FINDER VIEW (RFT-38) ===== */
+  .find-btn {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: transparent; color: var(--rf-navy);
+    border: 1px solid var(--rf-navy); border-radius: 8px;
+    padding: 8px 12px; font-size: 12px; font-family: inherit; cursor: pointer;
+    margin-right: 8px;
+  }
+  .find-btn:hover { background: var(--rf-navy); color: #fff; }
+  .finder-view { max-width: 1120px; margin: 0 auto; padding: 24px 16px; }
+  .finder-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 16px; flex-wrap: wrap; gap: 12px;
+  }
+  .finder-header h2 { margin: 0; font-size: 20px; color: var(--rf-navy); }
+  .finder-header .filter-chip {
+    display: inline-flex; align-items: center; gap: 6px;
+    background: rgba(45,80,107,0.08); color: var(--rf-navy);
+    padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 500;
+  }
+  .finder-search { width: 100%; margin-bottom: 16px; }
+  .finder-search input {
+    width: 100%; padding: 12px 14px; font-size: 14px;
+    border: 1px solid #d0d7de; border-radius: 8px; box-sizing: border-box;
+    font-family: inherit;
+  }
+  .finder-list { display: flex; flex-direction: column; gap: 8px; }
+  .finder-row {
+    background: #fff; border: 1px solid #e1e4e8; border-radius: 10px;
+    padding: 14px 16px; cursor: pointer; transition: border-color 0.15s, transform 0.05s;
+    display: grid; grid-template-columns: 1fr auto; gap: 8px 16px;
+  }
+  .finder-row:hover { border-color: var(--rf-navy); transform: translateY(-1px); }
+  .finder-row .primary { font-weight: 600; color: var(--rf-navy); font-size: 15px; }
+  .finder-row .secondary { color: var(--rf-muted); font-size: 12px; margin-top: 2px; }
+  .finder-row .right { text-align: right; }
+  .finder-row .total { font-weight: 600; font-size: 15px; color: var(--rf-navy); }
+  .finder-row .ts { color: var(--rf-muted); font-size: 11px; margin-top: 2px; }
+  .finder-row .badges { display: inline-flex; gap: 6px; margin-top: 6px; flex-wrap: wrap; }
+  .finder-row .badge {
+    display: inline-flex; align-items: center;
+    background: rgba(45,80,107,0.1); color: var(--rf-navy);
+    padding: 2px 8px; border-radius: 10px; font-size: 10px; font-weight: 600;
+    letter-spacing: 0.02em; text-transform: uppercase;
+  }
+  .finder-row .badge.current { background: rgba(46,160,67,0.15); color: #1a7f37; }
+  .finder-row .badge.superseded { background: rgba(154,154,154,0.2); color: #6e7681; }
+  .finder-empty, .finder-loading {
+    text-align: center; padding: 48px 16px; color: var(--rf-muted); font-size: 14px;
+  }
+  .amend-banner {
+    background: rgba(255,176,32,0.12); border: 1px solid rgba(255,176,32,0.4);
+    border-radius: 8px; padding: 10px 14px; margin: 0 0 16px 0;
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8a5a00;
+  }
+
   /* ===== SECTION HEADER BAR ===== */
   .section-bar {
     background: var(--rf-navy);
@@ -773,6 +829,10 @@
     </div>
     <div class="meta">
       <div class="quote-ref" id="quoteRef">Q-—</div>
+      <button class="find-btn" id="findBtn" type="button" title="Find an existing quote to view or amend">
+        <i class="ti ti-search"></i>
+        <span>Find quote</span>
+      </button>
       <button class="mat-btn" id="matBtn" type="button">
         <i class="ti ti-refresh"></i>
         <span>Materials</span>
@@ -781,6 +841,12 @@
       </button>
     </div>
   </header>
+
+  <!-- AMEND-MODE BANNER (shown when rehydrated from a stored quote) -->
+  <div id="amendBanner" class="amend-banner" style="display:none;">
+    <i class="ti ti-history"></i>
+    <span>You are amending <strong id="amendOfRef">—</strong>. Re-sending creates a new version on the same ServiceM8 job.</span>
+  </div>
 
   <!-- SECTION 1 — CLIENT & JOB DETAILS -->
   <section class="card">
@@ -862,10 +928,28 @@
       <button class="btn btn-secondary" id="previewBtn" type="button"><i class="ti ti-eye"></i>Preview PDF</button>
       <button class="btn btn-secondary" id="submitJobBtn" type="button"><i class="ti ti-briefcase"></i>Submit Job Only</button>
       <button class="btn btn-primary" id="submitEmailBtn" type="button"><i class="ti ti-mail"></i>Submit &amp; Send Quote</button>
+      <button class="btn btn-primary" id="amendBtn" type="button" style="display:none;"><i class="ti ti-send"></i>Re-send as new version</button>
     </div>
   </footer>
 
 </main>
+
+<!-- FINDER VIEW (RFT-38) — shown when ?find=1 in URL or operator clicks Find quote -->
+<div id="finderView" class="finder-view" style="display:none;">
+  <div class="finder-header">
+    <div>
+      <h2 id="finderTitle">Find an existing quote</h2>
+      <div id="finderFilterChips" style="margin-top:6px;"></div>
+    </div>
+    <button class="btn btn-secondary" id="finderBackBtn" type="button"><i class="ti ti-plus"></i>New quote instead</button>
+  </div>
+  <div class="finder-search">
+    <input id="finderSearch" type="search" autocomplete="off" placeholder="Search by customer name, address, or quote reference…">
+  </div>
+  <div id="finderLoading" class="finder-loading">Loading recent quotes…</div>
+  <div id="finderEmpty" class="finder-empty" style="display:none;">No quotes found. Try a different search, or start a new quote.</div>
+  <div id="finderList" class="finder-list"></div>
+</div>
 
 <div id="errorState">
   <div class="success-card">
@@ -952,6 +1036,10 @@ const state = {
   notes: "",
   chipsExpanded: false,
   lastSync: null,
+  // RFT-32 edit-quote: when non-null, the operator is amending a prior
+  // submission. doSubmit branches to amend op against the same SM8 job.
+  amendOf: null,        // parent quote_ref
+  amendParentVersion: 0,
 };
 
 // ===== UTILITIES =====
@@ -1044,7 +1132,31 @@ async function boot() {
   const ok = await resolveClientSlug();
   if (!ok) return;
 
+  // RFT-32 mode routing — three entry shapes:
+  //   ?find=1[&sm8_job_uuid=…] → finder (RFT-38 two-door)
+  //   ?quote_ref=Q-…           → rehydrate the form for amend
+  //   neither                  → fresh quote (default)
+  const params = new URLSearchParams(window.location.search);
+  const findMode = params.get("find") === "1";
+  const rehydrateRef = params.get("quote_ref");
+  const sm8JobFilter = params.get("sm8_job_uuid");
+
+  if (findMode) {
+    await Promise.allSettled([loadClient()]);
+    renderHeader();
+    bindFinderEvents();
+    showFinder({ sm8JobUuid: sm8JobFilter });
+    return;
+  }
+
   await Promise.allSettled([loadClient(), loadMaterials(), loadPhotos()]);
+
+  if (rehydrateRef) {
+    const rehydrated = await rehydrateFromDraft(rehydrateRef);
+    if (!rehydrated) {
+      // Fall through to fresh quote — error already toasted by rehydrateFromDraft.
+    }
+  }
 
   renderHeader();
   renderChips();
@@ -1054,6 +1166,233 @@ async function boot() {
 
   // Maps autocomplete may not yet be ready; if it is, attach now.
   if (window.google && window.google.maps && window.google.maps.places) initAutocomplete();
+}
+
+// ===== FINDER (RFT-38) =====
+function showFinder({ sm8JobUuid } = {}) {
+  $("appMain").style.display = "none";
+  $("finderView").style.display = "block";
+  const title = sm8JobUuid ? "Quotes for this job" : "Find an existing quote";
+  $("finderTitle").textContent = title;
+  const chips = $("finderFilterChips");
+  chips.innerHTML = "";
+  if (sm8JobUuid) {
+    const chip = el(`<span class="filter-chip"><i class="ti ti-tag"></i>SM8 job ${escapeHtml(sm8JobUuid.slice(0, 8))}…</span>`);
+    chips.appendChild(chip);
+  }
+  loadDraftsList({ sm8JobUuid });
+}
+
+async function loadDraftsList({ sm8JobUuid, q } = {}) {
+  $("finderLoading").style.display = "block";
+  $("finderEmpty").style.display = "none";
+  $("finderList").innerHTML = "";
+  try {
+    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
+    if (!tokenRes.ok) throw new Error(`token_${tokenRes.status}`);
+    const { token } = await tokenRes.json();
+    const url = new URL(`${API}/drafts`);
+    url.searchParams.set("client_uuid", state.clientUuid);
+    if (sm8JobUuid) url.searchParams.set("sm8_job_uuid", sm8JobUuid);
+    if (q) url.searchParams.set("q", q);
+    const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+    if (!r.ok) throw new Error(`drafts_${r.status}`);
+    const data = await r.json();
+    renderFinderResults(data.results || []);
+  } catch (e) {
+    $("finderLoading").style.display = "none";
+    $("finderEmpty").style.display = "block";
+    $("finderEmpty").textContent = "Could not load quotes. Please refresh and try again.";
+  }
+}
+
+function renderFinderResults(results) {
+  $("finderLoading").style.display = "none";
+  const list = $("finderList");
+  list.innerHTML = "";
+  if (!results.length) {
+    $("finderEmpty").style.display = "block";
+    return;
+  }
+  $("finderEmpty").style.display = "none";
+  for (const r of results) {
+    const total = (typeof r.total === "number") ? fmtMoney(r.total) : "";
+    const dateText = formatFinderDate(r.updated_at || r.created_at);
+    const isCurrent = r.status !== "superseded";
+    const versionBadge = `<span class="badge">v${r.version || 1}</span>`;
+    const statusBadge = isCurrent
+      ? `<span class="badge current">Current</span>`
+      : `<span class="badge superseded">Superseded</span>`;
+    const row = el(`
+      <div class="finder-row" data-ref="${escapeHtml(r.quote_ref)}">
+        <div>
+          <div class="primary">${escapeHtml(r.client_name || "(no customer name)")}</div>
+          <div class="secondary">${escapeHtml(r.site_address || "")}${r.site_address ? " · " : ""}${escapeHtml(r.quote_ref)}</div>
+          <div class="badges">${statusBadge}${versionBadge}${r.proposal_type ? `<span class="badge">${escapeHtml(r.proposal_type)}</span>` : ""}</div>
+        </div>
+        <div class="right">
+          <div class="total">${total}</div>
+          <div class="ts">${escapeHtml(dateText)}</div>
+        </div>
+      </div>
+    `);
+    row.addEventListener("click", () => onSelectQuote(r.quote_ref));
+    list.appendChild(row);
+  }
+}
+
+function formatFinderDate(iso) {
+  if (!iso) return "";
+  const d = new Date(iso);
+  if (isNaN(d.getTime())) return "";
+  return new Intl.DateTimeFormat("en-AU", {
+    timeZone: MEL_TZ, year: "numeric", month: "short", day: "numeric",
+    hour: "2-digit", minute: "2-digit", hour12: false,
+  }).format(d);
+}
+
+function onSelectQuote(quoteRef) {
+  // Hard navigation — boot will re-run, see ?quote_ref=, and rehydrate. Keeps
+  // the boot path single. Slug preserved by using same hostname + first path segment.
+  const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
+  window.location.href = `/${encodeURIComponent(slug)}?quote_ref=${encodeURIComponent(quoteRef)}`;
+}
+
+function bindFinderEvents() {
+  const search = $("finderSearch");
+  const debouncedSearch = debounce(() => {
+    const q = search.value.trim();
+    const params = new URLSearchParams(window.location.search);
+    const sm8JobUuid = params.get("sm8_job_uuid");
+    loadDraftsList({ sm8JobUuid, q: q.length >= 2 ? q : undefined });
+  }, 250);
+  search.addEventListener("input", debouncedSearch);
+  $("finderBackBtn").addEventListener("click", () => {
+    const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
+    window.location.href = `/${encodeURIComponent(slug)}`;
+  });
+}
+
+// ===== REHYDRATE (RFT-32) =====
+async function rehydrateFromDraft(quoteRef) {
+  try {
+    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
+    if (!tokenRes.ok) throw new Error(`token_${tokenRes.status}`);
+    const { token } = await tokenRes.json();
+    const r = await fetch(`${API}/draft/${encodeURIComponent(quoteRef)}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!r.ok) {
+      toast("Could not load that quote. Starting a new one.", "err");
+      return false;
+    }
+    const data = await r.json();
+    const p = data.payload || {};
+
+    // Replay payload → state. Field-by-field rather than Object.assign so any
+    // additional state fields (UI-only) keep their defaults. Payload is the
+    // source of truth for everything in this list.
+    state.proposalType   = p.proposal_type || state.proposalType;
+    state.proposalDate   = p.proposal_date || state.proposalDate;
+    state.clientName     = p.client_name || "";
+    state.clientSm8Uuid  = p.client_sm8_uuid || null;
+    state.clientSelectedName = p.client_name || null;
+    state.customerEmail  = p.customer_email || "";
+    state.customerPhone  = p.customer_phone || "";
+    state.siteAddress    = p.site_address || "";
+    state.notes          = p.notes || "";
+    // Sections — payload.form_sections is the canonical structured form. If
+    // missing (older payload), fall back to derived sections + lineItems.
+    if (Array.isArray(p.form_sections) && p.form_sections.length) {
+      state.sections = p.form_sections.map((fs) => ({
+        id: uid(),
+        name: fs.name || "",
+        templateKey: fs.name || "",
+        text: fs.text || "",
+        textOriginal: SCOPE_MAP[fs.name] || (fs.text || ""),
+        price: Number(fs.price) || 0,
+        lineItems: (fs.line_items || []).map((li) => ({
+          id: uid(),
+          name: li.name || "",
+          qty: Number(li.quantity) || 0,
+          unit: li.unit || "",
+          unitPrice: Number(li.unit_price) || 0,
+          sm8_uuid: li.sm8_uuid || null,
+        })),
+        photos: (fs.photos || []).slice(),
+        collapsed: false,
+        photoPanelOpen: false,
+        photoCat: "",
+      }));
+    }
+
+    // KEEP the original quote_ref — issuing a new one happens at amend submit
+    // time so the UI badge/title shows the version the operator opened.
+    state.quoteRef = p.quote_ref || state.quoteRef;
+    $("quoteRef").textContent = state.quoteRef;
+
+    // Mark amend mode.
+    state.amendOf = quoteRef;
+    state.amendParentVersion = data.version || 1;
+    $("amendOfRef").textContent = `${quoteRef} (v${state.amendParentVersion})`;
+    $("amendBanner").style.display = "flex";
+    $("amendBtn").style.display = "inline-flex";
+    $("submitJobBtn").style.display = "none";
+    $("submitEmailBtn").style.display = "none";
+
+    // Populate input fields directly (not all are state-driven on render).
+    $("clientName").value    = state.clientName || "";
+    $("siteAddress").value   = state.siteAddress || "";
+    $("customerEmail").value = state.customerEmail || "";
+    $("customerPhone").value = state.customerPhone || "";
+    $("notes").value         = state.notes || "";
+
+    return true;
+  } catch (e) {
+    toast("Could not load that quote. Starting a new one.", "err");
+    return false;
+  }
+}
+
+// ===== AMEND SUBMIT (RFT-39) =====
+async function doAmend() {
+  if (!state.amendOf) return;
+  const btn = $("amendBtn");
+  const originalHtml = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Re-sending…';
+  try {
+    // Generate a fresh quote_ref for the new version (Melbourne TZ).
+    const newRef = generateQuoteRef();
+    state.quoteRef = newRef;
+    $("quoteRef").textContent = newRef;
+
+    const payload = buildPayload("submit", false);
+    // Override quote_ref in payload — buildPayload uses state.quoteRef but be
+    // defensive: amend op requires payload.quote_ref differs from parent.
+    payload.quote_ref = newRef;
+
+    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
+    if (!tokenRes.ok) throw new Error("Failed to get amend authorisation — please try again.");
+    const { token } = await tokenRes.json();
+
+    const r = await fetch(`${API}/amend-quote`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      body: JSON.stringify({ parent_quote_ref: state.amendOf, payload }),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      const detail = data.detail || data.error || `amend_${r.status}`;
+      throw new Error(detail);
+    }
+    showSuccess(payload, { amended: true, newVersion: data.new_version });
+  } catch (e) {
+    toast(String(e.message || e), "err");
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalHtml;
+  }
 }
 
 async function loadClient() {
@@ -1743,10 +2082,15 @@ function returnToQuote() {
   window.scrollTo({ top: 0, behavior: "smooth" });
 }
 
-function showSuccess(payload) {
-  $("successMsg").textContent = payload.send_email && payload.customer_email
-    ? `Quote submitted and sent to ${payload.customer_email}`
-    : "Quote submitted to ServiceM8";
+function showSuccess(payload, opts = {}) {
+  if (opts.amended) {
+    const v = opts.newVersion ? `v${opts.newVersion}` : "new version";
+    $("successMsg").textContent = `Quote re-sent as ${v} on the same ServiceM8 job`;
+  } else {
+    $("successMsg").textContent = payload.send_email && payload.customer_email
+      ? `Quote submitted and sent to ${payload.customer_email}`
+      : "Quote submitted to ServiceM8";
+  }
   $("successRef").textContent = payload.quote_ref || state.quoteRef || "";
   const rows = [];
   if (payload.client_name) rows.push({ lbl: "Client", val: payload.client_name });
@@ -1873,6 +2217,11 @@ function bindEvents() {
   $("submitJobBtn").addEventListener("click", submitJobOnly);
   $("submitEmailBtn").addEventListener("click", submitWithEmail);
   $("matBtn").addEventListener("click", refreshMaterials);
+  $("amendBtn").addEventListener("click", doAmend);
+  $("findBtn").addEventListener("click", () => {
+    const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
+    window.location.href = `/${encodeURIComponent(slug)}?find=1`;
+  });
 }
 
 // ===== GOOGLE MAPS AUTOCOMPLETE =====

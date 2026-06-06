@@ -880,9 +880,15 @@ async function handleClientConfig(request, url, env) {
 // D1 persists buildPayload() JSON verbatim so quotes can be rehydrated into the
 // form and amended onto the same SM8 job (Path B versioned amend).
 //
-// AUTH: x-rafter-secret (RAFTER_INTERNAL_SECRET) — mirrors /client-config and
-// /render-email. Internal-only; the rafter form reaches these via the same
-// internal-secret path that already gates /render-email.
+// AUTH (two gates, same write):
+//   • /store-draft, /draft/{ref}, /drafts — x-rafter-secret (RAFTER_INTERNAL_SECRET),
+//     mirrors /client-config and /render-email. Internal worker-to-worker calls
+//     and rafter form's privileged ops use this. The form reaches these via the
+//     same internal-secret path that gates /render-email.
+//   • /store-quote-link — Bearer MAKE_STORE_TOKEN_SECRET, matches /store-token's
+//     Make→worker pattern. This is the Make callback after SM8 job-create — Make
+//     is the only caller that knows the new SM8 job UUID, so it's the only path
+//     for the initial post-submit write (Path A).
 //
 // DELIBERATE PROPERTY — DO NOT "FIX" INTO A BLOCKING WRITE:
 // /store-draft is best-effort by design (RFT-32 RESUME BRIEF, 2026-06-06). The
@@ -915,50 +921,108 @@ function requireInternalSecret(request, env) {
   return null;
 }
 
-async function handleStoreDraft(request, env) {
-  const denied = requireInternalSecret(request, env);
-  if (denied) return denied;
-  if (!env.RAFTER_QUOTES) {
-    return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
+// /store-quote-link is hit by Make (Rafter Form prod scenario 5537814) after
+// SM8 job-create. Make uses Bearer-token auth (see /store-token for the
+// established pattern). We reuse MAKE_STORE_TOKEN_SECRET here so Will doesn't
+// have to provision a second Make secret for what is the same trust
+// boundary (Make UI → materials-sync). The name is narrower than the role;
+// if Will wants per-scenario rotation later, swap to a per-endpoint secret —
+// the auth gate is a one-line change.
+function requireMakeSecret(request, env) {
+  const expected = env.MAKE_STORE_TOKEN_SECRET;
+  if (!expected) {
+    return json({ error: "server_misconfigured", detail: "MAKE_STORE_TOKEN_SECRET not set" }, { status: 500 });
   }
+  const header = request.headers.get("authorization") || "";
+  const m = /^Bearer\s+(.+)$/i.exec(header);
+  if (!m || !constantTimeEqual(m[1], expected)) {
+    return json({ error: "unauthorized" }, { status: 401 });
+  }
+  return null;
+}
 
-  let body;
-  try { body = await request.json(); }
-  catch { return json({ error: "invalid_json" }, { status: 400 }); }
+// Dual-gate auth for read/finder/amend endpoints called from the rafter form:
+//   • x-rafter-secret (RAFTER_INTERNAL_SECRET) — internal worker callers,
+//     unscoped (no tenant restriction; trusted caller).
+//   • Bearer <form-HMAC-token> — issued by /get-form-token, valid 60s, embeds
+//     a client_uuid. Returns scopedToUuid so handlers can enforce that the
+//     requested row's client_uuid matches. Without scoping, a form token for
+//     tenant A could read/edit tenant B's quotes.
+async function requireFormOrInternal(request, env) {
+  if (!env.RAFTER_INTERNAL_SECRET) {
+    return { error: json({ error: "server_misconfigured", detail: "RAFTER_INTERNAL_SECRET not set" }, { status: 500 }) };
+  }
+  const internalProvided = request.headers.get("x-rafter-secret") || "";
+  if (internalProvided && constantTimeEqual(internalProvided, env.RAFTER_INTERNAL_SECRET)) {
+    return { ok: true, scopedToUuid: null };
+  }
+  const auth = request.headers.get("authorization") || "";
+  const m = /^Bearer\s+(.+)$/i.exec(auth);
+  if (m) {
+    const token = m[1];
+    const parts = token.split(":");
+    if (parts.length === 3) {
+      const [tokenUuid, tsStr, sig] = parts;
+      const ts = parseInt(tsStr, 10);
+      if (!isNaN(ts) && Math.floor(Date.now() / 1000) - ts <= 60 && UUID_RE.test(tokenUuid)) {
+        const expected = await hmacSha256(`${tokenUuid}:${tsStr}`, env.RAFTER_INTERNAL_SECRET);
+        if (sig === expected) {
+          return { ok: true, scopedToUuid: tokenUuid };
+        }
+      }
+    }
+  }
+  return { error: json({ error: "unauthorized" }, { status: 401 }) };
+}
 
-  const { quote_ref, client_uuid, sm8_job_uuid, payload } = body || {};
-  const version = Number.isInteger(body?.version) && body.version >= 1 ? body.version : 1;
-  const parent_ref = body?.parent_ref || null;
-  const status = body?.status || "submitted";
+// Parse + validate the rafter-quotes row fields from a request body.
+// Returns { error: Response } on validation failure, or { fields } on success.
+// All three writers (/store-draft, /store-quote-link, amend op) share this.
+function validateQuoteFields(body, opts = {}) {
+  const { allowParentRef = true } = opts;
+  if (!body || typeof body !== "object") {
+    return { error: json({ error: "invalid_body" }, { status: 400 }) };
+  }
+  const { quote_ref, client_uuid, sm8_job_uuid, payload } = body;
+  const version = Number.isInteger(body.version) && body.version >= 1 ? body.version : 1;
+  const parent_ref = body.parent_ref || null;
+  const status = body.status || "submitted";
 
   if (!quote_ref || !QUOTE_REF_RE.test(quote_ref)) {
-    return json({ error: "invalid_quote_ref", hint: "Q-YYYYMMDD-HHMM" }, { status: 400 });
+    return { error: json({ error: "invalid_quote_ref", hint: "Q-YYYYMMDD-HHMM" }, { status: 400 }) };
   }
   if (!client_uuid || !UUID_RE.test(client_uuid)) {
-    return json({ error: "invalid_client_uuid" }, { status: 400 });
+    return { error: json({ error: "invalid_client_uuid" }, { status: 400 }) };
   }
   if (!sm8_job_uuid || !UUID_RE.test(sm8_job_uuid)) {
     // Loud log: absent sm8_job_uuid means the upstream SM8 job-create leg
     // failed. Surface it — never write a null/garbage UUID (RFT-35).
     console.error(JSON.stringify({
-      event: "store_draft_missing_sm8_job_uuid",
+      event: "quote_write_missing_sm8_job_uuid",
       quote_ref,
       client_uuid,
       provided: sm8_job_uuid || null,
     }));
-    return json({ error: "missing_or_invalid_sm8_job_uuid", detail: "SM8 job-create likely failed upstream" }, { status: 400 });
+    return { error: json({ error: "missing_or_invalid_sm8_job_uuid", detail: "SM8 job-create likely failed upstream" }, { status: 400 }) };
   }
-  if (parent_ref !== null && !QUOTE_REF_RE.test(parent_ref)) {
-    return json({ error: "invalid_parent_ref" }, { status: 400 });
+  if (allowParentRef && parent_ref !== null && !QUOTE_REF_RE.test(parent_ref)) {
+    return { error: json({ error: "invalid_parent_ref" }, { status: 400 }) };
   }
   if (!payload || typeof payload !== "object") {
-    return json({ error: "missing_field", field: "payload" }, { status: 400 });
+    return { error: json({ error: "missing_field", field: "payload" }, { status: 400 }) };
   }
 
-  const now = new Date().toISOString();
-  const payloadJson = JSON.stringify(payload);
+  return { fields: { quote_ref, client_uuid, sm8_job_uuid, version, parent_ref, status, payload } };
+}
 
-  // INSERT OR REPLACE — idempotent on quote_ref. Caller retry safe.
+// Write (or upsert) a rafter-quotes row. INSERT OR REPLACE on quote_ref so
+// callers can retry safely. Returns { ok: true, updated_at } or { error: Response }.
+async function writeQuoteRow(env, fields) {
+  if (!env.RAFTER_QUOTES) {
+    return { error: json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 }) };
+  }
+  const now = new Date().toISOString();
+  const payloadJson = JSON.stringify(fields.payload);
   try {
     await env.RAFTER_QUOTES.prepare(
       `INSERT INTO quotes (quote_ref, client_uuid, sm8_job_uuid, version, parent_ref, payload, status, created_at, updated_at)
@@ -972,14 +1036,63 @@ async function handleStoreDraft(request, env) {
          status=excluded.status,
          updated_at=excluded.updated_at`
     ).bind(
-      quote_ref, client_uuid, sm8_job_uuid, version, parent_ref, payloadJson, status, now, now
+      fields.quote_ref, fields.client_uuid, fields.sm8_job_uuid, fields.version,
+      fields.parent_ref, payloadJson, fields.status, now, now
     ).run();
   } catch (e) {
-    console.error(JSON.stringify({ event: "store_draft_d1_write_failed", quote_ref, error: e.message }));
-    return json({ error: "d1_write_failed", detail: e.message }, { status: 502 });
+    console.error(JSON.stringify({ event: "quote_write_d1_failed", quote_ref: fields.quote_ref, error: e.message }));
+    return { error: json({ error: "d1_write_failed", detail: e.message }, { status: 502 }) };
   }
+  return { ok: true, updated_at: now };
+}
 
-  return json({ ok: true, quote_ref, version, status, updated_at: now });
+async function handleStoreDraft(request, env) {
+  const denied = requireInternalSecret(request, env);
+  if (denied) return denied;
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "invalid_json" }, { status: 400 }); }
+
+  const v = validateQuoteFields(body);
+  if (v.error) return v.error;
+
+  const w = await writeQuoteRow(env, v.fields);
+  if (w.error) return w.error;
+
+  return json({ ok: true, quote_ref: v.fields.quote_ref, version: v.fields.version, status: v.fields.status, updated_at: w.updated_at });
+}
+
+// /store-quote-link — Make callback after SM8 job-create. Same write logic as
+// /store-draft, different auth gate (Make Bearer token, not x-rafter-secret).
+// Path A architecture (RFT-32 RESUME BRIEF, 2026-06-06): Make has the original
+// payload (PDF worker forwarded it via the webhook), Make captures
+// x-record-uuid from SM8 job-create as sm8_job_uuid, then POSTs the full
+// {quote_ref, client_uuid, sm8_job_uuid, payload} back here. This keeps the
+// strict "sm8_job_uuid present by construction" invariant — by the time this
+// endpoint fires, the SM8 job exists. Single write per submit. No orphan rows.
+async function handleStoreQuoteLink(request, env) {
+  const denied = requireMakeSecret(request, env);
+  if (denied) return denied;
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "invalid_json" }, { status: 400 }); }
+
+  const v = validateQuoteFields(body);
+  if (v.error) return v.error;
+
+  const w = await writeQuoteRow(env, v.fields);
+  if (w.error) return w.error;
+
+  console.log(JSON.stringify({
+    event: "store_quote_link_ok",
+    quote_ref: v.fields.quote_ref,
+    sm8_job_uuid: v.fields.sm8_job_uuid,
+    version: v.fields.version,
+  }));
+
+  return json({ ok: true, quote_ref: v.fields.quote_ref, version: v.fields.version, status: v.fields.status, updated_at: w.updated_at });
 }
 
 function summariseDraftRow(row) {
@@ -1004,8 +1117,8 @@ function summariseDraftRow(row) {
 }
 
 async function handleGetDraft(request, quote_ref, env) {
-  const denied = requireInternalSecret(request, env);
-  if (denied) return denied;
+  const a = await requireFormOrInternal(request, env);
+  if (a.error) return a.error;
   if (!env.RAFTER_QUOTES) {
     return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
   }
@@ -1021,6 +1134,11 @@ async function handleGetDraft(request, quote_ref, env) {
     return json({ error: "d1_read_failed", detail: e.message }, { status: 502 });
   }
   if (!row) return json({ error: "draft_not_found", quote_ref }, { status: 404 });
+  // Form-token scoping — return 404 (not 403) to avoid leaking row existence
+  // across tenants. 403 would confirm the quote_ref exists for another tenant.
+  if (a.scopedToUuid && row.client_uuid !== a.scopedToUuid) {
+    return json({ error: "draft_not_found", quote_ref }, { status: 404 });
+  }
 
   let parsed;
   try { parsed = JSON.parse(row.payload); }
@@ -1041,13 +1159,17 @@ async function handleGetDraft(request, quote_ref, env) {
 }
 
 async function handleListDrafts(request, url, env) {
-  const denied = requireInternalSecret(request, env);
-  if (denied) return denied;
+  const a = await requireFormOrInternal(request, env);
+  if (a.error) return a.error;
   if (!env.RAFTER_QUOTES) {
     return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
   }
 
-  const client_uuid = url.searchParams.get("client_uuid");
+  // Under form-token auth, force the filter to the token's embedded uuid —
+  // any caller-supplied client_uuid is ignored. Under x-rafter-secret (internal),
+  // honour the query param.
+  const queriedClientUuid = url.searchParams.get("client_uuid");
+  const client_uuid = a.scopedToUuid || queriedClientUuid;
   const q = (url.searchParams.get("q") || "").trim();
   const sm8_job_uuid = url.searchParams.get("sm8_job_uuid");
   const limitParam = parseInt(url.searchParams.get("limit") || "20", 10);
@@ -1101,6 +1223,279 @@ async function handleListDrafts(request, url, env) {
   return json({ ok: true, count: results.length, results });
 }
 
+// ─── RFT-39: amend op (versioned re-send onto existing SM8 job) ──────────────
+// Path B versioned amend (RFT-32). Bypasses Make entirely — Make is only needed
+// for the original submit (job-create + first attach). For amend we already
+// know the SM8 job UUID (from the parent rafter-quotes row), so the worker calls
+// SM8 directly: attach new PDF + append delimited job_description block.
+//
+// SCOPES (CRITICAL — verify trial re-auth before testing):
+//   • create_jobs (have, RFT-26)         — not used here, listed for completeness
+//   • manage_jobs (have)                 — POST /job/{uuid}.json job_description update
+//   • publish_job_attachments (have)     — POST /Attachment.json + /Attachment/{uuid}.file
+//   • read_jobs (have)                   — GET /job/{uuid}.json before append
+//   • read_attachments (added 2026-06-06 to setup.html) — required for finder attachment view (RFT-38)
+//
+// If the trial token doesn't have manage_jobs + publish_job_attachments, SM8
+// returns 403 at the attach step. Re-auth via setup.html (Flow D — human, ~1 min).
+//
+// Format of the appended block mirrors PDF worker's buildJobDescription delimiter:
+//   --- RAFTER:Q-YYYYMMDD-HHMM:START ---
+//   [structured block]
+//   --- RAFTER:Q-YYYYMMDD-HHMM:END ---
+// Parseable by quote_ref, operator-legible. Append-only (constraint #4, Rafter
+// rule — SM8 itself allows overwrite per RFT-34, but Rafter never does).
+
+const SM8_BASE = "https://api.servicem8.com/api_1.0";
+
+function fmtAUD(n) {
+  if (typeof n !== "number") return "";
+  return new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
+}
+
+// Mirror of PDF worker's buildJobDescription — kept in sync by structure, not by
+// import (no shared lib). Operator only sees this in SM8 job_description so the
+// shape must match the format already used by submit, otherwise version blocks
+// look inconsistent.
+function buildJobDescriptionBlock(payload, labels) {
+  const ref = payload.quote_ref || "";
+  const lines = [
+    `--- RAFTER:${ref}:START ---`,
+    `Ref:  ${ref}`,
+    `Date: ${payload.proposal_date || ""}`,
+    `Type: ${(labels && labels[payload.proposal_type]) || payload.proposal_type || ""}`,
+    `Site: ${payload.site_address || ""}`,
+    "",
+  ];
+  for (const s of (payload.sections || [])) {
+    const heading = s.heading || (s.items?.[0]?.name) || "";
+    const price = s.items?.[0]?.price != null ? fmtAUD(s.items[0].price) : "";
+    lines.push(`${heading}${price ? " — " + price : ""}`);
+    const scope = s.items?.[0]?.scope || "";
+    if (scope) lines.push(scope);
+    lines.push("");
+  }
+  if (payload.total != null) lines.push(`Total (inc. GST): ${fmtAUD(payload.total)}`);
+  if (payload.notes) { lines.push(""); lines.push(`Notes: ${payload.notes}`); }
+  lines.push(`--- RAFTER:${ref}:END ---`);
+  return lines.join("\n");
+}
+
+function buildProposalTypeLabels(proposalTypes) {
+  const labels = {};
+  if (!Array.isArray(proposalTypes)) return labels;
+  for (const item of proposalTypes) {
+    if (item && typeof item === "object" && item.code) labels[item.code] = item.label || item.code;
+  }
+  return labels;
+}
+
+async function fetchAmendPdf(env, payload) {
+  if (!env.PDF_WORKER) {
+    return { ok: false, status: 500, error: { error: "pdf_worker_binding_missing", detail: "Service binding PDF_WORKER not configured — redeploy materials-sync" } };
+  }
+  // Service binding URL hostname is ignored by Cloudflare; the binding routes
+  // directly to the bound worker. mode=preview returns binary, no auth required.
+  const req = new Request("https://rafter-pdf.internal/generate?mode=preview", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+  const res = await env.PDF_WORKER.fetch(req);
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { ok: false, status: 502, error: { error: "pdf_generate_failed", status: res.status, detail: detail.slice(0, 500) } };
+  }
+  const bytes = await res.arrayBuffer();
+  return { ok: true, bytes };
+}
+
+async function sm8AttachPdf(accessToken, jobUuid, filename, pdfBytes) {
+  // Step 1: create attachment metadata
+  const createRes = await fetch(`${SM8_BASE}/Attachment.json`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({
+      related_object_uuid: jobUuid,
+      related_object: "job",
+      attachment_type: "document",
+      name: filename,
+      mime_type: "application/pdf",
+    }),
+  });
+  if (createRes.status === 403) {
+    return { ok: false, status: 502, error: { error: "sm8_scope_missing", scope: "publish_job_attachments", detail: "trial token lacks publish_job_attachments — re-auth via setup.html (Flow D)" } };
+  }
+  if (!createRes.ok) {
+    const detail = await createRes.text().catch(() => "");
+    return { ok: false, status: 502, error: { error: "sm8_attach_create_failed", status: createRes.status, detail: detail.slice(0, 500) } };
+  }
+  const attachUuid = createRes.headers.get("x-record-uuid");
+  if (!attachUuid) {
+    return { ok: false, status: 502, error: { error: "sm8_attach_uuid_missing", detail: "x-record-uuid absent from Attachment.json response" } };
+  }
+  // Step 2: upload binary
+  const uploadForm = new FormData();
+  uploadForm.append("file", new Blob([pdfBytes], { type: "application/pdf" }), filename);
+  const uploadRes = await fetch(`${SM8_BASE}/Attachment/${attachUuid}.file`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}` },
+    body: uploadForm,
+  });
+  if (!uploadRes.ok) {
+    const detail = await uploadRes.text().catch(() => "");
+    return { ok: false, status: 502, error: { error: "sm8_attach_upload_failed", status: uploadRes.status, attachment_uuid: attachUuid, detail: detail.slice(0, 500) } };
+  }
+  return { ok: true, attachment_uuid: attachUuid };
+}
+
+async function sm8AppendJobDescription(accessToken, jobUuid, payload, client) {
+  // Read existing
+  const getRes = await fetch(`${SM8_BASE}/job/${jobUuid}.json`, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  if (!getRes.ok) {
+    const detail = await getRes.text().catch(() => "");
+    return { ok: false, status: 502, error: { error: "sm8_job_read_failed", status: getRes.status, detail: detail.slice(0, 500) } };
+  }
+  let job;
+  try { job = await getRes.json(); } catch { return { ok: false, status: 502, error: { error: "sm8_job_invalid_json" } }; }
+  const existing = (job && typeof job.job_description === "string") ? job.job_description : "";
+
+  const labels = buildProposalTypeLabels(client?.proposal_types);
+  const newBlock = buildJobDescriptionBlock(payload, labels);
+  // Append-only: never replace existing content. Two blank lines between blocks.
+  const combined = existing ? `${existing}\n\n${newBlock}` : newBlock;
+
+  const putRes = await fetch(`${SM8_BASE}/job/${jobUuid}.json`, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+    body: JSON.stringify({ job_description: combined }),
+  });
+  if (putRes.status === 403) {
+    return { ok: false, status: 502, error: { error: "sm8_scope_missing", scope: "manage_jobs", detail: "trial token lacks manage_jobs — re-auth via setup.html (Flow D)" } };
+  }
+  if (!putRes.ok) {
+    const detail = await putRes.text().catch(() => "");
+    return { ok: false, status: 502, error: { error: "sm8_job_description_post_failed", status: putRes.status, detail: detail.slice(0, 500) } };
+  }
+  return { ok: true, prior_length: existing.length, new_length: combined.length };
+}
+
+async function handleAmendQuote(request, env) {
+  const a = await requireFormOrInternal(request, env);
+  if (a.error) return a.error;
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "invalid_json" }, { status: 400 }); }
+
+  const { parent_quote_ref, payload } = body || {};
+  if (!parent_quote_ref || !QUOTE_REF_RE.test(parent_quote_ref)) {
+    return json({ error: "invalid_parent_quote_ref" }, { status: 400 });
+  }
+  if (!payload || typeof payload !== "object") {
+    return json({ error: "missing_field", field: "payload" }, { status: 400 });
+  }
+
+  if (!env.RAFTER_QUOTES) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
+  }
+
+  // Load parent
+  let parent;
+  try {
+    parent = await env.RAFTER_QUOTES.prepare("SELECT * FROM quotes WHERE quote_ref = ?").bind(parent_quote_ref).first();
+  } catch (e) {
+    return json({ error: "d1_read_failed", detail: e.message }, { status: 502 });
+  }
+  if (!parent) return json({ error: "parent_not_found", parent_quote_ref }, { status: 404 });
+  if (a.scopedToUuid && parent.client_uuid !== a.scopedToUuid) {
+    return json({ error: "parent_not_found", parent_quote_ref }, { status: 404 });
+  }
+  if (!parent.sm8_job_uuid || !UUID_RE.test(parent.sm8_job_uuid)) {
+    return json({ error: "parent_missing_sm8_job_uuid", detail: "amend impossible — parent row has no SM8 job linkage (RFT-35 SOLE-linkage constraint)" }, { status: 422 });
+  }
+  if (parent.status === "superseded") {
+    return json({ error: "parent_already_superseded", current_status: parent.status, hint: "amend the latest version, not a superseded one" }, { status: 409 });
+  }
+
+  // Validate new quote_ref
+  const new_quote_ref = payload.quote_ref;
+  if (!new_quote_ref || !QUOTE_REF_RE.test(new_quote_ref)) {
+    return json({ error: "invalid_payload_quote_ref", hint: "payload.quote_ref must be Q-YYYYMMDD-HHMM" }, { status: 400 });
+  }
+  if (new_quote_ref === parent_quote_ref) {
+    return json({ error: "new_quote_ref_must_differ" }, { status: 400 });
+  }
+
+  const client_uuid = parent.client_uuid;
+  const sm8_job_uuid = parent.sm8_job_uuid;
+  const new_version = (parent.version || 1) + 1;
+
+  // Load client config for proposal-type labels + token refresh
+  const client = await readClient(env, client_uuid);
+  if (!client) return json({ error: "client_not_found", client_uuid }, { status: 404 });
+
+  let accessToken;
+  try { accessToken = await refreshTokenIfNeeded(client_uuid, env); }
+  catch (e) { return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 }); }
+
+  // Generate PDF via PDF_WORKER service binding
+  const pdf = await fetchAmendPdf(env, payload);
+  if (!pdf.ok) return json(pdf.error, { status: pdf.status });
+
+  // SM8 attach (two-step). Filename uses new quote_ref so operator sees the
+  // version in the SM8 attachments list.
+  const filename = `${new_quote_ref}.pdf`;
+  const attach = await sm8AttachPdf(accessToken, sm8_job_uuid, filename, pdf.bytes);
+  if (!attach.ok) return json(attach.error, { status: attach.status });
+
+  // Append job_description version block. If this fails the attachment is
+  // already on SM8 — surface clearly. (No automatic rollback; operator can
+  // delete the orphan attachment via SM8 UI if needed.)
+  const append = await sm8AppendJobDescription(accessToken, sm8_job_uuid, payload, client);
+  if (!append.ok) {
+    // Annotate with the attachment we already created so a human can clean up.
+    return json({ ...append.error, attachment_uuid_orphaned: attach.attachment_uuid }, { status: append.status });
+  }
+
+  // Write new row
+  const w = await writeQuoteRow(env, {
+    quote_ref: new_quote_ref,
+    client_uuid,
+    sm8_job_uuid,
+    version: new_version,
+    parent_ref: parent_quote_ref,
+    status: "submitted",
+    payload,
+  });
+  if (w.error) {
+    // SM8-side committed already — surface but don't roll back. The amend is
+    // visible in SM8; the rafter-quotes side will self-correct on next edit.
+    console.error(JSON.stringify({ event: "amend_d1_write_failed_after_sm8_commit", parent_quote_ref, new_quote_ref, sm8_job_uuid, attachment_uuid: attach.attachment_uuid }));
+    return w.error;
+  }
+
+  // Mark parent superseded (non-blocking — main write already succeeded).
+  try {
+    await env.RAFTER_QUOTES.prepare("UPDATE quotes SET status='superseded', updated_at=? WHERE quote_ref=?")
+      .bind(new Date().toISOString(), parent_quote_ref).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: "amend_supersede_parent_failed", parent_quote_ref, error: e.message }));
+  }
+
+  return json({
+    ok: true,
+    new_quote_ref,
+    new_version,
+    parent_quote_ref,
+    sm8_job_uuid,
+    attachment_uuid: attach.attachment_uuid,
+    job_description: { prior_length: append.prior_length, new_length: append.new_length },
+  });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -1116,6 +1511,8 @@ async function route(request, env) {
   if (method === "GET" && path === "/health") return json({ ok: true });
   if (method === "POST" && path === "/send-test-alert") return handleSendTestAlert(request, env);
   if (method === "POST" && path === "/store-draft") return handleStoreDraft(request, env);
+  if (method === "POST" && path === "/store-quote-link") return handleStoreQuoteLink(request, env);
+  if (method === "POST" && path === "/amend-quote") return handleAmendQuote(request, env);
   if (method === "GET" && path === "/drafts") return handleListDrafts(request, url, env);
   const draftMatch = method === "GET" && /^\/draft\/(Q-\d{8}-\d{4})$/.exec(path);
   if (draftMatch) return handleGetDraft(request, draftMatch[1], env);
