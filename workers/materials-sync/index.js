@@ -993,13 +993,21 @@ function validateQuoteFields(body, opts = {}) {
     return { error: json({ error: "invalid_body" }, { status: 400 }) };
   }
   let { quote_ref, client_uuid, sm8_job_uuid, payload } = body;
+  // Base64-encoded payload from Make — Make's jsonString body builder can't
+  // cleanly serialise a nested JSON object without quote/brace ambiguity, so
+  // we accept a `payload_b64` field that's base64(JSON-string) and decode here.
+  if (!payload && typeof body.payload_b64 === "string") {
+    try {
+      const decoded = atob(body.payload_b64);
+      payload = JSON.parse(decoded);
+    } catch (e) {
+      return { error: json({ error: "payload_b64_decode_failed", detail: e.message }, { status: 400 }) };
+    }
+  }
   if (typeof payload === "string") {
     try { payload = JSON.parse(payload); }
     catch { return { error: json({ error: "payload_not_json", detail: "payload was a string but did not parse as JSON" }, { status: 400 }) }; }
   }
-  // Make field substitution: if the webhook variable contained a stringified
-  // object that didn't parse cleanly, payload may end up as the still-string.
-  // Catch and reject explicitly rather than silently storing a string.
   const version = Number.isInteger(body.version) && body.version >= 1 ? body.version : 1;
   const parent_ref = body.parent_ref || null;
   const status = body.status || "submitted";
