@@ -978,12 +978,28 @@ async function requireFormOrInternal(request, env) {
 // Parse + validate the rafter-quotes row fields from a request body.
 // Returns { error: Response } on validation failure, or { fields } on success.
 // All three writers (/store-draft, /store-quote-link, amend op) share this.
+//
+// PAYLOAD STRING TOLERANCE: Make's HTTP module body templates can pass `payload`
+// as either an inline JSON object (`{{34}}` referencing the ParseJSON output)
+// or a quoted string (`"{{1.payload}}"` — the raw webhook form-field). The
+// former is the cleaner Make pattern but depends on Make correctly serialising
+// the parsed collection inline. To make /store-quote-link robust to either,
+// accept payload as either object or string, parsing the string in the latter
+// case. /store-draft is internal so it will always send objects; this branch
+// is essentially dead for the internal path but harmless.
 function validateQuoteFields(body, opts = {}) {
   const { allowParentRef = true } = opts;
   if (!body || typeof body !== "object") {
     return { error: json({ error: "invalid_body" }, { status: 400 }) };
   }
-  const { quote_ref, client_uuid, sm8_job_uuid, payload } = body;
+  let { quote_ref, client_uuid, sm8_job_uuid, payload } = body;
+  if (typeof payload === "string") {
+    try { payload = JSON.parse(payload); }
+    catch { return { error: json({ error: "payload_not_json", detail: "payload was a string but did not parse as JSON" }, { status: 400 }) }; }
+  }
+  // Make field substitution: if the webhook variable contained a stringified
+  // object that didn't parse cleanly, payload may end up as the still-string.
+  // Catch and reject explicitly rather than silently storing a string.
   const version = Number.isInteger(body.version) && body.version >= 1 ? body.version : 1;
   const parent_ref = body.parent_ref || null;
   const status = body.status || "submitted";
