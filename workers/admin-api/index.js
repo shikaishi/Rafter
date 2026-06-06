@@ -307,7 +307,7 @@ async function provisionClient(body, env) {
     phone: '', business_address: '', abn: '', business_email: '', operator_email: '',
     payment_thresholds: {}, proposal_types: [], job_categories: [], job_queues: [],
     templates: [], credentials: [], terms_and_conditions: [], staff_uuid: '',
-    email_template: '', bank_details: {}, clerk_org_id: null,
+    email_template: '', bank_details: {}, clerk_org_id: null, branding: null,
   };
 
   // REQ-On-29: build record — defaults → existing (preserves OAuth tokens etc.) → required body fields
@@ -316,7 +316,7 @@ async function provisionClient(body, env) {
   // Optional fields: only override if explicitly provided in body
   const OPTIONAL_FIELDS = ['phone','business_address','abn','business_email','operator_email',
     'payment_thresholds','proposal_types','job_categories','job_queues','templates',
-    'credentials','terms_and_conditions','staff_uuid','email_template','bank_details','clerk_org_id'];
+    'credentials','terms_and_conditions','staff_uuid','email_template','bank_details','clerk_org_id','branding'];
   for (const f of OPTIONAL_FIELDS) {
     if (body[f] !== undefined) record[f] = body[f];
   }

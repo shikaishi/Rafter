@@ -2,16 +2,48 @@ import puppeteer from "@cloudflare/puppeteer";
 import { MULISH_400_TTF_B64, MULISH_700_TTF_B64, PLAYFAIR_600_LATIN_B64 } from "./fonts.js";
 
 const COLORS = {
-  lime: "#84B741",
-  darkGreen: "#0D2E1C",
   ink: "#1a1a1a",
   scope: "#444",
   asterisk: "#999",
   body555: "#555",
   muted: "#666",
-  softBg: "#ECF1E8",
   rule: "#D0D0D0",
 };
+
+const PLATFORM_DEFAULTS = {
+  primary:    "#2E86AB",
+  accent:     "#1B4F72",
+  background: "#EAF4F8",
+};
+
+const PRESETS = {
+  "deep-green-sea": PLATFORM_DEFAULTS,
+  "slate-copper":   { primary: "#B7410E", accent: "#2F3E46", background: "#F4F1ED" },
+  "ink-amber":      { primary: "#1C1C1E", accent: "#E8A317", background: "#FAF8F4" },
+  "oxblood":        { primary: "#6B0F1A", accent: "#1A1A1A", background: "#F5F0E8" },
+  "terracotta":     { primary: "#C75B39", accent: "#3D405B", background: "#FFF8F0" },
+};
+
+function resolveBranding(branding) {
+  const b = branding || {};
+  const preset = (b.preset && PRESETS[b.preset]) ? PRESETS[b.preset] : null;
+  return {
+    primary:    b.primary    || (preset && preset.primary)    || PLATFORM_DEFAULTS.primary,
+    accent:     b.accent     || (preset && preset.accent)     || PLATFORM_DEFAULTS.accent,
+    background: b.background || (preset && preset.background) || PLATFORM_DEFAULTS.background,
+  };
+}
+
+function buildProposalTypeLabels(proposalTypes) {
+  const labels = {};
+  if (!Array.isArray(proposalTypes)) return labels;
+  for (const item of proposalTypes) {
+    if (item && typeof item === 'object' && item.code) {
+      labels[item.code] = item.label || item.code;
+    }
+  }
+  return labels;
+}
 
 const AUD = new Intl.NumberFormat("en-AU", {
   style: "currency",
@@ -19,12 +51,6 @@ const AUD = new Intl.NumberFormat("en-AU", {
   minimumFractionDigits: 2,
   maximumFractionDigits: 2,
 });
-
-
-const PROPOSAL_TYPE_LABEL = {
-  LC: "Landscape Construction",
-  GM: "Garden Maintenance",
-};
 
 const ALLOWED_ORIGINS = new Set([
   "https://rafter.deepgreensea.au",
@@ -165,7 +191,7 @@ async function handleGenerate(request, env, url) {
   form.append("proposal_date",    payload.proposal_date    || "");
   form.append("total",            String(payload.total     ?? ""));
   form.append("notes",            payload.notes            || "");
-  form.append("job_description",  buildJobDescription(payload));
+  form.append("job_description",  buildJobDescription(payload, buildProposalTypeLabels(client.proposal_types)));
   form.append("lineItems",        JSON.stringify(payload.lineItems || []));
   form.append("customer_email",   payload.customer_email   || "");
   form.append("send_email",       String(payload.send_email === true));
@@ -311,7 +337,9 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   const quoteRef = payload.quote_ref || "";
   const clientName = payload.client_name || "";
   const siteAddress = formatSiteAddress(payload.site_address);
-  const jobTitle = buildJobTitle(payload);
+  const palette = resolveBranding(client.branding);
+  const proposalLabels = buildProposalTypeLabels(client.proposal_types);
+  const jobTitle = buildJobTitle(payload, proposalLabels);
 
   const heroLogo = logoDataUrl
     ? `<img class="logo" src="${logoDataUrl}" alt="${escapeHtml(businessName)}">`
@@ -345,14 +373,14 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     src: url(data:font/woff2;base64,${PLAYFAIR_600_LATIN_B64}) format('woff2');
   }
   :root {
-    --lime: ${COLORS.lime};
-    --dark: ${COLORS.darkGreen};
+    --lime: ${palette.accent};
+    --dark: ${palette.primary};
     --ink: ${COLORS.ink};
     --scope: ${COLORS.scope};
     --asterisk: ${COLORS.asterisk};
     --body555: ${COLORS.body555};
     --muted: ${COLORS.muted};
-    --soft: ${COLORS.softBg};
+    --soft: ${palette.background};
     --rule: ${COLORS.rule};
   }
   @page { size: A4; }
@@ -572,7 +600,7 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
     width: 4.5mm;
     height: 4.5mm;
     border-radius: 50%;
-    background: var(--lime);
+    background: var(--ink);
     color: #fff;
     display: flex;
     align-items: center;
@@ -771,9 +799,9 @@ function formatSiteAddress(addr) {
   return String(addr).replace(/,\s*Australia\s*$/i, "").trim();
 }
 
-function buildJobTitle(payload) {
+function buildJobTitle(payload, labels) {
   if (payload.job_title) return payload.job_title;
-  const typeLabel = PROPOSAL_TYPE_LABEL[payload.proposal_type] || "Proposal";
+  const typeLabel = (labels && labels[payload.proposal_type]) || "Proposal";
   const street = payload.street_address || parseStreet(payload.site_address);
   const suburb = payload.suburb || parseSuburb(payload.site_address);
   const location = [street, suburb].filter(Boolean).join(", ");
@@ -926,13 +954,13 @@ function sanitizeFilenamePart(s) {
     .trim();
 }
 
-function buildJobDescription(payload) {
+function buildJobDescription(payload, labels) {
   const ref = payload.quote_ref || "";
   const lines = [
     `--- RAFTER:${ref}:START ---`,
     `Ref:  ${ref}`,
     `Date: ${payload.proposal_date || ""}`,
-    `Type: ${PROPOSAL_TYPE_LABEL[payload.proposal_type] || payload.proposal_type || ""}`,
+    `Type: ${(labels && labels[payload.proposal_type]) || payload.proposal_type || ""}`,
     `Site: ${payload.site_address || ""}`,
     "",
   ];
