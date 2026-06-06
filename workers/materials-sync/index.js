@@ -875,6 +875,232 @@ async function handleClientConfig(request, url, env) {
   });
 }
 
+// ─── RFT-32 / RFT-37: rafter-quotes draft persistence ────────────────────────
+// Bounded-stateful: SM8 stays system-of-record for issued quotes; rafter-quotes
+// D1 persists buildPayload() JSON verbatim so quotes can be rehydrated into the
+// form and amended onto the same SM8 job (Path B versioned amend).
+//
+// AUTH: x-rafter-secret (RAFTER_INTERNAL_SECRET) — mirrors /client-config and
+// /render-email. Internal-only; the rafter form reaches these via the same
+// internal-secret path that already gates /render-email.
+//
+// DELIBERATE PROPERTY — DO NOT "FIX" INTO A BLOCKING WRITE:
+// /store-draft is best-effort by design (RFT-32 RESUME BRIEF, 2026-06-06). The
+// CALLER must wrap the call in try/catch and continue on failure. A dropped
+// draft costs a future edit convenience; a blocked submit costs a live quote.
+// The submit path was just hardened (RFT-58/RFT-69) — never put a synchronous
+// failure mode in front of it. Consequence: rafter-quotes is best-effort, not
+// guaranteed-complete; a quote can reach the customer without being stored,
+// finder won't show it, self-corrects on next edit re-submit.
+//
+// LOAD-BEARING CONSTRAINT — sm8_job_uuid (RFT-35): SM8 has NO job-search
+// fallback. Stored sm8_job_uuid is the SOLE linkage back to the SM8 job for
+// amendment. If it's null or wrong, amendment is impossible. /store-draft
+// validates the UUID is present + well-formed before writing; if absent, it
+// rejects with 400 and logs loudly — that condition means the upstream SM8
+// job-create leg failed, which is a real problem worth surfacing rather than
+// hiding behind a soft-null row.
+
+const QUOTE_REF_RE = /^Q-\d{8}-\d{4}$/;
+const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function requireInternalSecret(request, env) {
+  if (!env.RAFTER_INTERNAL_SECRET) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_INTERNAL_SECRET not set" }, { status: 500 });
+  }
+  const provided = request.headers.get("x-rafter-secret") || "";
+  if (!constantTimeEqual(provided, env.RAFTER_INTERNAL_SECRET)) {
+    return json({ error: "unauthorized" }, { status: 401 });
+  }
+  return null;
+}
+
+async function handleStoreDraft(request, env) {
+  const denied = requireInternalSecret(request, env);
+  if (denied) return denied;
+  if (!env.RAFTER_QUOTES) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
+  }
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "invalid_json" }, { status: 400 }); }
+
+  const { quote_ref, client_uuid, sm8_job_uuid, payload } = body || {};
+  const version = Number.isInteger(body?.version) && body.version >= 1 ? body.version : 1;
+  const parent_ref = body?.parent_ref || null;
+  const status = body?.status || "submitted";
+
+  if (!quote_ref || !QUOTE_REF_RE.test(quote_ref)) {
+    return json({ error: "invalid_quote_ref", hint: "Q-YYYYMMDD-HHMM" }, { status: 400 });
+  }
+  if (!client_uuid || !UUID_RE.test(client_uuid)) {
+    return json({ error: "invalid_client_uuid" }, { status: 400 });
+  }
+  if (!sm8_job_uuid || !UUID_RE.test(sm8_job_uuid)) {
+    // Loud log: absent sm8_job_uuid means the upstream SM8 job-create leg
+    // failed. Surface it — never write a null/garbage UUID (RFT-35).
+    console.error(JSON.stringify({
+      event: "store_draft_missing_sm8_job_uuid",
+      quote_ref,
+      client_uuid,
+      provided: sm8_job_uuid || null,
+    }));
+    return json({ error: "missing_or_invalid_sm8_job_uuid", detail: "SM8 job-create likely failed upstream" }, { status: 400 });
+  }
+  if (parent_ref !== null && !QUOTE_REF_RE.test(parent_ref)) {
+    return json({ error: "invalid_parent_ref" }, { status: 400 });
+  }
+  if (!payload || typeof payload !== "object") {
+    return json({ error: "missing_field", field: "payload" }, { status: 400 });
+  }
+
+  const now = new Date().toISOString();
+  const payloadJson = JSON.stringify(payload);
+
+  // INSERT OR REPLACE — idempotent on quote_ref. Caller retry safe.
+  try {
+    await env.RAFTER_QUOTES.prepare(
+      `INSERT INTO quotes (quote_ref, client_uuid, sm8_job_uuid, version, parent_ref, payload, status, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(quote_ref) DO UPDATE SET
+         client_uuid=excluded.client_uuid,
+         sm8_job_uuid=excluded.sm8_job_uuid,
+         version=excluded.version,
+         parent_ref=excluded.parent_ref,
+         payload=excluded.payload,
+         status=excluded.status,
+         updated_at=excluded.updated_at`
+    ).bind(
+      quote_ref, client_uuid, sm8_job_uuid, version, parent_ref, payloadJson, status, now, now
+    ).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: "store_draft_d1_write_failed", quote_ref, error: e.message }));
+    return json({ error: "d1_write_failed", detail: e.message }, { status: 502 });
+  }
+
+  return json({ ok: true, quote_ref, version, status, updated_at: now });
+}
+
+function summariseDraftRow(row) {
+  let p = {};
+  try { p = JSON.parse(row.payload || "{}"); } catch { /* corrupt payload — surface as empty summary */ }
+  return {
+    quote_ref: row.quote_ref,
+    client_uuid: row.client_uuid,
+    sm8_job_uuid: row.sm8_job_uuid,
+    version: row.version,
+    parent_ref: row.parent_ref,
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    // Extracted from payload for finder display; safe defaults if payload corrupt.
+    client_name: p.client_name || "",
+    site_address: p.site_address || "",
+    total: typeof p.total === "number" ? p.total : null,
+    proposal_type: p.proposal_type || "",
+    proposal_date: p.proposal_date || "",
+  };
+}
+
+async function handleGetDraft(request, quote_ref, env) {
+  const denied = requireInternalSecret(request, env);
+  if (denied) return denied;
+  if (!env.RAFTER_QUOTES) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
+  }
+  if (!QUOTE_REF_RE.test(quote_ref)) {
+    return json({ error: "invalid_quote_ref" }, { status: 400 });
+  }
+  let row;
+  try {
+    row = await env.RAFTER_QUOTES.prepare(
+      "SELECT * FROM quotes WHERE quote_ref = ?"
+    ).bind(quote_ref).first();
+  } catch (e) {
+    return json({ error: "d1_read_failed", detail: e.message }, { status: 502 });
+  }
+  if (!row) return json({ error: "draft_not_found", quote_ref }, { status: 404 });
+
+  let parsed;
+  try { parsed = JSON.parse(row.payload); }
+  catch { return json({ error: "payload_corrupt", quote_ref }, { status: 500 }); }
+
+  return json({
+    ok: true,
+    quote_ref: row.quote_ref,
+    client_uuid: row.client_uuid,
+    sm8_job_uuid: row.sm8_job_uuid,
+    version: row.version,
+    parent_ref: row.parent_ref,
+    status: row.status,
+    created_at: row.created_at,
+    updated_at: row.updated_at,
+    payload: parsed,
+  });
+}
+
+async function handleListDrafts(request, url, env) {
+  const denied = requireInternalSecret(request, env);
+  if (denied) return denied;
+  if (!env.RAFTER_QUOTES) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
+  }
+
+  const client_uuid = url.searchParams.get("client_uuid");
+  const q = (url.searchParams.get("q") || "").trim();
+  const sm8_job_uuid = url.searchParams.get("sm8_job_uuid");
+  const limitParam = parseInt(url.searchParams.get("limit") || "20", 10);
+  const limit = Math.max(1, Math.min(50, isNaN(limitParam) ? 20 : limitParam));
+
+  if (!client_uuid || !UUID_RE.test(client_uuid)) {
+    return json({ error: "invalid_client_uuid" }, { status: 400 });
+  }
+  if (sm8_job_uuid && !UUID_RE.test(sm8_job_uuid)) {
+    return json({ error: "invalid_sm8_job_uuid" }, { status: 400 });
+  }
+
+  // Fetch a working set, then filter q in-worker. For small per-tenant
+  // datasets (a tradie produces tens to low-hundreds of quotes/year) this is
+  // faster and simpler than JSON1 + a per-field index. Reconsider if a single
+  // tenant exceeds a few thousand rows.
+  const workingLimit = q ? Math.min(200, limit * 10) : limit;
+
+  let rows;
+  try {
+    let stmt;
+    if (sm8_job_uuid) {
+      stmt = env.RAFTER_QUOTES.prepare(
+        "SELECT * FROM quotes WHERE client_uuid = ? AND sm8_job_uuid = ? ORDER BY updated_at DESC LIMIT ?"
+      ).bind(client_uuid, sm8_job_uuid, workingLimit);
+    } else {
+      stmt = env.RAFTER_QUOTES.prepare(
+        "SELECT * FROM quotes WHERE client_uuid = ? ORDER BY updated_at DESC LIMIT ?"
+      ).bind(client_uuid, workingLimit);
+    }
+    const res = await stmt.all();
+    rows = res.results || [];
+  } catch (e) {
+    return json({ error: "d1_read_failed", detail: e.message }, { status: 502 });
+  }
+
+  const summaries = rows.map(summariseDraftRow);
+
+  let results = summaries;
+  if (q) {
+    const ql = q.toLowerCase();
+    results = summaries.filter((r) =>
+      (r.quote_ref || "").toLowerCase().includes(ql)
+      || (r.client_name || "").toLowerCase().includes(ql)
+      || (r.site_address || "").toLowerCase().includes(ql)
+    ).slice(0, limit);
+  } else {
+    results = summaries.slice(0, limit);
+  }
+
+  return json({ ok: true, count: results.length, results });
+}
+
 async function route(request, env) {
   const url = new URL(request.url);
   const path = url.pathname;
@@ -889,6 +1115,10 @@ async function route(request, env) {
   if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
   if (method === "POST" && path === "/send-test-alert") return handleSendTestAlert(request, env);
+  if (method === "POST" && path === "/store-draft") return handleStoreDraft(request, env);
+  if (method === "GET" && path === "/drafts") return handleListDrafts(request, url, env);
+  const draftMatch = method === "GET" && /^\/draft\/(Q-\d{8}-\d{4})$/.exec(path);
+  if (draftMatch) return handleGetDraft(request, draftMatch[1], env);
 
   const clientMatch = method === "GET" && /^\/client\/([0-9a-f-]{36})$/i.exec(path);
   if (clientMatch) return handleReadClient(clientMatch[1], env);
