@@ -1416,6 +1416,10 @@ async function doAmend(sendEmail) {
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
+      // RFT-85: SM8 job has been deleted — guidance is to create a new quote.
+      if (data.error === "sm8_job_deleted") {
+        throw new Error("This quote's SM8 job has been deleted — it cannot be amended. Create a new quote instead.");
+      }
       const detail = data.detail || data.error || `amend_${r.status}`;
       throw new Error(detail);
     }

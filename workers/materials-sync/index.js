@@ -1260,16 +1260,34 @@ async function handleListDrafts(request, url, env) {
 
   const summaries = rows.map(summariseDraftRow);
 
-  let results = summaries;
+  // RFT-85: exclude rows whose SM8 job is deleted (active=0). SM8 does NOT
+  // block writes to dead jobs, so the finder must verify liveness directly.
+  // Single batched OData GET — tradie working set is bounded. If the SM8 read
+  // fails, degrade to empty result rather than surface potentially-dead rows
+  // (data-integrity over availability).
+  let liveSummaries = summaries;
+  const uniqueJobUuids = [...new Set(summaries.map((s) => s.sm8_job_uuid).filter(Boolean))];
+  if (uniqueJobUuids.length) {
+    let accessToken;
+    try { accessToken = await refreshTokenIfNeeded(client_uuid, env); }
+    catch (e) { return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 }); }
+    const liveSet = await sm8FetchActiveSet(accessToken, uniqueJobUuids);
+    if (liveSet === null) {
+      return json({ ok: true, count: 0, results: [], note: "sm8_liveness_check_failed" });
+    }
+    liveSummaries = summaries.filter((s) => liveSet.has(s.sm8_job_uuid));
+  }
+
+  let results = liveSummaries;
   if (q) {
     const ql = q.toLowerCase();
-    results = summaries.filter((r) =>
+    results = liveSummaries.filter((r) =>
       (r.quote_ref || "").toLowerCase().includes(ql)
       || (r.client_name || "").toLowerCase().includes(ql)
       || (r.site_address || "").toLowerCase().includes(ql)
     ).slice(0, limit);
   } else {
-    results = summaries.slice(0, limit);
+    results = liveSummaries.slice(0, limit);
   }
 
   return json({ ok: true, count: results.length, results });
@@ -1544,6 +1562,51 @@ async function sm8AppendJobDescription(accessToken, jobUuid, payload, client) {
   return { ok: true, prior_length: existing.length, new_length: combined.length };
 }
 
+// ─── RFT-85: SM8 job liveness ──────────────────────────────────────────────
+// Both the finder and amend op must exclude/reject rows whose SM8 job is
+// deleted (active=0). SM8 does NOT block writes to active=0 jobs (empirically
+// confirmed RFT-85), so the guard must be Rafter-side.
+
+async function sm8FetchJobActive(accessToken, jobUuid) {
+  const res = await fetch(`${SM8_BASE}/job/${jobUuid}.json`, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  if (res.status === 404) return { ok: true, active: 0, status_text: "not_found" };
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { ok: false, status: res.status, detail: detail.slice(0, 300) };
+  }
+  let job;
+  try { job = await res.json(); }
+  catch { return { ok: false, status: 502, detail: "sm8_job_invalid_json" }; }
+  return { ok: true, active: job?.active === 1 ? 1 : 0, status_text: job?.status || "" };
+}
+
+// Batched form for the finder: one OData GET, returns the Set of currently
+// active job UUIDs from the supplied list. Returns null on SM8 fetch failure
+// so the caller can degrade-fail safely (empty finder beats stale rows).
+async function sm8FetchActiveSet(accessToken, jobUuids) {
+  if (!jobUuids.length) return new Set();
+  const filter = jobUuids.map((u) => `uuid eq '${u}'`).join(" or ");
+  const url = `${SM8_BASE}/job.json?$filter=${encodeURIComponent(filter)}`;
+  const res = await fetch(url, {
+    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+  });
+  if (!res.ok) {
+    console.error(JSON.stringify({ event: "sm8_active_set_fetch_failed", status: res.status }));
+    return null;
+  }
+  let list;
+  try { list = await res.json(); }
+  catch { return null; }
+  if (!Array.isArray(list)) return null;
+  const liveSet = new Set();
+  for (const j of list) {
+    if (j && j.uuid && j.active === 1) liveSet.add(j.uuid);
+  }
+  return liveSet;
+}
+
 async function handleAmendQuote(request, env) {
   const a = await requireFormOrInternal(request, env);
   if (a.error) return a.error;
@@ -1620,6 +1683,22 @@ async function handleAmendQuote(request, env) {
   let accessToken;
   try { accessToken = await refreshTokenIfNeeded(client_uuid, env); }
   catch (e) { return json({ error: "token_refresh_failed", detail: e.message }, { status: 502 }); }
+
+  // RFT-85: refuse to amend into a deleted SM8 job. SM8 does NOT block writes
+  // to active=0 jobs (empirically confirmed — a v2 amend landed on a deleted
+  // parent job in prod). Block early, before wasting PDF generation.
+  const liveness = await sm8FetchJobActive(accessToken, sm8_job_uuid);
+  if (!liveness.ok) {
+    return json({ error: "sm8_job_fetch_failed", sm8_job_uuid, status: liveness.status, detail: liveness.detail }, { status: 502 });
+  }
+  if (liveness.active !== 1) {
+    return json({
+      error: "sm8_job_deleted",
+      sm8_job_uuid,
+      sm8_status: liveness.status_text,
+      detail: "Target SM8 job is deleted (active=0). Cannot amend — create a new quote instead.",
+    }, { status: 410 });
+  }
 
   // Generate PDF via PDF_WORKER service binding
   const pdf = await fetchAmendPdf(env, enrichedPayload);
