@@ -1582,27 +1582,33 @@ async function sm8FetchJobActive(accessToken, jobUuid) {
   return { ok: true, active: job?.active === 1 ? 1 : 0, status_text: job?.status || "" };
 }
 
-// Batched form for the finder: one OData GET, returns the Set of currently
-// active job UUIDs from the supplied list. Returns null on SM8 fetch failure
-// so the caller can degrade-fail safely (empty finder beats stale rows).
+// Batched form for the finder: parallel single GETs, returns the Set of
+// currently active job UUIDs from the supplied list. SM8 OData rejects
+// `or`-joined predicates ("Advanced Record Filter Queries Not Supported"),
+// so per-UUID single GETs are the reliable shape. Bounded by finder limit
+// (≤50). Returns null only if every call errored — empty Set is a valid
+// "nothing live" answer distinct from a SM8 outage.
 async function sm8FetchActiveSet(accessToken, jobUuids) {
   if (!jobUuids.length) return new Set();
-  const filter = jobUuids.map((u) => `uuid eq '${u}'`).join(" or ");
-  const url = `${SM8_BASE}/job.json?$filter=${encodeURIComponent(filter)}`;
-  const res = await fetch(url, {
-    headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
-  });
-  if (!res.ok) {
-    console.error(JSON.stringify({ event: "sm8_active_set_fetch_failed", status: res.status }));
+  const results = await Promise.all(jobUuids.map(async (uuid) => {
+    try {
+      const res = await fetch(`${SM8_BASE}/job/${uuid}.json`, {
+        headers: { Authorization: `Bearer ${accessToken}`, Accept: "application/json" },
+      });
+      if (res.status === 404) return { ok: true, uuid, active: 0 };
+      if (!res.ok) return { ok: false };
+      const job = await res.json().catch(() => null);
+      const active = job && job.active === 1 ? 1 : 0;
+      return { ok: true, uuid, active };
+    } catch { return { ok: false }; }
+  }));
+  if (!results.some((r) => r.ok)) {
+    console.error(JSON.stringify({ event: "sm8_active_set_fetch_failed", n: jobUuids.length }));
     return null;
   }
-  let list;
-  try { list = await res.json(); }
-  catch { return null; }
-  if (!Array.isArray(list)) return null;
   const liveSet = new Set();
-  for (const j of list) {
-    if (j && j.uuid && j.active === 1) liveSet.add(j.uuid);
+  for (const r of results) {
+    if (r.ok && r.active === 1) liveSet.add(r.uuid);
   }
   return liveSet;
 }
