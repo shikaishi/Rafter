@@ -86,6 +86,48 @@ async function requireClerkJWT(request, env) {
   }
 }
 
+// RFT-70 Option C — Clerk org-role extraction. Handles both Clerk JWT formats:
+// v1 (legacy, flat `org_role` claim) and v2 (compact `o.rol` object, default
+// since 2025-04-14). Returns the role string (e.g. "org:admin", "org:member")
+// or null if no org context. Clerk's @clerk/backend verifyToken passes the
+// payload through unmodified, so we have to handle both shapes ourselves.
+function extractOrgRole(jwtPayload) {
+  if (typeof jwtPayload?.org_role === 'string') return jwtPayload.org_role;
+  if (typeof jwtPayload?.o?.rol === 'string') return jwtPayload.o.rol;
+  return null;
+}
+
+// ── RFT-70 Option C race lock ────────────────────────────────────────────────
+// KV-backed best-effort lock around the SM8 OAuth establish critical section.
+// The window between get-and-put is not atomic (KV has no native CAS), so two
+// near-simultaneous clicks within the same KV consistency window CAN both pass
+// the check. Designed for human-pace concurrency (sub-second double-clicks rare,
+// multi-admin OAuth conflicts at minute-pace common). Promote to a Durable
+// Object if the failure pattern shows up empirically — see RFT-70 plan.
+const CONNECT_LOCK_PREFIX = 'lock:sm8-connect:';
+const CONNECT_LOCK_TTL_SECONDS = 60;
+
+async function acquireConnectLock(env, uuid, userId) {
+  const key = CONNECT_LOCK_PREFIX + uuid;
+  const existing = await env.RAFTER_CLIENTS.get(key).catch(() => null);
+  if (existing) {
+    let parsed = null;
+    try { parsed = JSON.parse(existing); } catch { /* ignore */ }
+    return {
+      ok: false,
+      held_by_user_id: parsed?.user_id ?? null,
+      started_at: parsed?.started_at ?? null,
+    };
+  }
+  const value = JSON.stringify({ user_id: userId, started_at: new Date().toISOString() });
+  await env.RAFTER_CLIENTS.put(key, value, { expirationTtl: CONNECT_LOCK_TTL_SECONDS });
+  return { ok: true };
+}
+
+async function releaseConnectLock(env, uuid) {
+  await env.RAFTER_CLIENTS.delete(CONNECT_LOCK_PREFIX + uuid);
+}
+
 // ── Webhook handler ──────────────────────────────────────────────────────────
 
 async function handleClerkWebhook(request, env) {
@@ -222,6 +264,10 @@ async function handleOnboarding(request, env, url, jwtPayload) {
     return handleSm8Callback(request, env, jwtPayload);
   }
 
+  if (method === 'POST' && path === '/onboarding/sm8-disconnect') {
+    return handleSm8Disconnect(request, env, jwtPayload);
+  }
+
   return json({ ok: false, error: 'Not Found' }, 404);
 }
 
@@ -230,6 +276,21 @@ async function handleOnboarding(request, env, url, jwtPayload) {
 async function handleSm8Callback(request, env, jwtPayload) {
   const orgId = jwtPayload.org_id;
   if (!orgId) return json({ ok: false, error: 'No org_id in JWT' }, 401);
+
+  // RFT-70 Option C D1 — connect is admin-only. A member completing OAuth
+  // would silently replace the org's single SM8 grant, which is exactly the
+  // multi-user footgun Option C exists to eliminate. Start strict; loosen later
+  // only if the friction is real.
+  const orgRole = extractOrgRole(jwtPayload);
+  if (orgRole !== 'org:admin') {
+    return json({
+      ok: false,
+      error: 'role_forbidden',
+      code: 'NOT_ADMIN',
+      detail: 'Only the organisation admin can connect ServiceM8. Ask your org admin to connect, then you can use the form as a member.',
+      org_role: orgRole,
+    }, 403);
+  }
 
   const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
   if (!uuid) return json({ ok: false, error: 'Client not provisioned — Clerk org webhook may not have fired' }, 404);
@@ -248,63 +309,168 @@ async function handleSm8Callback(request, env, jwtPayload) {
     return json({ ok: false, error: 'server_misconfigured', detail: 'RAFTER_WORKER_SECRET not set' }, 500);
   }
 
-  // Code → tokens via SM8 directly. client_id 781230 is the registered OAuth
-  // app bound to rafter.deepgreensea.au/callback (RFT-69 Decision 2 — SM8
-  // admin confirmed single registered app). Matches setup.html:311 +
-  // materials-sync SM8_CLIENT_ID.
-  const tokenRes = await fetch('https://go.servicem8.com/oauth/access_token', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-    body: new URLSearchParams({
-      grant_type: 'authorization_code',
-      code,
-      client_id: '781230',
-      client_secret: env.SERVICEM8_CLIENT_SECRET,
-      redirect_uri: 'https://rafter.deepgreensea.au/callback',
-    }).toString(),
-  });
-
-  if (!tokenRes.ok) {
-    const detail = await tokenRes.text().catch(() => '');
-    return json({ ok: false, error: 'sm8_token_exchange_failed', status: tokenRes.status, detail: detail.slice(0, 500) }, 502);
+  // RFT-70 Option C D3 — race lock around the establish critical section.
+  // Loser of a concurrent establish gets a clear 409 retry response, NEVER a
+  // silent drop (a silent drop would reintroduce the exact bug Option C kills).
+  const userId = jwtPayload.sub || null;
+  const lock = await acquireConnectLock(env, uuid, userId);
+  if (!lock.ok) {
+    return json({
+      ok: false,
+      error: 'another_connection_in_progress',
+      code: 'CONNECT_IN_PROGRESS',
+      detail: 'Another admin started a ServiceM8 connection moments ago. Wait a few seconds and try again.',
+      started_by_user_id: lock.held_by_user_id,
+      started_at: lock.started_at,
+      retry_after_seconds: CONNECT_LOCK_TTL_SECONDS,
+    }, 409);
   }
 
-  let tokens;
-  try { tokens = await tokenRes.json(); }
-  catch (e) { return json({ ok: false, error: 'sm8_token_exchange_invalid_response', detail: e.message }, 502); }
+  try {
+    // Code → tokens via SM8 directly. client_id 781230 is the registered OAuth
+    // app bound to rafter.deepgreensea.au/callback (RFT-69 Decision 2 — SM8
+    // admin confirmed single registered app). Matches setup.html:311 +
+    // materials-sync SM8_CLIENT_ID.
+    const tokenRes = await fetch('https://go.servicem8.com/oauth/access_token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code,
+        client_id: '781230',
+        client_secret: env.SERVICEM8_CLIENT_SECRET,
+        redirect_uri: 'https://rafter.deepgreensea.au/callback',
+      }).toString(),
+    });
 
-  if (!tokens.access_token) {
-    return json({ ok: false, error: 'sm8_token_exchange_no_access_token' }, 502);
-  }
+    if (!tokenRes.ok) {
+      const detail = await tokenRes.text().catch(() => '');
+      return json({ ok: false, error: 'sm8_token_exchange_failed', status: tokenRes.status, detail: detail.slice(0, 500) }, 502);
+    }
 
-  const expires_at = tokens.expires_in
-    ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
-    : null;
+    let tokens;
+    try { tokens = await tokenRes.json(); }
+    catch (e) { return json({ ok: false, error: 'sm8_token_exchange_invalid_response', detail: e.message }, 502); }
 
-  // Persist via materials-sync /store-token through the service binding.
-  // The URL host is irrelevant on a service binding — only the path matters.
-  const storeRes = await env.MATERIALS_SYNC_WORKER.fetch('https://internal/store-token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${env.RAFTER_WORKER_SECRET}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
+    if (!tokens.access_token) {
+      return json({ ok: false, error: 'sm8_token_exchange_no_access_token' }, 502);
+    }
+
+    const expires_at = tokens.expires_in
+      ? new Date(Date.now() + tokens.expires_in * 1000).toISOString()
+      : null;
+
+    // Persist via materials-sync /store-token through the service binding.
+    // The URL host is irrelevant on a service binding — only the path matters.
+    // RFT-70 Option C D2 — pass connected_by_user_id so materials-sync writes
+    // connected_by_user_id + connected_at on this establish, regardless of
+    // whether it's first-establish or a takeover.
+    const storeRes = await env.MATERIALS_SYNC_WORKER.fetch('https://internal/store-token', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.RAFTER_WORKER_SECRET}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        uuid,
+        access_token: tokens.access_token,
+        refresh_token: tokens.refresh_token,
+        expires_at,
+        connected_by_user_id: userId,
+      }),
+    });
+
+    if (!storeRes.ok) {
+      const detail = await storeRes.text().catch(() => '');
+      return json({ ok: false, error: 'store_token_failed', status: storeRes.status, detail: detail.slice(0, 500) }, 502);
+    }
+
+    let storeBody = null;
+    try { storeBody = await storeRes.json(); } catch { /* ignore */ }
+    const wasTakeover = !!storeBody?.is_takeover;
+    const wasConnected = !!storeBody?.was_connected;
+    const previousConnectedBy = storeBody?.previous_connected_by_user_id ?? null;
+
+    // Single structured log line carries the takeover signal even before the
+    // audit/dashboard layer ships (deferred until RFT-83 is closed). Field
+    // names are stable so future ingest can rely on them.
+    console.log(JSON.stringify({
+      event: wasTakeover ? 'sm8_connection_takeover' : (wasConnected ? 'sm8_connection_reconnected' : 'sm8_connection_established'),
       uuid,
-      access_token: tokens.access_token,
-      refresh_token: tokens.refresh_token,
-      expires_at,
-    }),
-  });
+      connected_by_user_id: userId,
+      previous_connected_by_user_id: previousConnectedBy,
+    }));
 
-  if (!storeRes.ok) {
-    const detail = await storeRes.text().catch(() => '');
-    return json({ ok: false, error: 'store_token_failed', status: storeRes.status, detail: detail.slice(0, 500) }, 502);
+    return json({
+      ok: true,
+      uuid,
+      was_connected: wasConnected,
+      is_takeover: wasTakeover,
+      previous_connected_by_user_id: previousConnectedBy,
+    });
+  } finally {
+    await releaseConnectLock(env, uuid).catch(() => {});
+  }
+}
+
+// ── RFT-70 Option C — SM8 disconnect (admin-only) ────────────────────────────
+// Clears the org's SM8 grant from KV so a fresh OAuth can land cleanly. The
+// client record itself stays (org + business config persist); only the
+// connection-related fields are removed. Operator reconnects via setup.html.
+// UI surface deferred to RFT-63 (tenant config). This endpoint is the JSON
+// stub the UI will call.
+async function handleSm8Disconnect(request, env, jwtPayload) {
+  const orgId = jwtPayload.org_id;
+  if (!orgId) return json({ ok: false, error: 'No org_id in JWT' }, 401);
+
+  // D1 — same gate as connect. Member can't disconnect; that's the whole point.
+  const orgRole = extractOrgRole(jwtPayload);
+  if (orgRole !== 'org:admin') {
+    return json({
+      ok: false,
+      error: 'role_forbidden',
+      code: 'NOT_ADMIN',
+      detail: 'Only the organisation admin can disconnect ServiceM8. Ask your org admin.',
+      org_role: orgRole,
+    }, 403);
   }
 
-  console.log(JSON.stringify({ event: 'sm8_connected', uuid }));
+  const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+  if (!uuid) return json({ ok: false, error: 'Client not provisioned' }, 404);
 
-  return json({ ok: true, uuid });
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return json({ ok: false, error: 'Client record not found' }, 404);
+
+  let record;
+  try { record = JSON.parse(raw); }
+  catch { return json({ ok: false, error: 'Client record corrupt' }, 500); }
+
+  const wasConnected = !!record.access_token;
+  const previousConnectedBy = record.connected_by_user_id || null;
+
+  delete record.access_token;
+  delete record.refresh_token;
+  delete record.expires_at;
+  delete record.token_updated_at;
+  delete record.connected_by_user_id;
+  delete record.connected_at;
+
+  await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
+
+  console.log(JSON.stringify({
+    event: 'sm8_connection_disconnected',
+    uuid,
+    disconnected_by_user_id: jwtPayload.sub || null,
+    previous_connected_by_user_id: previousConnectedBy,
+    was_connected: wasConnected,
+  }));
+
+  return json({
+    ok: true,
+    uuid,
+    was_connected: wasConnected,
+    previous_connected_by_user_id: previousConnectedBy,
+  });
 }
 
 // ── Photo upload ─────────────────────────────────────────────────────────────

@@ -223,7 +223,7 @@ async function handleStoreToken(request, env) {
   try { body = await request.json(); }
   catch { return json({ error: "invalid_json" }, { status: 400 }); }
 
-  const { uuid, access_token, refresh_token, expires_at } = body || {};
+  const { uuid, access_token, refresh_token, expires_at, connected_by_user_id } = body || {};
   if (!uuid || typeof uuid !== "string") {
     return json({ error: "missing_field", field: "uuid" }, { status: 400 });
   }
@@ -233,17 +233,42 @@ async function handleStoreToken(request, env) {
 
   const config = (await readClient(env, uuid)) || { uuid };
 
+  // RFT-70 Option C: track whether this is first-establish vs takeover, so admin-api
+  // can log accordingly. Decided on KV state BEFORE we overwrite the token fields.
+  const wasConnected = !!config.access_token;
+  const previousConnectedBy = config.connected_by_user_id || null;
+  const isTakeover = wasConnected
+    && connected_by_user_id
+    && previousConnectedBy
+    && previousConnectedBy !== connected_by_user_id;
+
   config.access_token = access_token;
   if (refresh_token !== undefined) config.refresh_token = refresh_token;
   if (expires_at !== undefined) config.expires_at = expires_at;
   config.token_updated_at = new Date().toISOString();
+
+  // RFT-70 Option C D2: record who established the connection AND when, on EVERY
+  // establish (not only first). Optional in the body so the system-driven refresh
+  // path that doesn't go through this endpoint, and legacy Make callers that
+  // don't know about the field, both keep working.
+  if (connected_by_user_id !== undefined) {
+    config.connected_by_user_id = connected_by_user_id;
+    config.connected_at = config.token_updated_at;
+  }
 
   await writeClient(env, uuid, config);
   // Keep clerk_org reverse index in sync whenever the record has clerk_org_id set
   if (config.clerk_org_id) {
     await env.RAFTER_CLIENTS.put('clerk_org:' + config.clerk_org_id, uuid).catch(() => {});
   }
-  return json({ ok: true, uuid, token_updated_at: config.token_updated_at });
+  return json({
+    ok: true,
+    uuid,
+    token_updated_at: config.token_updated_at,
+    was_connected: wasConnected,
+    is_takeover: !!isTakeover,
+    previous_connected_by_user_id: previousConnectedBy,
+  });
 }
 
 async function handleRenderEmail(request, env) {
