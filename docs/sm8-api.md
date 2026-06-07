@@ -37,6 +37,19 @@ manage_job_materials, manage_jobs, manage_attachments
 
 **Materials filter:** Always use `?$filter=active eq 1` on `/api_1.0/material.json` fetches — without it inactive (archived) materials are returned alongside active ones.
 
+### OData filter constraints
+
+SM8's OData implementation is a limited subset. What works and what doesn't:
+
+| Filter | Result |
+|---|---|
+| `?$filter=active eq 1` | ✅ supported (materials sync, finder liveness against `/job.json`) |
+| `?$filter=uuid eq '<uuid>'` | ✅ single-predicate equality |
+| `?$filter=(uuid eq 'a' or uuid eq 'b')` | ❌ HTTP 400 `"Advanced Record Filter Queries Not Supported"` (verified RFT-85 BVT trace, 2026-06-07) |
+| `?$filter=uuid in (...)` | ❌ untested; assume unsupported until proven otherwise |
+
+**Implication for batched lookups:** to check N records by UUID, fire N parallel single GETs against `/<object>/{uuid}.json` — never one batched `or`-joined query. Bounded by SM8's 180 req/min throttle; fine for finder-scale (≤50). Canonical implementation: `sm8FetchActiveSet` in `workers/materials-sync/index.js` (RFT-85).
+
 **SM8 materials:** 117 items. Fields: uuid, name, price, active, cost, quantity_in_stock,
 item_description, unit.
 
