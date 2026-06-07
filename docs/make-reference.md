@@ -6,12 +6,12 @@ Extracted verbatim from CLAUDE.md (pre-split). For canonical UUIDs and safety ru
 
 | Scenario | Webhook URL | Purpose |
 |----------|-------------|---------|
-| Account Discovery | `hook.eu1.make.com/38k3vwhijsfun40uu3pmk942gdjnvj32` | OAuth token exchange |
-| Data Retrieval | `hook.eu1.make.com/hao3fhj1n2d1il4bhkkabozjwl892ujt` | Pull SM8 data on callback |
+| Account Discovery (`5612449`) | `hook.eu1.make.com/38k3vwhijsfun40uu3pmk942gdjnvj32` | OAuth token exchange — **DEACTIVATED 2026-06-07** (Path 2 / RFT-69 superseded) |
+| Data Retrieval (`5612520`) | `hook.eu1.make.com/hao3fhj1n2d1il4bhkkabozjwl892ujt` | Pull SM8 data on callback — **DEACTIVATED 2026-06-07** (Path 2 / RFT-69 superseded) |
 | Rafter Form (prod) | (no external webhook — `5537814`) | Quote submission → SM8 job creation |
 | Rafter Form - Dev | (no external webhook — `5962197`) | Dev/trial submissions |
 
-**Probe 2 monitoring (RFT-47 — nightly cron):** For each scenario above (5612449, 5537814), Probe 2 checks: `isPaused`, `isActive === false`, `dlqCount > 0` (dead-letter queue — failed executions awaiting retry). Any of these signals an alert. `dlqCount > 0` is the primary early-warning signal for execution failures that did not yet deactivate the scenario.
+**Probe 2 monitoring (RFT-47 — nightly cron):** Watched list is **`5537814` only** since 2026-06-07 (`MAKE_SCENARIO_IDS` in `workers/materials-sync/index.js`); legacy Account Discovery + Data Retrieval scenarios were deactivated after RFT-69 Path 2 removed Make from the OAuth path. Probe 2 checks: `isPaused`, `isActive === false`, `dlqCount > 0` (dead-letter queue — failed executions awaiting retry). Any of these signals an alert. `dlqCount > 0` is the primary early-warning signal for execution failures that did not yet deactivate the scenario.
 
 **Make Data Store:** "Rafter Tokens" — fields: uuid, access_token, refresh_token, expires_at.
 

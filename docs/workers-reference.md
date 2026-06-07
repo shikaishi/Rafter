@@ -17,9 +17,9 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 |-----|------|--------|---------|
 | `slug:andy` | → `0e604a45-84fd-4789-a2cb-662bcba51a8b` | Active | slug resolution |
 | `client:0e604a45-84fd-4789-a2cb-662bcba51a8b` | Andy's Rafter record | **Active — form uses this** | index.html, Make, rafter-pdf |
-| `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` | Orphaned KV key (see CLAUDE.md safety table) | Orphaned — not used by form | — |
+| `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` | **KV record DELETED 2026-06-07** (RFT-83) — UUID retains safety status per CLAUDE.md safety table | — | — |
 
-**`0e604a45-…` is the KV record the form actually reads.** `448e12a8-…` is not a Rafter client UUID — see the CLAUDE.md safety table for the current understanding (2026-06-07 BVT trace, RFT-80). The KV record at that key was set up as a dev duplicate and has stale values (dev webhook_url, wrong staff_uuid, Rafter logo). Do not use it.
+**`0e604a45-…` is the KV record the form actually reads.** `448e12a8-…` is not a Rafter client UUID — see the CLAUDE.md safety table for the current understanding (2026-06-07 BVT trace, RFT-80). The KV record at that key was an orphaned dev duplicate (hybrid contents per RFT-83) and was deleted 2026-06-07 after KV-read clarification confirmed no readers or writers remained. The UUID itself remains a safety-flagged value — never create another client record at this key.
 
 ### KV record contents (`client:0e604a45-…` — verified clean 2026-05-30)
 
@@ -36,7 +36,8 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 - `webhook_url`: `https://hook.eu1.make.com/oh8gh9i7cdadlmmcyh3ypeep1x1n9jd4` (prod Rafter Form scenario)
 - `email_template`: Andy's logo + correct merge fields (`{client_name}`, `{job_address}`)
 - `access_token`, `refresh_token`, `expires_at`, `token_updated_at` (OAuth — auto-refreshed)
-- `clerk_org_id` (NEW v2.0 — added at onboarding time)
+- `clerk_org_id`: `org_3EnbpxAJBMUgMQSzhfBn7OIs5j0` (Andy's Clerk org — bound 2026-06-07 via Path 2)
+- `connected_by_user_id`, `connected_at` (RFT-70 Option C — written by admin-api `/onboarding/sm8-callback` on each establish-or-refresh)
 
 ## Workers
 
