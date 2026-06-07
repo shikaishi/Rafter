@@ -642,8 +642,11 @@ async function runScheduledSync(env) {
 
 // ─── RFT-31 Telemetry & Probes ────────────────────────────────────────────────
 
-const MAKE_SCENARIO_IDS = ["5612449", "5537814"];
-const MAKE_SCENARIO_NAMES = { "5612449": "Account Discovery", "5537814": "Rafter Form prod" };
+// 5612449 ("Account Discovery") + 5612520 ("Data Retrieval") deactivated 2026-06-07
+// after Path 2 (RFT-69) removed Make from the OAuth path. Only the prod Rafter
+// Form scenario remains in Probe 2's watched list.
+const MAKE_SCENARIO_IDS = ["5537814"];
+const MAKE_SCENARIO_NAMES = { "5537814": "Rafter Form prod" };
 const MAKE_BASE_URL = "https://eu1.make.com/api/v2";
 
 // sendTelegramAlert: POST to Telegram Bot API sendMessage.
