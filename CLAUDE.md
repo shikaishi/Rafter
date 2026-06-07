@@ -38,6 +38,7 @@
 | **Trial (DEV/TEST)** | `010895db-e06c-465d-bce9-2424477be15b` | Will's thurlow.net SM8 vendor UUID | All development — `slug:dev` resolves here. **Provisioned 2026-05-30: KV record created, OAuth done, 114 materials synced.** |
 | **Andy's KV record** | `0e604a45-84fd-4789-a2cb-662bcba51a8b` | Active KV key — `slug:andy` resolves here | The record the form reads. Production — explicit sign-off required for any write. |
 | **Andy's SM8 vendor UUID** | `448e12a8-f7d9-4ace-b8c6-242bf678db3b` | SM8 API identity (vendor.json) | SM8 API calls use this as the account identity. KV record at this key is an orphaned duplicate — do not use. |
+| **BVT Testing** | `df902850-7e48-4e7a-8f2c-b3a65b6881da` | BVT test tenant, registered willthurlow73@gmail.com | Build-verification only — never dev, never prod. `slug:bvt` resolves here. Onboarded 2026-06-07 via admin-api Path 2 (`/onboarding/sm8-callback`, RFT-69). Domestic-electrician profile, 13 templates, 35 materials synced. |
 
 **UUID values appear only in the safety table above. Reference docs point back here — they never redefine UUIDs.**
 
