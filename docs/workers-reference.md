@@ -17,9 +17,9 @@ for KV reads during development. Cloudflare MCP `kv_list` / `kv_get` tools also 
 |-----|------|--------|---------|
 | `slug:andy` | → `0e604a45-84fd-4789-a2cb-662bcba51a8b` | Active | slug resolution |
 | `client:0e604a45-84fd-4789-a2cb-662bcba51a8b` | Andy's Rafter record | **Active — form uses this** | index.html, Make, rafter-pdf |
-| `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` | Andy's SM8 vendor UUID | Orphaned — not used by form | — |
+| `client:448e12a8-f7d9-4ace-b8c6-242bf678db3b` | Orphaned KV key (see CLAUDE.md safety table) | Orphaned — not used by form | — |
 
-**`0e604a45-…` is the KV record the form actually reads.** `448e12a8-…` is Andy's SM8 vendor UUID (confirmed via vendor.json 2026-05-28) but the KV record at that key was set up as a dev duplicate and has stale values (dev webhook_url, wrong staff_uuid, Rafter logo). Do not use it.
+**`0e604a45-…` is the KV record the form actually reads.** `448e12a8-…` is not a Rafter client UUID — see the CLAUDE.md safety table for the current understanding (2026-06-07 BVT trace, RFT-80). The KV record at that key was set up as a dev duplicate and has stale values (dev webhook_url, wrong staff_uuid, Rafter logo). Do not use it.
 
 ### KV record contents (`client:0e604a45-…` — verified clean 2026-05-30)
 

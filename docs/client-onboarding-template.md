@@ -4,7 +4,7 @@ Use this document for every new Rafter client. Complete every step in order. Do 
 Replace `{uuid}` and `{slug}` with the client's values throughout.
 
 Reference implementations:
-- Trial/dev: `448e12a8-f7d9-4ace-b8c6-242bf678db3b` / slug `andy` (will@thurlow.net SM8 instance)
+- Trial/dev: `010895db-e06c-465d-bce9-2424477be15b` / slug `dev` (will@thurlow.net SM8 instance — provisioned 2026-05-30; see CLAUDE.md safety table)
 - Andy live: `0e604a45-84fd-4789-a2cb-662bcba51a8b` / slug `andy` (Andrew Little — 2 Men and a Shovel)
 
 ---
@@ -131,7 +131,7 @@ npx wrangler kv key put "slug:{slug}" "{uuid}" --binding=RAFTER_CLIENTS --remote
 
 Example:
 ```
-npx wrangler kv key put "slug:andy" "448e12a8-f7d9-4ace-b8c6-242bf678db3b" --binding=RAFTER_CLIENTS --remote
+npx wrangler kv key put "slug:andy" "0e604a45-84fd-4789-a2cb-662bcba51a8b" --binding=RAFTER_CLIENTS --remote
 ```
 
 No code changes needed — slug routing is fully data-driven.
@@ -362,6 +362,6 @@ Work through each item in order. Do not mark as passed until you have personally
 
 - [ ] Delete all test jobs created in SM8 during verification
 - [ ] Delete any test clients/companies created in SM8 during verification
-- [ ] Confirm client is using their live SM8 instance UUID (not trial `448e12a8...`)
+- [ ] Confirm client is using their live SM8 instance UUID (not the trial UUID `010895db-…`)
 - [ ] Update `rafter-continuation-prompt.md` with the new client's UUID, slug, and KV field values
 - [ ] Update the issue tracker with T1-F1 and T1-F2 status if this was Andy's go-live
