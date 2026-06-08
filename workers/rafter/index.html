@@ -951,8 +951,8 @@
       <button class="btn btn-secondary" id="submitJobBtn" type="button"><i class="ti ti-briefcase"></i>Submit Job Only</button>
       <button class="btn btn-primary" id="submitEmailBtn" type="button"><i class="ti ti-mail"></i>Submit &amp; Send Quote</button>
       <!-- RFT-76: amend mode mirrors the original submit's job-only / +email pair. -->
-      <button class="btn btn-secondary" id="amendJobBtn" type="button" style="display:none;"><i class="ti ti-briefcase"></i>Re-send (job only)</button>
-      <button class="btn btn-primary" id="amendEmailBtn" type="button" style="display:none;"><i class="ti ti-mail"></i>Re-send &amp; email customer</button>
+      <button class="btn btn-secondary" id="amendJobBtn" type="button" style="display:none;"><i class="ti ti-briefcase"></i>Submit Job Only</button>
+      <button class="btn btn-primary" id="amendEmailBtn" type="button" style="display:none;"><i class="ti ti-mail"></i>Submit &amp; Send Quote</button>
     </div>
   </footer>
 
@@ -993,7 +993,7 @@
       <button class="btn btn-primary" onclick="returnToQuote()">
         <i class="ti ti-arrow-left"></i>Return to quote
       </button>
-      <button class="btn btn-secondary" onclick="location.reload()">
+      <button class="btn btn-secondary" onclick="startNewQuote()">
         <i class="ti ti-plus"></i>Submit another
       </button>
     </div>
@@ -1393,7 +1393,7 @@ async function doAmend(sendEmail) {
   if (btn.disabled) return;
   const originalHtml = btn.innerHTML;
   btn.disabled = true;
-  btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Re-sending…';
+  btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Submitting…';
   try {
     // Generate a fresh quote_ref for the new version (Melbourne TZ).
     const newRef = generateQuoteRef();
@@ -2150,6 +2150,15 @@ function returnToQuote() {
   $("successState").style.display = "none";
   $("appMain").style.display = "";
   window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// RFT-82 #1: "Submit another" after an amend used to call location.reload(),
+// which preserves the ?quote_ref=… that put the form into amend mode in the
+// first place — so the page reloaded straight back into editing the same
+// quote. Strip query params on the way out so a blank form loads.
+function startNewQuote() {
+  const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
+  window.location.href = `/${encodeURIComponent(slug)}`;
 }
 
 function showSuccess(payload, opts = {}) {
