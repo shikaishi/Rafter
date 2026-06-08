@@ -1658,14 +1658,21 @@ function toggleSection(key, name) {
 }
 function defaultCategoryFor(sectionName) {
   if (!state.photos.length) return null;
-  // RFT-78 #4: exact section-name → category match wins first (case-insensitive,
-  // trimmed). Covers the common case where the operator named a photo category
-  // the same as a section ("Switchboard Upgrade" section ↔ "Switchboard Upgrade"
-  // photos). Falls back to landscape-flavour regex map, then first category.
-  const norm = (s) => (s || "").trim().toLowerCase();
-  const target = norm(sectionName);
-  const exact = state.photos.find((p) => norm(p.name) === target);
-  if (exact) return exact.name;
+  // RFT-78 #4: exact section-name → category match wins first. Photo categories
+  // are stored slugified (admin-api sanitisePathSegment: lowercase, non-[a-z0-9-]
+  // → '-', collapsed) — so a section named "Switchboard Upgrade" must be
+  // slugified to "switchboard-upgrade" before comparing to the category name.
+  // v1 (norm = trim+lowercase only) only matched "Miscellaneous" by accident
+  // because that string happens to slugify to itself.
+  const slugify = (s) => (s || "").trim().toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+  const target = slugify(sectionName);
+  if (target) {
+    const exact = state.photos.find((p) => slugify(p.name) === target);
+    if (exact) return exact.name;
+  }
   const map = [
     [/site setup|site set/i, /site setup/i],
     [/excavat/i, /excavat/i],
