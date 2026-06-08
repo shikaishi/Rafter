@@ -50,9 +50,10 @@ For 2026-05-28 incident detail (UUID-swap consequence + KV audit), see [docs/raf
 
 ## What Rafter is
 
-Rafter is an AI-assisted quoting and operations platform for Australian tradespeople, built by
+Rafter is an AI-built quoting and operations platform for Australian tradespeople, built by
 Deep Green Sea Pty Ltd (Will Thurlow). It generates branded PDF quotes from a web form,
 creates jobs in ServiceM8, and attaches the PDF to the SM8 job via the two-step SM8 Attachment API.
+The product itself contains no AI/ML — see constraint #12.
 
 **First client:** Andy — 2 Men and a Shovel, Melbourne landscaper.
 **Operator email (Andy's SM8):** will@deepgreensea.au
