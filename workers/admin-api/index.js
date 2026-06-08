@@ -826,28 +826,46 @@ async function handleSettingsPhotoReorder(uuid, request, env) {
   return json({ ok: true, category, count: keyOrder.length });
 }
 
-// POST /settings/sections/sync — pull section PROSE from SM8 via the proven
-// clone-read-soft-delete mechanism (RFT-80 verification, RFT-84 spec).
+// POST /settings/sections/sync — mirror SM8 active templates onto Rafter.
 //
-// SM8 exposes no direct read of jobtemplate scope/description. Documented
-// route: POST /jobtemplate/{uuid}/job.json → response field `jobUUID` (NOT
-// `uuid` — docs gotcha). GET that job → job_description carries the
-// template's prose. DELETE the job → soft-delete (sets active=0; hard-delete
-// is browser-only and undocumented per RFT-80).
+// Bundle 2 (RFT-63, 2026-06-08) rewrote the prior "add-only" sync into a
+// full mirror: SM8 is canonical, Rafter equals SM8's active template set
+// after every sync. The earlier "never removes templates that disappeared
+// from SM8 (protects quote history)" rule was retired — quote history is
+// the PDF stored on the SM8 job, not the local prose array, so there is
+// nothing to protect by keeping orphan rows around.
 //
-// edit_date diffing keeps litter to genuine template edits — only re-clone
-// templates whose SM8 edit_date changed since last sync. Store
-// sm8_edit_date per template alongside the prose. First-run on a fresh
-// record (no sm8_edit_date) re-clones everything; thereafter, "sync all"
-// with no SM8-side edits creates zero jobs.
+// Template identity is sm8_template_uuid. First-run backfill matches
+// existing Rafter entries to SM8 by name and stamps the uuid; thereafter
+// uuid alone drives the diff. That makes rename a uuid-match (same row,
+// new name + new prose, photos migrated) instead of a remove+add pair
+// that would orphan the old slug's photos.
 //
-// Transactional cleanup: every jobUUID we create is tracked in
-// createdJobUuids and soft-deleted in finally{} regardless of which step
-// failed. RFT-80 first run left 13 active clone jobs when the read step
-// bailed mid-loop; this pattern prevents that.
+// Diff outcomes per template:
+//   - Add:    SM8 uuid not in Rafter → clone-read prose, append.
+//   - Update: uuid in both, edit_date matches → no-op. edit_date differs
+//             → re-clone for fresh prose, stamp new edit_date.
+//   - Rename: special case of Update where the name also differs. Photo
+//             slug changes (sanitisePathSegment(name)), so we R2-move every
+//             object under old slug to new slug AND rewrite the photo_order
+//             key + per-key path strings.
+//   - Remove: Rafter row whose uuid no longer appears in SM8 (or whose
+//             uuid never backfilled because no name match) → drop the row,
+//             delete every R2 object under its slug, prune the photo_order
+//             entry.
 //
-// Adds new templates (with their fresh prose) — never removes existing
-// templates that have disappeared from SM8 (protects quote history).
+// SM8 read mechanism unchanged from RFT-80 / RFT-84: clone template → GET
+// job → read prose → soft-delete the clone. Transactional cleanup of all
+// created clone jobs in finally{} regardless of which step failed.
+//
+// Safeguard: if SM8 returns an empty active-template list while Rafter has
+// templates, the call aborts with EMPTY_SM8_REFUSE_WIPE. A token blip or
+// OAuth misconfig must not silently wipe a tenant's configured prose.
+//
+// Returns: { ok, total, added: [name], updated: [name],
+//   renamed: [{ old, new, photo_count }],
+//   removed: [{ name, photo_count }],
+//   unchanged_count, failed: [...] }
 async function handleSettingsSectionsSync(uuid, env) {
   // Refresh SM8 token via materials-sync
   try {
@@ -866,7 +884,7 @@ async function handleSettingsSectionsSync(uuid, env) {
   const token = record.access_token;
   if (!token) return json({ ok: false, error: 'no_sm8_token', code: 'NO_TOKEN' }, 422);
 
-  // List active templates with their edit_date for diffing
+  // List SM8 active templates → [{ uuid, name, edit_date, active, ... }]
   const listRes = await fetch(`${SM8_BASE}/jobtemplate.json?$filter=active eq 1`, {
     headers: { Authorization: `Bearer ${token}` },
   });
@@ -878,101 +896,165 @@ async function handleSettingsSectionsSync(uuid, env) {
   try { sm8Templates = await listRes.json(); }
   catch { return json({ ok: false, error: 'sm8_invalid_response' }, 502); }
   if (!Array.isArray(sm8Templates)) sm8Templates = [];
-  // Each entry: { uuid, name, edit_date, active, ... }
   const activeTemplates = sm8Templates.filter(t => t && t.active !== 0 && t.uuid && typeof t.name === 'string' && t.name.trim());
 
-  const existing = Array.isArray(record.templates) ? record.templates : [];
-  const existingByName = new Map(existing.map(t => [t.name.trim(), t]));
+  const existing = Array.isArray(record.templates) ? record.templates.slice() : [];
 
-  // Decide which templates need cloning. Strategy:
-  //   - Template not in our records → must clone (new)
-  //   - Template in records but SM8 edit_date differs (or we never stamped
-  //     one) → must clone (changed)
-  //   - Template in records with matching edit_date → unchanged, skip
-  const toClone = [];
-  const unchanged = [];
-  for (const t of activeTemplates) {
-    const name = t.name.trim();
-    const prior = existingByName.get(name);
-    const sm8EditDate = t.edit_date || '';
-    if (!prior) {
-      toClone.push({ tplUuid: t.uuid, name, sm8EditDate, reason: 'new' });
-    } else if (!prior.sm8_edit_date || prior.sm8_edit_date !== sm8EditDate) {
-      toClone.push({ tplUuid: t.uuid, name, sm8EditDate, reason: 'updated' });
-    } else {
-      unchanged.push(name);
+  // Safeguard: SM8 came back empty while Rafter has templates. Almost
+  // certainly a token blip or OAuth misconfig on SM8's side. Refuse rather
+  // than wipe the tenant on one bad response.
+  if (activeTemplates.length === 0 && existing.length > 0) {
+    return json({
+      ok: false,
+      error: 'sm8_returned_empty_with_existing_local',
+      code: 'EMPTY_SM8_REFUSE_WIPE',
+      detail: `SM8 reported 0 active templates but Rafter has ${existing.length}. Refusing to wipe. Re-check the SM8 OAuth grant and retry.`,
+    }, 502);
+  }
+
+  // First-run uuid backfill: any Rafter entry without sm8_template_uuid
+  // gets matched to an SM8 entry by name. One-time migration from
+  // name-keyed to uuid-keyed identity. After this, uuid alone drives the
+  // diff — including rename detection.
+  const sm8ByName = new Map(activeTemplates.map(t => [t.name.trim(), t]));
+  for (const entry of existing) {
+    if (!entry.sm8_template_uuid) {
+      const match = sm8ByName.get((entry.name || '').trim());
+      if (match) entry.sm8_template_uuid = match.uuid;
     }
   }
 
-  // Track created job UUIDs across the whole loop so finally{} can always
-  // attempt soft-delete, even if an iteration mid-loop throws.
+  const existingByUuid = new Map();
+  for (const entry of existing) {
+    if (entry.sm8_template_uuid) existingByUuid.set(entry.sm8_template_uuid, entry);
+  }
+
+  // Diff
+  const toAdd = [];
+  const toUpdate = []; // [{ rafterEntry, sm8Tpl, isRename }]
+  const unchanged = [];
+  for (const sm8Tpl of activeTemplates) {
+    const rafterEntry = existingByUuid.get(sm8Tpl.uuid);
+    if (!rafterEntry) {
+      toAdd.push(sm8Tpl);
+      continue;
+    }
+    const editChanged = !rafterEntry.sm8_edit_date || rafterEntry.sm8_edit_date !== (sm8Tpl.edit_date || '');
+    const nameChanged = (rafterEntry.name || '').trim() !== sm8Tpl.name.trim();
+    if (editChanged || nameChanged) {
+      toUpdate.push({ rafterEntry, sm8Tpl, isRename: nameChanged });
+    } else {
+      unchanged.push(rafterEntry.name);
+    }
+  }
+  const activeUuidSet = new Set(activeTemplates.map(t => t.uuid));
+  const toRemove = existing.filter(e => !e.sm8_template_uuid || !activeUuidSet.has(e.sm8_template_uuid));
+
+  // Working copy that drops removed rows up front. Add/update mutate the
+  // surviving rows in place; ADD appends new rows. Writes back at the end.
+  const survivors = existing.filter(e => !toRemove.includes(e));
+
   const createdJobUuids = [];
   const added = [];
   const updated = [];
+  const renamed = []; // [{ old, new, photo_count }]
+  const removed = []; // [{ name, photo_count }]
   const failed = [];
 
   try {
-    for (const job of toClone) {
-      let clonedUuid = null;
-      try {
-        // Clone template → new job. No body fields — we want SM8 to populate
-        // job_description from the template's own prose unaltered.
-        const cloneRes = await fetch(`${SM8_BASE}/jobtemplate/${job.tplUuid}/job.json`, {
-          method: 'POST',
-          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-          body: '{}',
-        });
-        if (!cloneRes.ok) {
-          const detail = await cloneRes.text().catch(() => '');
-          failed.push({ name: job.name, step: 'clone', status: cloneRes.status, detail: detail.slice(0, 200) });
-          continue;
-        }
-        let cloneBody;
-        try { cloneBody = await cloneRes.json(); }
-        catch { failed.push({ name: job.name, step: 'clone_body' }); continue; }
-        // Docs gotcha: response uses jobUUID, not uuid (RFT-80 finding)
-        clonedUuid = cloneBody.jobUUID;
-        if (!clonedUuid) {
-          failed.push({ name: job.name, step: 'clone_no_uuid' });
-          continue;
-        }
-        createdJobUuids.push(clonedUuid);
+    // ── REMOVE ──────────────────────────────────────────────────────────
+    for (const entry of toRemove) {
+      const slug = sanitisePathSegment(entry.name || '');
+      const r2Keys = slug ? await listR2KeysUnder(env, `clients/${uuid}/photos/${slug}/`) : [];
+      for (const key of r2Keys) {
+        try { await env.RAFTER_ASSETS.delete(key); }
+        catch (err) { failed.push({ name: entry.name, step: 'remove_r2', key, detail: err.message }); }
+      }
+      if (slug && record.photo_order && record.photo_order[slug]) delete record.photo_order[slug];
+      removed.push({ name: entry.name, photo_count: r2Keys.length });
+    }
 
-        // Read cloned job → template prose is in job_description
-        const readRes = await fetch(`${SM8_BASE}/job/${clonedUuid}.json`, {
-          headers: { Authorization: `Bearer ${token}` },
-        });
-        if (!readRes.ok) {
-          failed.push({ name: job.name, step: 'read', status: readRes.status });
-          continue;
-        }
-        let jobRecord;
-        try { jobRecord = await readRes.json(); }
-        catch { failed.push({ name: job.name, step: 'read_body' }); continue; }
-        // Empty prose is valid (e.g. Miscellaneous template) — store empty
-        const prose = typeof jobRecord.job_description === 'string' ? jobRecord.job_description : '';
+    // ── UPDATE (re-clone prose; on rename also migrate R2 + photo_order) ─
+    for (const { rafterEntry, sm8Tpl, isRename } of toUpdate) {
+      let prose;
+      try { prose = await cloneReadProse(token, sm8Tpl.uuid, createdJobUuids); }
+      catch (err) { failed.push({ name: sm8Tpl.name, step: err.step || 'update', detail: err.message }); continue; }
 
-        // Merge into the templates array — by-name match, preserve order
-        const priorIdx = existing.findIndex(t => t.name.trim() === job.name);
-        const updatedEntry = { name: job.name, text: prose, sm8_edit_date: job.sm8EditDate };
-        if (priorIdx >= 0) {
-          existing[priorIdx] = updatedEntry;
-          updated.push(job.name);
-        } else {
-          existing.push(updatedEntry);
-          added.push(job.name);
+      if (isRename) {
+        const oldSlug = sanitisePathSegment(rafterEntry.name || '');
+        const newSlug = sanitisePathSegment(sm8Tpl.name);
+        let migrated = 0;
+        if (oldSlug && newSlug && oldSlug !== newSlug) {
+          const r2Keys = await listR2KeysUnder(env, `clients/${uuid}/photos/${oldSlug}/`);
+          for (const oldKey of r2Keys) {
+            const filename = oldKey.slice(`clients/${uuid}/photos/${oldSlug}/`.length);
+            const newKey = `clients/${uuid}/photos/${newSlug}/${filename}`;
+            try {
+              const obj = await env.RAFTER_ASSETS.get(oldKey);
+              if (!obj) continue;
+              const buffer = await obj.arrayBuffer();
+              await env.RAFTER_ASSETS.put(newKey, buffer, { httpMetadata: obj.httpMetadata });
+              await env.RAFTER_ASSETS.delete(oldKey);
+              migrated++;
+            } catch (err) {
+              failed.push({ name: sm8Tpl.name, step: 'rename_r2', key: oldKey, detail: err.message });
+            }
+          }
+          // photo_order migration: rename the key + rewrite per-key paths.
+          if (record.photo_order && Array.isArray(record.photo_order[oldSlug])) {
+            const remapped = record.photo_order[oldSlug].map(k =>
+              k.replace(`/photos/${oldSlug}/`, `/photos/${newSlug}/`)
+            );
+            if (Array.isArray(record.photo_order[newSlug])) {
+              // Defensive merge — should not normally fire.
+              for (const k of remapped) {
+                if (!record.photo_order[newSlug].includes(k)) record.photo_order[newSlug].push(k);
+              }
+            } else {
+              record.photo_order[newSlug] = remapped;
+            }
+            delete record.photo_order[oldSlug];
+          }
         }
-      } catch (err) {
-        failed.push({ name: job.name, step: 'exception', detail: err.message });
+        renamed.push({ old: rafterEntry.name, new: sm8Tpl.name, photo_count: migrated });
+      } else {
+        updated.push(sm8Tpl.name);
+      }
+
+      rafterEntry.name = sm8Tpl.name;
+      rafterEntry.text = prose;
+      rafterEntry.sm8_edit_date = sm8Tpl.edit_date || '';
+      rafterEntry.sm8_template_uuid = sm8Tpl.uuid;
+    }
+
+    // ── ADD ─────────────────────────────────────────────────────────────
+    for (const sm8Tpl of toAdd) {
+      let prose;
+      try { prose = await cloneReadProse(token, sm8Tpl.uuid, createdJobUuids); }
+      catch (err) { failed.push({ name: sm8Tpl.name, step: err.step || 'add', detail: err.message }); continue; }
+      survivors.push({
+        name: sm8Tpl.name,
+        text: prose,
+        sm8_edit_date: sm8Tpl.edit_date || '',
+        sm8_template_uuid: sm8Tpl.uuid,
+      });
+      added.push(sm8Tpl.name);
+    }
+
+    // photo_order defence in depth — drop entries for slugs no section now
+    // claims. Covers cases where a remove or rename touched a slug that the
+    // per-step code somehow missed.
+    if (record.photo_order && typeof record.photo_order === 'object') {
+      const activeSlugs = new Set(survivors.map(s => sanitisePathSegment(s.name || '')));
+      for (const slug of Object.keys(record.photo_order)) {
+        if (!activeSlugs.has(slug)) delete record.photo_order[slug];
       }
     }
 
-    // Write the updated templates array back to KV
-    record.templates = existing;
+    record.templates = survivors;
     await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
   } finally {
-    // Transactional cleanup — soft-delete every job we created, regardless
-    // of which iteration failed. Log per-failure but don't throw.
+    // Transactional cleanup — soft-delete every clone job we created
     for (const jobUuid of createdJobUuids) {
       try {
         const delRes = await fetch(`${SM8_BASE}/job/${jobUuid}.json`, {
@@ -991,21 +1073,71 @@ async function handleSettingsSectionsSync(uuid, env) {
   console.log(JSON.stringify({
     event: 'settings_sections_synced',
     uuid,
-    total: existing.length,
+    total: survivors.length,
     added: added.length,
     updated: updated.length,
+    renamed: renamed.length,
+    removed: removed.length,
     unchanged: unchanged.length,
     failed: failed.length,
     clones_created: createdJobUuids.length,
   }));
   return json({
     ok: true,
-    total: existing.length,
+    total: survivors.length,
     added,
     updated,
+    renamed,
+    removed,
     unchanged_count: unchanged.length,
     failed,
   });
+}
+
+// Clone a SM8 jobtemplate to a job, GET the job to read its prose, push
+// the clone uuid onto the supplied tracking array so finally{} can soft-
+// delete it. Throws on failure with a `.step` property attached so the
+// caller can categorise the failure bucket.
+async function cloneReadProse(token, tplUuid, createdJobUuids) {
+  const cloneRes = await fetch(`${SM8_BASE}/jobtemplate/${tplUuid}/job.json`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: '{}',
+  });
+  if (!cloneRes.ok) { const e = new Error(`clone failed ${cloneRes.status}`); e.step = 'clone'; throw e; }
+  let cloneBody;
+  try { cloneBody = await cloneRes.json(); }
+  catch { const e = new Error('clone body not json'); e.step = 'clone_body'; throw e; }
+  // Docs gotcha: response uses jobUUID, not uuid (RFT-80 finding)
+  const clonedUuid = cloneBody.jobUUID;
+  if (!clonedUuid) { const e = new Error('clone response missing jobUUID'); e.step = 'clone_no_uuid'; throw e; }
+  createdJobUuids.push(clonedUuid);
+
+  const readRes = await fetch(`${SM8_BASE}/job/${clonedUuid}.json`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!readRes.ok) { const e = new Error(`read failed ${readRes.status}`); e.step = 'read'; throw e; }
+  let jobRecord;
+  try { jobRecord = await readRes.json(); }
+  catch { const e = new Error('read body not json'); e.step = 'read_body'; throw e; }
+  // Empty prose is valid (e.g. Miscellaneous template) — store empty
+  return typeof jobRecord.job_description === 'string' ? jobRecord.job_description : '';
+}
+
+// List all R2 object keys under a prefix, paginating until done. Cap at
+// 50 pages × 1000/page = 50k objects per slug — well above the practical
+// tenant ceiling.
+async function listR2KeysUnder(env, prefix) {
+  const keys = [];
+  let cursor;
+  for (let i = 0; i < 50; i++) {
+    const opts = cursor ? { prefix, cursor } : { prefix };
+    const page = await env.RAFTER_ASSETS.list(opts);
+    for (const obj of page.objects) keys.push(obj.key);
+    if (!page.truncated) break;
+    cursor = page.cursor;
+  }
+  return keys;
 }
 
 // ── SM8 OAuth callback (RFT-69 Path 2 — removes Make from the auth path) ────

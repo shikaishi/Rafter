@@ -112,6 +112,18 @@
   .modal-pill.current { opacity: 0.5; cursor: not-allowed; }
   .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
 
+  /* Sync report modal (Bundle 2) */
+  .modal.sync-report { max-width: 480px; }
+  .sync-rows { display: flex; flex-direction: column; gap: 8px; }
+  .sync-row { display: grid; grid-template-columns: 80px 1fr; gap: 10px; font-size: 12px; color: var(--rf-navy); line-height: 1.5; }
+  .sync-tag { display: inline-flex; align-items: flex-start; padding: 2px 8px; border-radius: 4px; font-size: 10px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; height: 18px; white-space: nowrap; }
+  .sync-tag.added { background: #DCFCE7; color: #166534; }
+  .sync-tag.updated { background: #DBEAFE; color: #1E40AF; }
+  .sync-tag.renamed { background: #FEF3C7; color: #92400E; }
+  .sync-tag.removed { background: #FEE2E2; color: #991B1B; }
+  .sync-tag.failed { background: #FECACA; color: #7F1D1D; }
+  .sync-meta { color: var(--rf-muted); font-size: 11px; }
+
   .loading-card { text-align: center; padding: 40px 18px; color: var(--rf-muted); font-size: 13px; }
   .error-card { padding: 16px 18px; }
   .error-card .err-title { color: var(--rf-danger); font-weight: 600; margin-bottom: 4px; }
@@ -652,9 +664,17 @@ $('syncSectionsBtn').addEventListener('click', async () => {
   try {
     const res = await authedFetch(`${ADMIN_API}/settings/sections/sync`, { method: 'POST' });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || `sync_${res.status}`);
-    const addedNote = data.added && data.added.length ? ` (${data.added.length} new: ${data.added.join(', ')})` : ' (no new sections)';
-    toast(`Synced ${data.total} sections${addedNote}`, 'ok');
+    if (!res.ok) {
+      // Surface the EMPTY_SM8_REFUSE_WIPE safeguard prominently — it means
+      // SM8 came back with no templates while Rafter has some. Token blip
+      // or OAuth issue, not a real "all templates were deleted" event.
+      if (data.code === 'EMPTY_SM8_REFUSE_WIPE') {
+        showSyncReport({ aborted: true, message: data.detail || 'SM8 returned no templates. Refusing to wipe.' });
+        return;
+      }
+      throw new Error(data.error || `sync_${res.status}`);
+    }
+    showSyncReport(data);
     await loadState();
   } catch (e) {
     toast(`Sync failed: ${e.message || e}`, 'err');
@@ -663,6 +683,72 @@ $('syncSectionsBtn').addEventListener('click', async () => {
     btn.innerHTML = original;
   }
 });
+
+// RFT-63 Bundle 2 — show the mirror-sync report in a modal when there's
+// anything to report (added/updated/renamed/removed/failed). A no-change
+// sync gets a quiet "all in sync" toast; only diffs open the modal.
+function showSyncReport(data) {
+  if (data.aborted) {
+    const backdrop = document.createElement('div');
+    backdrop.className = 'modal-backdrop';
+    backdrop.innerHTML = `
+      <div class="modal">
+        <h3>Sync aborted</h3>
+        <p style="font-size:13px;color:var(--rf-navy);margin:0 0 8px;">${esc(data.message)}</p>
+        <p style="font-size:12px;color:var(--rf-muted);margin:0 0 14px;">Your sections were left untouched. Check the SM8 OAuth grant and try again.</p>
+        <div class="modal-actions"><button class="btn" id="syncReportClose">Close</button></div>
+      </div>`;
+    document.body.appendChild(backdrop);
+    backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+    backdrop.querySelector('#syncReportClose').addEventListener('click', () => backdrop.remove());
+    return;
+  }
+
+  const counts = {
+    added: (data.added || []).length,
+    updated: (data.updated || []).length,
+    renamed: (data.renamed || []).length,
+    removed: (data.removed || []).length,
+    failed: (data.failed || []).length,
+  };
+  const anyChange = counts.added + counts.updated + counts.renamed + counts.removed + counts.failed > 0;
+
+  if (!anyChange) {
+    toast(`In sync — ${data.total} sections, all match SM8`, 'ok');
+    return;
+  }
+
+  const rows = [];
+  if (counts.added)
+    rows.push(`<div class="sync-row"><span class="sync-tag added">Added</span><span>${data.added.map(esc).join(', ')}</span></div>`);
+  if (counts.updated)
+    rows.push(`<div class="sync-row"><span class="sync-tag updated">Updated</span><span>${data.updated.map(esc).join(', ')}</span></div>`);
+  if (counts.renamed) {
+    const r = data.renamed.map(x => `${esc(x.old)} → ${esc(x.new)}${x.photo_count ? ` <span class="sync-meta">(${x.photo_count} photo${x.photo_count === 1 ? '' : 's'} moved)</span>` : ''}`).join('<br>');
+    rows.push(`<div class="sync-row"><span class="sync-tag renamed">Renamed</span><span>${r}</span></div>`);
+  }
+  if (counts.removed) {
+    const r = data.removed.map(x => `${esc(x.name)}${x.photo_count ? ` <span class="sync-meta">(${x.photo_count} photo${x.photo_count === 1 ? '' : 's'} deleted)</span>` : ''}`).join('<br>');
+    rows.push(`<div class="sync-row"><span class="sync-tag removed">Removed</span><span>${r}</span></div>`);
+  }
+  if (counts.failed) {
+    const r = data.failed.map(x => `${esc(x.name || '?')} <span class="sync-meta">(${esc(x.step || 'err')})</span>`).join('<br>');
+    rows.push(`<div class="sync-row"><span class="sync-tag failed">Failed</span><span>${r}</span></div>`);
+  }
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal sync-report">
+      <h3>Sync complete</h3>
+      <p style="font-size:12px;color:var(--rf-muted);margin:0 0 12px;">${data.total} sections in sync with SM8</p>
+      <div class="sync-rows">${rows.join('')}</div>
+      <div class="modal-actions" style="margin-top:14px;"><button class="btn" id="syncReportClose">Close</button></div>
+    </div>`;
+  document.body.appendChild(backdrop);
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+  backdrop.querySelector('#syncReportClose').addEventListener('click', () => backdrop.remove());
+}
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 function esc(s) {
