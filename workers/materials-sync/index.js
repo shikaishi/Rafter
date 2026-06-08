@@ -8,7 +8,7 @@ const MATERIALS_TTL_SECONDS = 86400;
 const CLIENT_KEY_PREFIX = "client:";
 const MATERIALS_KEY_PREFIX = "materials:";
 const PHOTO_PREFIX = (uuid) => `clients/${uuid}/photos/`;
-const SENSITIVE_CLIENT_FIELDS = ["access_token", "refresh_token", "expires_at", "token_updated_at", "webhook_url"];
+const SENSITIVE_CLIENT_FIELDS = ["access_token", "refresh_token", "expires_at", "token_updated_at", "webhook_url", "bank_details"];
 
 const ALLOWED_ORIGINS = new Set([
   "https://rafter.deepgreensea.au",
