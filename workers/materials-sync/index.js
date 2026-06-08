@@ -473,9 +473,30 @@ async function handleListPhotos(request, uuid, env) {
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
+  // RFT-63 commit 6: respect client.photo_order so settings-side reorder flows
+  // through to the form picker. Mirrors admin-api listPhotosByCategory:511-535
+  // — photos in photo_order come first in saved order, then any unordered or
+  // legacy keys (uploaded before order persistence existed) append
+  // alphabetically by filename. Read the client record once; treat missing
+  // photo_order as empty (everything falls through to the alphabetical tail).
+  let photoOrderMap = {};
+  const config = await readClient(env, uuid);
+  if (config && config.photo_order && typeof config.photo_order === "object") {
+    photoOrderMap = config.photo_order;
+  }
   const sorted = [...categories.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, photos]) => ({ name, photos: photos.sort((a, b) => a.filename.localeCompare(b.filename)) }));
+    .map(([name, photos]) => {
+      const order = Array.isArray(photoOrderMap[name]) ? photoOrderMap[name] : [];
+      const orderIndex = new Map(order.map((k, i) => [k, i]));
+      const arranged = photos.slice().sort((a, b) => {
+        const ai = orderIndex.has(a.key) ? orderIndex.get(a.key) : Infinity;
+        const bi = orderIndex.has(b.key) ? orderIndex.get(b.key) : Infinity;
+        if (ai !== bi) return ai - bi;
+        return a.filename.localeCompare(b.filename);
+      });
+      return { name, photos: arranged };
+    });
   return json({ ok: true, uuid, categories: sorted });
 }
 

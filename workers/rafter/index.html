@@ -2085,10 +2085,17 @@ function renderPhotoPanel(s) {
     grid.querySelectorAll(".pp-cell").forEach((c) => {
       c.addEventListener("click", () => {
         const k = c.dataset.key;
-        if (s.photos.includes(k)) s.photos = s.photos.filter((x) => x !== k);
-        else s.photos.push(k);
+        // RFT-63 commit 6: derive s.photos from picker DISPLAY order, not tap
+        // order. Composes with materials-sync handleListPhotos returning
+        // photos in client.photo_order — the order seen in settings (drag-
+        // reordered) flows through the picker into the payload into the PDF.
+        // Tap order is no longer a signal.
+        const sel = new Set(s.photos);
+        if (sel.has(k)) sel.delete(k); else sel.add(k);
+        const pickerKeys = (cat?.photos || []).map((p) => p.key);
+        s.photos = pickerKeys.filter((x) => sel.has(x));
         // Update selection state in-place — no full re-render so scroll is preserved
-        c.classList.toggle("sel", s.photos.includes(k));
+        c.classList.toggle("sel", sel.has(k));
         const n = s.photos.length;
         panel.querySelector(".count").textContent = `${n} photo${n === 1 ? "" : "s"} selected`;
         panel.querySelector('[data-role="done"]').innerHTML = `<i class="ti ti-check"></i>Done · ${n}`;
