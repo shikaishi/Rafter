@@ -320,48 +320,19 @@ async function handleRenderEmail(request, env) {
   return json({ html });
 }
 
-async function handleGetFormToken(request, url, env) {
-  // RFT-95: per-IP rate limit before any work — cheapest reject path.
-  const rl = await rateLimitOrInternal(request, env, env.RATE_TOKEN_MINT);
-  if (rl) return rl;
+// RFT-87 scope (a) retired /get-form-token + verifyFormToken — the
+// HMAC form-token mechanism is replaced by Clerk JWT verification via
+// requireFormJWT. The RATE_TOKEN_MINT rate-limit binding in wrangler.toml
+// is now unused; left in place to avoid churning prod config in this
+// commit — cleanup deferred.
+
+async function handleRefreshMaterials(request, url, env) {
   const uuid = url.searchParams.get("uuid");
   if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
     return json({ error: "invalid_uuid" }, { status: 400 });
   }
-  const config = await readClient(env, uuid);
-  if (!config) return json({ error: "client_not_found" }, { status: 404 });
-  if (!env.RAFTER_INTERNAL_SECRET) return json({ error: "server_misconfigured" }, { status: 500 });
-  const ts = Math.floor(Date.now() / 1000);
-  const data = `${uuid}:${ts}`;
-  const sig = await hmacSha256(data, env.RAFTER_INTERNAL_SECRET);
-  return json({ token: `${data}:${sig}`, expires_in: 60 });
-}
-
-async function verifyFormToken(token, uuid, env) {
-  if (!env.RAFTER_INTERNAL_SECRET) return false;
-  const parts = token.split(":");
-  if (parts.length !== 3) return false;
-  const [tokenUuid, tsStr, sig] = parts;
-  if (tokenUuid !== uuid) return false;
-  const ts = parseInt(tsStr, 10);
-  if (isNaN(ts) || Math.floor(Date.now() / 1000) - ts > 60) return false;
-  const expected = await hmacSha256(`${tokenUuid}:${tsStr}`, env.RAFTER_INTERNAL_SECRET);
-  return sig === expected;
-}
-
-async function handleRefreshMaterials(url, env, request) {
-  const uuid = url.searchParams.get("uuid");
-  if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
-    return json({ error: "invalid_uuid" }, { status: 400 });
-  }
-  // Accept either a worker-secret (operational) or a form token (browser)
-  const auth = request.headers.get("authorization") || "";
-  const token = auth.startsWith("Bearer ") ? auth.slice(7) : "";
-  const workerSecretOk = env.RAFTER_WORKER_SECRET && token === env.RAFTER_WORKER_SECRET;
-  const formTokenOk = !workerSecretOk && await verifyFormToken(token, uuid, env);
-  if (!workerSecretOk && !formTokenOk) {
-    return json({ error: "unauthorized" }, { status: 401 });
-  }
+  const a = await requireFormJWT(request, env, { target_uuid: uuid });
+  if (a.error) return a.error;
 
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
@@ -1040,7 +1011,14 @@ async function rateLimitOrInternal(request, env, binding) {
 //     does not own the target. Returns { ok, uuid, org_id, role } on match.
 // On any failure returns { error: Response } for the caller to short-circuit.
 async function requireFormJWT(request, env, { target_uuid, target_slug }) {
-  // Internal-secret bypass — Make / cron / admin-api are trusted, unscoped.
+  // Bypass paths (two trusted patterns, both pre-existing):
+  //   • x-rafter-secret matching RAFTER_INTERNAL_SECRET — Make/cron pattern
+  //   • Authorization: Bearer matching RAFTER_WORKER_SECRET — admin-api W2W
+  //     (handleSm8Callback's /store-token call, smoketest /refresh-materials)
+  // Both are unscoped (handler must do its own row check if it has one).
+  const auth = request.headers.get("Authorization") || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+
   if (env.RAFTER_INTERNAL_SECRET) {
     const internal = request.headers.get("x-rafter-secret") || "";
     if (internal && constantTimeEqual(internal, env.RAFTER_INTERNAL_SECRET)) {
@@ -1053,11 +1031,19 @@ async function requireFormJWT(request, env, { target_uuid, target_slug }) {
     }
   }
 
+  if (bearer && env.RAFTER_WORKER_SECRET && constantTimeEqual(bearer, env.RAFTER_WORKER_SECRET)) {
+    let resolved = target_uuid;
+    if (!resolved && target_slug) {
+      resolved = await env.RAFTER_CLIENTS.get(`slug:${target_slug}`).catch(() => null);
+      if (!resolved) return { error: json({ error: "slug_not_found", slug: target_slug }, { status: 404 }) };
+    }
+    return { ok: true, uuid: resolved, role: "internal" };
+  }
+
   if (!env.ADMIN_API) {
     return { error: json({ error: "server_misconfigured", detail: "ADMIN_API binding not set" }, { status: 500 }) };
   }
-  const auth = request.headers.get("Authorization") || "";
-  if (!auth.startsWith("Bearer ")) {
+  if (!bearer) {
     return { error: json({ error: "unauthorized", detail: "missing_bearer" }, { status: 401 }) };
   }
 
@@ -1081,32 +1067,10 @@ async function requireFormJWT(request, env, { target_uuid, target_slug }) {
   return { ok: true, uuid: data.uuid, org_id: data.org_id, role: data.role };
 }
 
-async function requireFormOrInternal(request, env) {
-  if (!env.RAFTER_INTERNAL_SECRET) {
-    return { error: json({ error: "server_misconfigured", detail: "RAFTER_INTERNAL_SECRET not set" }, { status: 500 }) };
-  }
-  const internalProvided = request.headers.get("x-rafter-secret") || "";
-  if (internalProvided && constantTimeEqual(internalProvided, env.RAFTER_INTERNAL_SECRET)) {
-    return { ok: true, scopedToUuid: null };
-  }
-  const auth = request.headers.get("authorization") || "";
-  const m = /^Bearer\s+(.+)$/i.exec(auth);
-  if (m) {
-    const token = m[1];
-    const parts = token.split(":");
-    if (parts.length === 3) {
-      const [tokenUuid, tsStr, sig] = parts;
-      const ts = parseInt(tsStr, 10);
-      if (!isNaN(ts) && Math.floor(Date.now() / 1000) - ts <= 60 && UUID_RE.test(tokenUuid)) {
-        const expected = await hmacSha256(`${tokenUuid}:${tsStr}`, env.RAFTER_INTERNAL_SECRET);
-        if (sig === expected) {
-          return { ok: true, scopedToUuid: tokenUuid };
-        }
-      }
-    }
-  }
-  return { error: json({ error: "unauthorized" }, { status: 401 }) };
-}
+// requireFormOrInternal retired RFT-87 scope (a) — HMAC form-token mechanism
+// replaced by Clerk JWT verification via requireFormJWT above. Internal
+// callers (Make/cron x-rafter-secret + admin-api Bearer-worker-secret) keep
+// the same bypass paths inside requireFormJWT.
 
 // Parse + validate the rafter-quotes row fields from a request body.
 // Returns { error: Response } on validation failure, or { fields } on success.
@@ -1273,27 +1237,34 @@ function summariseDraftRow(row) {
   };
 }
 
-async function handleGetDraft(request, quote_ref, env) {
-  const a = await requireFormOrInternal(request, env);
-  if (a.error) return a.error;
+async function handleGetDraft(request, quote_ref, url, env) {
   if (!env.RAFTER_QUOTES) {
     return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
   }
   if (!QUOTE_REF_RE.test(quote_ref)) {
     return json({ error: "invalid_quote_ref" }, { status: 400 });
   }
+  // RFT-87 scope (a): form must supply ?client_uuid=X so JWT verification can
+  // run before any D1 read — prevents existence-leak via quote_ref enumeration.
+  const queriedUuid = url.searchParams.get("client_uuid");
+  if (!queriedUuid || !UUID_RE.test(queriedUuid)) {
+    return json({ error: "missing_client_uuid", detail: "client_uuid query param required" }, { status: 400 });
+  }
+  const a = await requireFormJWT(request, env, { target_uuid: queriedUuid });
+  if (a.error) return a.error;
+
   let row;
   try {
     row = await env.RAFTER_QUOTES.prepare(
-      "SELECT * FROM quotes WHERE quote_ref = ?"
-    ).bind(quote_ref).first();
+      "SELECT * FROM quotes WHERE quote_ref = ? AND client_uuid = ?"
+    ).bind(quote_ref, a.uuid).first();
   } catch (e) {
     return json({ error: "d1_read_failed", detail: e.message }, { status: 502 });
   }
   if (!row) return json({ error: "draft_not_found", quote_ref }, { status: 404 });
-  // Form-token scoping — return 404 (not 403) to avoid leaking row existence
-  // across tenants. 403 would confirm the quote_ref exists for another tenant.
-  if (a.scopedToUuid && row.client_uuid !== a.scopedToUuid) {
+  // Composite WHERE above already enforces tenant scoping at the query layer
+  // (RFT-92 audit Finding F3). Belt-and-braces row check kept as defence-in-depth:
+  if (row.client_uuid !== a.uuid) {
     return json({ error: "draft_not_found", quote_ref }, { status: 404 });
   }
 
@@ -1316,25 +1287,25 @@ async function handleGetDraft(request, quote_ref, env) {
 }
 
 async function handleListDrafts(request, url, env) {
-  const a = await requireFormOrInternal(request, env);
-  if (a.error) return a.error;
   if (!env.RAFTER_QUOTES) {
     return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
   }
 
-  // Under form-token auth, force the filter to the token's embedded uuid —
-  // any caller-supplied client_uuid is ignored. Under x-rafter-secret (internal),
-  // honour the query param.
+  // RFT-87 scope (a): form must supply ?client_uuid=X; JWT verification confirms
+  // the caller's org owns it. Internal callers (x-rafter-secret / worker secret)
+  // bypass and honour the query param as the unscoped target.
   const queriedClientUuid = url.searchParams.get("client_uuid");
-  const client_uuid = a.scopedToUuid || queriedClientUuid;
+  if (!queriedClientUuid || !UUID_RE.test(queriedClientUuid)) {
+    return json({ error: "invalid_client_uuid" }, { status: 400 });
+  }
+  const a = await requireFormJWT(request, env, { target_uuid: queriedClientUuid });
+  if (a.error) return a.error;
+  const client_uuid = a.uuid;
+
   const q = (url.searchParams.get("q") || "").trim();
   const sm8_job_uuid = url.searchParams.get("sm8_job_uuid");
   const limitParam = parseInt(url.searchParams.get("limit") || "20", 10);
   const limit = Math.max(1, Math.min(50, isNaN(limitParam) ? 20 : limitParam));
-
-  if (!client_uuid || !UUID_RE.test(client_uuid)) {
-    return json({ error: "invalid_client_uuid" }, { status: 400 });
-  }
   if (sm8_job_uuid && !UUID_RE.test(sm8_job_uuid)) {
     return json({ error: "invalid_sm8_job_uuid" }, { status: 400 });
   }
@@ -1722,8 +1693,6 @@ async function handleAmendQuote(request, env) {
   // RFT-95: per-IP rate limit before auth + parent lookup + SM8 work.
   const rl = await rateLimitOrInternal(request, env, env.RATE_AMEND);
   if (rl) return rl;
-  const a = await requireFormOrInternal(request, env);
-  if (a.error) return a.error;
 
   let body;
   try { body = await request.json(); }
@@ -1736,6 +1705,17 @@ async function handleAmendQuote(request, env) {
   if (!payload || typeof payload !== "object") {
     return json({ error: "missing_field", field: "payload" }, { status: 400 });
   }
+  // RFT-87 scope (a): verify the caller's JWT-org owns the target tenant
+  // before touching parent row or SM8. Target is payload.client_uuid (the
+  // tenant the operator is amending under) — confirmed against JWT, then
+  // composite-key the parent lookup so cross-tenant existence cannot leak.
+  const targetUuid = payload.client_uuid;
+  if (!targetUuid || !UUID_RE.test(targetUuid)) {
+    return json({ error: "missing_field", field: "payload.client_uuid" }, { status: 400 });
+  }
+  const a = await requireFormJWT(request, env, { target_uuid: targetUuid });
+  if (a.error) return a.error;
+
   // send_email honours the operator's per-amend choice the same way original
   // submit's send_email field does. Default false (job-update-only) if absent.
   const wantsEmail = send_email === true;
@@ -1744,15 +1724,17 @@ async function handleAmendQuote(request, env) {
     return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
   }
 
-  // Load parent
+  // Load parent — composite WHERE enforces tenant scoping at the query layer
   let parent;
   try {
-    parent = await env.RAFTER_QUOTES.prepare("SELECT * FROM quotes WHERE quote_ref = ?").bind(parent_quote_ref).first();
+    parent = await env.RAFTER_QUOTES.prepare("SELECT * FROM quotes WHERE quote_ref = ? AND client_uuid = ?")
+      .bind(parent_quote_ref, a.uuid).first();
   } catch (e) {
     return json({ error: "d1_read_failed", detail: e.message }, { status: 502 });
   }
   if (!parent) return json({ error: "parent_not_found", parent_quote_ref }, { status: 404 });
-  if (a.scopedToUuid && parent.client_uuid !== a.scopedToUuid) {
+  // Belt-and-braces row check kept as defence-in-depth even after composite query
+  if (parent.client_uuid !== a.uuid) {
     return json({ error: "parent_not_found", parent_quote_ref }, { status: 404 });
   }
   if (!parent.sm8_job_uuid || !UUID_RE.test(parent.sm8_job_uuid)) {
@@ -1923,8 +1905,8 @@ async function route(request, env) {
   if (method === "POST" && path === "/store-token") return handleStoreToken(request, env);
   if (method === "POST" && path === "/render-email") return handleRenderEmail(request, env);
   if (method === "GET" && path === "/client-config") return handleClientConfig(request, url, env);
-  if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env, request);
-  if (method === "GET" && path === "/get-form-token") return handleGetFormToken(request, url, env);
+  if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(request, url, env);
+  // /get-form-token retired RFT-87 scope (a) — replaced by Clerk JWT direct on every endpoint.
   if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
   if (method === "POST" && path === "/send-test-alert") return handleSendTestAlert(request, env);
@@ -1933,7 +1915,7 @@ async function route(request, env) {
   if (method === "POST" && path === "/amend-quote") return handleAmendQuote(request, env);
   if (method === "GET" && path === "/drafts") return handleListDrafts(request, url, env);
   const draftMatch = method === "GET" && /^\/draft\/(Q-\d{8}-\d{4})$/.exec(path);
-  if (draftMatch) return handleGetDraft(request, draftMatch[1], env);
+  if (draftMatch) return handleGetDraft(request, draftMatch[1], url, env);
 
   const clientMatch = method === "GET" && /^\/client\/([0-9a-f-]{36})$/i.exec(path);
   if (clientMatch) return handleReadClient(request, clientMatch[1], env);
