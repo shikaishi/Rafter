@@ -74,11 +74,11 @@
 
   /* Drag-reorder mode — only on when every section is collapsed. Hides the
      chevron-driven cursor on individual rows and surfaces the grip handle. */
-  .sections-list.drag-mode .section-card { cursor: grab; }
-  .sections-list.drag-mode .section-card.drag-ghost { opacity: 0.4; cursor: grabbing; }
-  .sections-list.drag-mode .section-card.drag-over { box-shadow: 0 0 0 2px var(--rf-teal-border) inset; }
-  .sections-list.drag-mode .sec-head .sec-drag-handle { display: inline-flex; cursor: grab; }
-  .sections-list.drag-mode .sec-head { cursor: grab; }
+  #sectionsList.drag-mode .section-card { cursor: grab; }
+  #sectionsList.drag-mode .section-card.drag-ghost { opacity: 0.4; cursor: grabbing; }
+  #sectionsList.drag-mode .section-card.drag-over { box-shadow: 0 0 0 2px var(--rf-teal-border) inset; }
+  #sectionsList.drag-mode .sec-head .sec-drag-handle { display: inline-flex; cursor: grab; }
+  #sectionsList.drag-mode .sec-head { cursor: grab; }
   .sec-name { font-size: 13px; font-weight: 600; color: var(--rf-navy); }
   .sec-prose { padding: 10px 14px; font-size: 12px; color: var(--rf-muted); line-height: 1.5; white-space: pre-wrap; border-bottom: 0.5px solid var(--rf-divider); background: #FAFAF7; }
   .sec-prose-empty { font-style: italic; color: var(--rf-muted); }
@@ -747,14 +747,36 @@ function wireSectionDrag(root) {
       if (!src) return;
       const dst = card.dataset.sectionUuid;
       if (!dst || src === dst) return;
-      // Compute new order by reading current section UUIDs in DOM order,
-      // moving src in front of dst.
+      // Compute new order from current DOM (after rearrange) — src moves in
+      // front of dst.
       const allCards = [...root.querySelectorAll('.section-card')];
       const uuids = allCards.map(c => c.dataset.sectionUuid).filter(u => u);
       const filtered = uuids.filter(u => u !== src);
       const dstIdx = filtered.indexOf(dst);
       if (dstIdx < 0) return;
       filtered.splice(dstIdx, 0, src);
+
+      // Optimistic update: reorder state.sections locally and re-render
+      // immediately. Then fire the API call without awaiting loadState() —
+      // the local model already matches what we're asking the server to
+      // store. If the call fails, snapshot the prior order to revert.
+      const prevSections = state.sections.slice();
+      const byUuid = new Map(state.sections.map(s => [s.sm8_template_uuid, s]));
+      const reorderedLocal = [];
+      const placed = new Set();
+      for (const u of filtered) {
+        const s = byUuid.get(u);
+        if (s && !placed.has(u)) { reorderedLocal.push(s); placed.add(u); }
+      }
+      // Tail-append any locally known sections not in the filtered list
+      // (defensive — shouldn't normally happen since filtered is built from
+      // the current DOM, which mirrors state.sections).
+      for (const s of state.sections) {
+        if (!placed.has(s.sm8_template_uuid)) reorderedLocal.push(s);
+      }
+      state.sections = reorderedLocal;
+      render();
+
       try {
         const res = await authedFetch(`${ADMIN_API}/settings/sections/reorder`, {
           method: 'POST',
@@ -763,8 +785,10 @@ function wireSectionDrag(root) {
         });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.error || `reorder_${res.status}`);
-        await loadState();
+        // Success — no reload, local state is canonical.
       } catch (err) {
+        state.sections = prevSections;
+        render();
         toast(`Couldn't reorder: ${err.message || err}`, 'err');
       }
     });
