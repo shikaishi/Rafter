@@ -461,14 +461,18 @@ async function syncOneClient(env, uuid) {
   return { uuid, status: "ok", count: summary.count, shape: summary.shape };
 }
 
-async function handleReadClient(uuid, env) {
+async function handleReadClient(request, uuid, env) {
+  const a = await requireFormJWT(request, env, { target_uuid: uuid });
+  if (a.error) return a.error;
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
   const safe = sanitizeClient(config);
   return json({ ok: true, uuid, client: safe });
 }
 
-async function handleReadMaterials(uuid, env) {
+async function handleReadMaterials(request, uuid, env) {
+  const a = await requireFormJWT(request, env, { target_uuid: uuid });
+  if (a.error) return a.error;
   const raw = await env.RAFTER_CLIENTS.get(MATERIALS_KEY_PREFIX + uuid);
   if (!raw) return json({ error: "materials_not_cached", uuid, hint: "call /refresh-materials first" }, { status: 404 });
   let data;
@@ -477,7 +481,9 @@ async function handleReadMaterials(uuid, env) {
   return json({ ok: true, uuid, materials: sanitizeMaterials(data) });
 }
 
-async function handleListPhotos(uuid, env) {
+async function handleListPhotos(request, uuid, env) {
+  const a = await requireFormJWT(request, env, { target_uuid: uuid });
+  if (a.error) return a.error;
   if (!env.RAFTER_ASSETS) return json({ error: "r2_not_bound" }, { status: 500 });
   const prefix = PHOTO_PREFIX(uuid);
   const categories = new Map();
@@ -502,11 +508,13 @@ async function handleListPhotos(uuid, env) {
   return json({ ok: true, uuid, categories: sorted });
 }
 
-async function handleGetPhoto(url, env) {
+async function handleGetPhoto(request, url, env) {
   if (!env.RAFTER_ASSETS) return new Response("r2_not_bound", { status: 500 });
   const uuid = url.searchParams.get("uuid");
   const key = url.searchParams.get("key");
   if (!uuid || !key) return new Response("missing_params", { status: 400 });
+  const a = await requireFormJWT(request, env, { target_uuid: uuid });
+  if (a.error) return a.error;
   if (!key.startsWith(PHOTO_PREFIX(uuid))) return new Response("forbidden", { status: 403 });
   const obj = await env.RAFTER_ASSETS.get(key);
   if (!obj) return new Response("not_found", { status: 404 });
@@ -584,21 +592,23 @@ async function handleSm8Staff(url, env, request) {
   return json({ ok: true, staff });
 }
 
-async function handleResolveSlug(slug, env) {
+async function handleResolveSlug(request, slug, env) {
   if (!slug || !/^[a-z0-9-]+$/i.test(slug)) {
     return json({ error: "invalid_slug" }, { status: 400 });
   }
-  const uuid = await env.RAFTER_CLIENTS.get(`slug:${slug}`);
-  if (!uuid) return json({ error: "slug_not_found", slug }, { status: 404 });
-  return json({ ok: true, slug, uuid });
+  const a = await requireFormJWT(request, env, { target_slug: slug });
+  if (a.error) return a.error;
+  return json({ ok: true, slug, uuid: a.uuid });
 }
 
-async function handleSm8Search(url, env) {
+async function handleSm8Search(request, url, env) {
   const uuid = url.searchParams.get("uuid");
   const q = (url.searchParams.get("q") || "").trim();
   if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
     return json({ error: "invalid_uuid" }, { status: 400 });
   }
+  const a = await requireFormJWT(request, env, { target_uuid: uuid });
+  if (a.error) return a.error;
   if (q.length < 3) return json({ ok: true, results: [], note: "query_too_short" });
   const config = await readClient(env, uuid);
   if (!config) return json({ error: "client_not_found", uuid }, { status: 404 });
@@ -1014,6 +1024,61 @@ async function rateLimitOrInternal(request, env, binding) {
     status: 429,
     headers: { "content-type": "application/json", "retry-after": "60" },
   });
+}
+
+// RFT-87 scope (a) — JWT-or-internal verifier for form-callable endpoints.
+// The form sends its Clerk JWT in Authorization; we forward that to admin-api's
+// /form/verify-tenant (the single source of truth for verifyToken + cross-tenant
+// uuid match). Trusted internal callers (Make, cron, admin-api W2W) bypass via
+// x-rafter-secret matching RAFTER_INTERNAL_SECRET — same trust boundary as the
+// legacy requireFormOrInternal.
+//
+// Pass exactly one of target_uuid OR target_slug. The verifier:
+//   - On internal-secret bypass: resolves slug → uuid for the handler's
+//     convenience, returns { ok, uuid, role: "internal" }.
+//   - On form JWT path: proxies to admin-api, which 403s if the JWT's org
+//     does not own the target. Returns { ok, uuid, org_id, role } on match.
+// On any failure returns { error: Response } for the caller to short-circuit.
+async function requireFormJWT(request, env, { target_uuid, target_slug }) {
+  // Internal-secret bypass — Make / cron / admin-api are trusted, unscoped.
+  if (env.RAFTER_INTERNAL_SECRET) {
+    const internal = request.headers.get("x-rafter-secret") || "";
+    if (internal && constantTimeEqual(internal, env.RAFTER_INTERNAL_SECRET)) {
+      let resolved = target_uuid;
+      if (!resolved && target_slug) {
+        resolved = await env.RAFTER_CLIENTS.get(`slug:${target_slug}`).catch(() => null);
+        if (!resolved) return { error: json({ error: "slug_not_found", slug: target_slug }, { status: 404 }) };
+      }
+      return { ok: true, uuid: resolved, role: "internal" };
+    }
+  }
+
+  if (!env.ADMIN_API) {
+    return { error: json({ error: "server_misconfigured", detail: "ADMIN_API binding not set" }, { status: 500 }) };
+  }
+  const auth = request.headers.get("Authorization") || "";
+  if (!auth.startsWith("Bearer ")) {
+    return { error: json({ error: "unauthorized", detail: "missing_bearer" }, { status: 401 }) };
+  }
+
+  const verifyBody = target_uuid ? { target_uuid } : { target_slug };
+  const res = await env.ADMIN_API.fetch("https://internal/form/verify-tenant", {
+    method: "POST",
+    headers: { "Authorization": auth, "Content-Type": "application/json" },
+    body: JSON.stringify(verifyBody),
+  });
+
+  if (res.status === 401) return { error: json({ error: "unauthorized" }, { status: 401 }) };
+  if (res.status === 403) return { error: json({ error: "cross_tenant_forbidden" }, { status: 403 }) };
+  if (res.status === 404) return { error: json({ error: "not_found" }, { status: 404 }) };
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { error: json({ error: "verify_failed", status: res.status, detail: detail.slice(0, 200) }, { status: 502 }) };
+  }
+  let data;
+  try { data = await res.json(); }
+  catch { return { error: json({ error: "verify_invalid_response" }, { status: 502 }) }; }
+  return { ok: true, uuid: data.uuid, org_id: data.org_id, role: data.role };
 }
 
 async function requireFormOrInternal(request, env) {
@@ -1871,20 +1936,20 @@ async function route(request, env) {
   if (draftMatch) return handleGetDraft(request, draftMatch[1], env);
 
   const clientMatch = method === "GET" && /^\/client\/([0-9a-f-]{36})$/i.exec(path);
-  if (clientMatch) return handleReadClient(clientMatch[1], env);
+  if (clientMatch) return handleReadClient(request, clientMatch[1], env);
   const materialsMatch = method === "GET" && /^\/materials\/([0-9a-f-]{36})$/i.exec(path);
-  if (materialsMatch) return handleReadMaterials(materialsMatch[1], env);
+  if (materialsMatch) return handleReadMaterials(request, materialsMatch[1], env);
   const photosMatch = method === "GET" && /^\/photos\/([0-9a-f-]{36})$/i.exec(path);
-  if (photosMatch) return handleListPhotos(photosMatch[1], env);
-  if (method === "GET" && path === "/photo") return handleGetPhoto(url, env);
-  if (method === "GET" && path === "/sm8-search") return handleSm8Search(url, env);
+  if (photosMatch) return handleListPhotos(request, photosMatch[1], env);
+  if (method === "GET" && path === "/photo") return handleGetPhoto(request, url, env);
+  if (method === "GET" && path === "/sm8-search") return handleSm8Search(request, url, env);
   if (method === "GET" && path === "/sm8-staff") return handleSm8Staff(url, env, request);
   const brandMatch = method === "GET" && /^\/brand\/([a-z0-9_.-]+)$/i.exec(path);
   if (brandMatch) return handleBrandAsset(brandMatch[1], env);
   const logoMatch = method === "GET" && /^\/logo\/([0-9a-f-]{36})$/i.exec(path);
   if (logoMatch) return handleClientLogo(logoMatch[1], env);
   const slugMatch = method === "GET" && /^\/resolve-slug\/([a-z0-9-]+)$/i.exec(path);
-  if (slugMatch) return handleResolveSlug(slugMatch[1], env);
+  if (slugMatch) return handleResolveSlug(request, slugMatch[1], env);
 
   return json({ error: "not_found", path }, { status: 404 });
 }
