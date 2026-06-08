@@ -99,25 +99,70 @@ export default {
 
 const MAKE_WEBHOOK_PREFIX = "https://hook.eu1.make.com/";
 
-async function hmacSha256(data, secret) {
-  const key = await crypto.subtle.importKey(
-    "raw", new TextEncoder().encode(secret),
-    { name: "HMAC", hash: "SHA-256" }, false, ["sign"]
-  );
-  const sig = await crypto.subtle.sign("HMAC", key, new TextEncoder().encode(data));
-  return Array.from(new Uint8Array(sig)).map((b) => b.toString(16).padStart(2, "0")).join("");
+function constantTimeEqual(a, b) {
+  if (typeof a !== "string" || typeof b !== "string") return false;
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
-async function verifyFormToken(token, uuid, env) {
-  if (!env.RAFTER_INTERNAL_SECRET) return false;
-  const parts = token.split(":");
-  if (parts.length !== 3) return false;
-  const [tokenUuid, tsStr, sig] = parts;
-  if (tokenUuid !== uuid) return false;
-  const ts = parseInt(tsStr, 10);
-  if (isNaN(ts) || Math.floor(Date.now() / 1000) - ts > 60) return false;
-  const expected = await hmacSha256(`${tokenUuid}:${tsStr}`, env.RAFTER_INTERNAL_SECRET);
-  return sig === expected;
+// RFT-87 scope (a): JWT-or-internal verifier mirroring materials-sync.
+// Caller proves authorisation by one of:
+//   - Bearer RAFTER_WORKER_SECRET — internal callers (materials-sync amend,
+//     admin-api smoketest) via service binding; unscoped
+//   - Bearer <Clerk JWT> — operator form; proxied to admin-api's
+//     /form/verify-tenant for verifyToken + cross-tenant check against
+//     payload.client_uuid
+// Returns { ok, uuid } on success or { error: Response } to short-circuit.
+async function requireFormJWT(request, env, targetUuid) {
+  const auth = request.headers.get("Authorization") || "";
+  const bearer = auth.startsWith("Bearer ") ? auth.slice(7) : "";
+
+  if (bearer && env.RAFTER_WORKER_SECRET && constantTimeEqual(bearer, env.RAFTER_WORKER_SECRET)) {
+    return { ok: true, uuid: targetUuid, role: "internal" };
+  }
+
+  // RFT-87 commit 7 — per-tenant gate flag. Read the tenant's `gate_enforced`
+  // flag from KV. If false or missing, this is a noop: handler runs as it did
+  // pre-RFT-87 (no JWT required). Only flag=true requires Clerk JWT verification.
+  // pdf only ever receives target_uuid (from payload.client_uuid) — no slug
+  // resolution path here.
+  const raw = await env.RAFTER_CLIENTS.get(`client:${targetUuid}`).catch(() => null);
+  if (!raw) {
+    return { error: json({ error: "client_not_found", uuid: targetUuid }, 404) };
+  }
+  let tenantConfig;
+  try { tenantConfig = JSON.parse(raw); }
+  catch { return { error: json({ error: "client_record_corrupt" }, 500) }; }
+  if (tenantConfig.gate_enforced !== true) {
+    return { ok: true, uuid: targetUuid, role: "ungated" };
+  }
+
+  if (!env.ADMIN_API) {
+    return { error: json({ error: "server_misconfigured", detail: "ADMIN_API binding not set" }, 500) };
+  }
+  if (!bearer) {
+    return { error: json({ error: "unauthorized", detail: "missing_bearer" }, 401) };
+  }
+
+  const res = await env.ADMIN_API.fetch("https://internal/form/verify-tenant", {
+    method: "POST",
+    headers: { "Authorization": auth, "Content-Type": "application/json" },
+    body: JSON.stringify({ target_uuid: targetUuid }),
+  });
+
+  if (res.status === 401) return { error: json({ error: "unauthorized" }, 401) };
+  if (res.status === 403) return { error: json({ error: "cross_tenant_forbidden" }, 403) };
+  if (res.status === 404) return { error: json({ error: "not_found" }, 404) };
+  if (!res.ok) {
+    const detail = await res.text().catch(() => "");
+    return { error: json({ error: "verify_failed", status: res.status, detail: detail.slice(0, 200) }, 502) };
+  }
+  let data;
+  try { data = await res.json(); }
+  catch { return { error: json({ error: "verify_invalid_response" }, 502) }; }
+  return { ok: true, uuid: data.uuid, role: data.role };
 }
 
 async function handleGenerate(request, env, url) {
@@ -136,26 +181,25 @@ async function handleGenerate(request, env, url) {
   const { client_uuid } = payload;
   if (!client_uuid) return json({ error: "missing_client_uuid" }, 400);
 
-  // submit requires a short-lived HMAC token issued by materials-sync /get-form-token
-  if (mode === "submit") {
-    // RFT-95: per-IP rate limit BEFORE auth + PDF render — cheapest reject
-    // path. Fail-open if binding missing (defence-in-depth, not primary gate).
-    if (env.RATE_SUBMIT) {
-      const ip = request.headers.get("cf-connecting-ip") || "unknown";
-      const { success } = await env.RATE_SUBMIT.limit({ key: ip });
-      if (!success) {
-        return new Response(JSON.stringify({ error: "rate_limited", retry_after: 60 }), {
-          status: 429,
-          headers: { "content-type": "application/json", "retry-after": "60" },
-        });
-      }
-    }
-    const authHeader = request.headers.get("authorization") || "";
-    const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
-    if (!token || !await verifyFormToken(token, client_uuid, env)) {
-      return json({ error: "unauthorized" }, 401);
+  // RFT-95: per-IP rate limit on submit BEFORE auth + PDF render — cheapest
+  // reject path. Preview is not rate-limited (admin smoketest hits it).
+  if (mode === "submit" && env.RATE_SUBMIT) {
+    const ip = request.headers.get("cf-connecting-ip") || "unknown";
+    const { success } = await env.RATE_SUBMIT.limit({ key: ip });
+    if (!success) {
+      return new Response(JSON.stringify({ error: "rate_limited", retry_after: 60 }), {
+        status: 429,
+        headers: { "content-type": "application/json", "retry-after": "60" },
+      });
     }
   }
+
+  // RFT-87 scope (a): both modes JWT-gated. Preview was previously unauth
+  // (RFT-86 + RFT-92 finding) and submit used a form-token. Same gate now —
+  // JWT-or-worker-secret. Internal callers (materials-sync amend's
+  // fetchAmendPdf, admin-api smoketest) pass Bearer RAFTER_WORKER_SECRET.
+  const a = await requireFormJWT(request, env, client_uuid);
+  if (a.error) return a.error;
 
   const client = await loadClient(env, client_uuid);
 

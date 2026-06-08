@@ -26,6 +26,15 @@ database_id = "71594968-73c4-490a-b4bc-a425b0400402"
 binding = "PDF_WORKER"
 service = "rafter-pdf"
 
+# RFT-87 scope (a): service binding to admin-api for Clerk-JWT verification on
+# form-callable endpoints. Form sends JWT in Authorization; handlers proxy that
+# header to admin-api's /form/verify-tenant which does the verifyToken + the
+# cross-tenant uuid match. Single source of truth in admin-api (where the
+# @clerk/backend dependency already lives).
+[[services]]
+binding = "ADMIN_API"
+service = "rafter-admin-api"
+
 [triggers]
 crons = ["0 10 * * *"]
 

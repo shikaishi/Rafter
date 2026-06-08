@@ -71,14 +71,23 @@
 
   function setStatus(msg) { document.getElementById('status').textContent = msg; }
 
-  function showComplete() {
+  function showComplete(passkeyResult) {
     document.getElementById('spinner').style.display = 'none';
     const check = document.createElement('div');
     check.className = 'check';
     check.innerHTML = '<svg viewBox="0 0 32 32" fill="none" width="32" height="32"><path d="M6 16L13 23L26 10" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     document.getElementById('card').insertBefore(check, document.getElementById('title'));
     document.getElementById('title').textContent = 'Setup complete';
-    document.getElementById('message').textContent = 'Your ServiceM8 account has been connected successfully. You can close this window.';
+    // RFT-87 scope (a): show passkey state — enrolled means silent auth from
+    // now on this device; cancelled/skipped means user will see Clerk's
+    // sign-in UI again on next visit. Setup itself succeeded either way.
+    let msg = 'Your ServiceM8 account has been connected successfully. You can close this window.';
+    if (passkeyResult === 'enrolled') {
+      msg = 'ServiceM8 connected and this device enrolled — next time you open the form, you\'ll sign in with one tap.';
+    } else if (passkeyResult === 'cancelled') {
+      msg = 'ServiceM8 connected. Device passkey was skipped — you\'ll need to sign in again next time. You can close this window.';
+    }
+    document.getElementById('message').textContent = msg;
     document.getElementById('status').textContent = '';
   }
 
@@ -160,13 +169,39 @@
         throw new Error('Token exchange failed: ' + detail);
       }
 
+      // RFT-87 scope (a): setup-device passkey enrolment — ride the Clerk
+      // session already established for SM8 OAuth. Origin = this page
+      // (rafter.deepgreensea.au) so the resulting passkey's RP ID is
+      // rafter.deepgreensea.au — the correct origin for the operator form.
+      //
+      // Non-blocking: if enrolment fails (user cancels biometric, browser
+      // lacks WebAuthn, already has a passkey, anything else), setup still
+      // succeeds. The endpoint JWT gate is the hard auth boundary; passkey
+      // makes subsequent loads silent-auth on this device.
+      let passkeyResult = 'skipped';
+      try {
+        const existing = Clerk.user.passkeys || [];
+        if (existing.length === 0) {
+          setStatus('Setting up passkey for this device…');
+          await Clerk.user.createPasskey();
+          passkeyResult = 'enrolled';
+        } else {
+          passkeyResult = 'already_enrolled';
+        }
+      } catch (err) {
+        // Most commonly: user cancelled biometric, or browser blocked the
+        // WebAuthn prompt. Setup still complete — just note it.
+        console.warn('Passkey enrolment skipped:', err?.message || err);
+        passkeyResult = 'cancelled';
+      }
+
       const returnTo = sessionStorage.getItem('oauth_return_to');
       sessionStorage.removeItem('oauth_return_to');
       if (returnTo === 'onboarding') {
         window.location.replace('/onboarding.html?oauth_complete=1');
         return;
       }
-      showComplete();
+      showComplete(passkeyResult);
 
     } catch(err) {
       showError(err.message || 'An unexpected error occurred.');
