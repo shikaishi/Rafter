@@ -1589,9 +1589,14 @@ function renderChips() {
     const active = selectedSet.has(key);
     return `<button class="chip ${active ? "active" : ""}" data-key="${escapeHtml(key)}" data-name="${escapeHtml(name)}">${escapeHtml(name)}</button>`;
   }).join("");
-  // MISC always visible at end
-  const miscActive = selectedSet.has("__misc__");
-  html += `<button class="chip ${miscActive ? "active" : ""}" data-key="__misc__" data-name="MISC">MISC</button>`;
+  // MISC pill — hardcoded catch-all for tenants without their own Miscellaneous
+  // template. RFT-79 #1: suppress if operator already created a Miscellaneous-
+  // named template (any case/spelling) to avoid duplicate catch-all pills.
+  const hasOperatorMisc = tpls.some((t) => /^misc(ellan(e?)ous)?$/i.test((t.name || "").trim()));
+  if (!hasOperatorMisc) {
+    const miscActive = selectedSet.has("__misc__");
+    html += `<button class="chip ${miscActive ? "active" : ""}" data-key="__misc__" data-name="MISC">MISC</button>`;
+  }
   row.innerHTML = html;
   row.querySelectorAll(".chip[data-key]").forEach((b) => {
     b.addEventListener("click", () => toggleSection(b.dataset.key, b.dataset.name));
