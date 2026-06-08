@@ -8,6 +8,13 @@ const MATERIALS_TTL_SECONDS = 86400;
 const CLIENT_KEY_PREFIX = "client:";
 const MATERIALS_KEY_PREFIX = "materials:";
 const PHOTO_PREFIX = (uuid) => `clients/${uuid}/photos/`;
+// Mirror admin-api sanitisePathSegment — must produce the same slug from a
+// template name as admin-api uses when it builds R2 keys. Diverging would
+// break section ↔ category match in handleListPhotos.
+const slugifyCategory = (s) => (s ?? "").trim().toLowerCase()
+  .replace(/[^a-z0-9-]/g, "-")
+  .replace(/-+/g, "-")
+  .replace(/^-|-$/g, "");
 const SENSITIVE_CLIENT_FIELDS = ["access_token", "refresh_token", "expires_at", "token_updated_at", "webhook_url", "bank_details"];
 // RFT-93: SM8 material.json fields exposed via /materials/{uuid}. cost is the
 // tenant's wholesale buy-price (markup leak); quantity_in_stock is inventory
@@ -473,19 +480,35 @@ async function handleListPhotos(request, uuid, env) {
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
-  // RFT-63 commit 6: respect client.photo_order so settings-side reorder flows
-  // through to the form picker. Mirrors admin-api listPhotosByCategory:511-535
-  // — photos in photo_order come first in saved order, then any unordered or
-  // legacy keys (uploaded before order persistence existed) append
-  // alphabetically by filename. Read the client record once; treat missing
-  // photo_order as empty (everything falls through to the alphabetical tail).
+  // RFT-63 commit 6 + Bundle 3: respect both photo_order (per-photo within
+  // a section) AND templates-array order (section sequence). Settings-side
+  // section reorder flows through to the form's picker pills carousel,
+  // which then flows into the submitted payload and PDF render order.
+  // - Within a section: photos in photo_order come first in saved order,
+  //   then any unordered/legacy keys append alphabetically by filename
+  //   (mirrors admin-api listPhotosByCategory).
+  // - Across sections: categories sort by their position in config.templates
+  //   (by slug match). Unknown slugs (R2 prefix with no matching section —
+  //   should not normally happen post-sync) tail alphabetically.
   let photoOrderMap = {};
+  let templateSlugOrder = [];
   const config = await readClient(env, uuid);
-  if (config && config.photo_order && typeof config.photo_order === "object") {
-    photoOrderMap = config.photo_order;
+  if (config) {
+    if (config.photo_order && typeof config.photo_order === "object") {
+      photoOrderMap = config.photo_order;
+    }
+    if (Array.isArray(config.templates)) {
+      templateSlugOrder = config.templates.map((t) => slugifyCategory(t.name || ""));
+    }
   }
+  const slugIndex = new Map(templateSlugOrder.map((s, i) => [s, i]));
   const sorted = [...categories.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => {
+      const ai = slugIndex.has(a) ? slugIndex.get(a) : Infinity;
+      const bi = slugIndex.has(b) ? slugIndex.get(b) : Infinity;
+      if (ai !== bi) return ai - bi;
+      return a.localeCompare(b);
+    })
     .map(([name, photos]) => {
       const order = Array.isArray(photoOrderMap[name]) ? photoOrderMap[name] : [];
       const orderIndex = new Map(order.map((k, i) => [k, i]));

@@ -57,8 +57,28 @@
   .btn i { font-size: 14px; }
 
   /* Section + its photos: mirrors the form's section card layout. */
-  .section-card { border: 0.5px solid var(--rf-border); border-radius: 10px; margin-top: 10px; overflow: hidden; }
-  .section-card .sec-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--rf-row-bg); border-bottom: 0.5px solid var(--rf-divider); }
+  .section-card { border: 0.5px solid var(--rf-border); border-radius: 10px; margin-top: 10px; overflow: hidden; transition: box-shadow 0.12s; }
+  .section-card .sec-head { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: var(--rf-row-bg); border-bottom: 0.5px solid var(--rf-divider); cursor: pointer; user-select: none; }
+  .section-card:not(.expanded) .sec-head { border-bottom: 0; }
+  .sec-head .sec-name { flex: 1; min-width: 0; }
+  .sec-head .sec-count { font-size: 11px; color: var(--rf-muted); white-space: nowrap; }
+  .sec-head .sec-chevron { color: var(--rf-muted); font-size: 16px; transition: transform 0.15s; }
+  .section-card.expanded .sec-chevron { transform: rotate(180deg); }
+  .sec-head .sec-drag-handle { color: var(--rf-muted); font-size: 16px; display: none; }
+  .section-card .sec-body { display: none; }
+  .section-card.expanded .sec-body { display: block; }
+
+  /* Section controls strip (RFT-63 Bundle 3) */
+  .sec-controls { display: flex; align-items: center; gap: 10px; padding: 10px 0; flex-wrap: wrap; }
+  .sec-controls .sec-instruction { font-size: 12px; color: var(--rf-muted); line-height: 1.4; flex: 1; min-width: 0; }
+
+  /* Drag-reorder mode — only on when every section is collapsed. Hides the
+     chevron-driven cursor on individual rows and surfaces the grip handle. */
+  .sections-list.drag-mode .section-card { cursor: grab; }
+  .sections-list.drag-mode .section-card.drag-ghost { opacity: 0.4; cursor: grabbing; }
+  .sections-list.drag-mode .section-card.drag-over { box-shadow: 0 0 0 2px var(--rf-teal-border) inset; }
+  .sections-list.drag-mode .sec-head .sec-drag-handle { display: inline-flex; cursor: grab; }
+  .sections-list.drag-mode .sec-head { cursor: grab; }
   .sec-name { font-size: 13px; font-weight: 600; color: var(--rf-navy); }
   .sec-prose { padding: 10px 14px; font-size: 12px; color: var(--rf-muted); line-height: 1.5; white-space: pre-wrap; border-bottom: 0.5px solid var(--rf-divider); background: #FAFAF7; }
   .sec-prose-empty { font-style: italic; color: var(--rf-muted); }
@@ -171,6 +191,11 @@
           Sections come from your ServiceM8 job templates and aren't edited here. Photos can be added, removed, moved between sections, and reordered by drag.
         </div>
         <div id="paneRollup" class="pane-rollup" style="display:none;"></div>
+        <div id="secControls" class="sec-controls" style="display:none;">
+          <button class="btn small" id="expandAllBtn"><i class="ti ti-chevrons-down"></i>Expand all</button>
+          <button class="btn small" id="collapseAllBtn"><i class="ti ti-chevrons-up"></i>Collapse all</button>
+          <span class="sec-instruction">Open a section to edit photos. Close all to drag sections into a new order. This order is what the tradie sees in the quote builder.</span>
+        </div>
         <div id="sectionsList"></div>
       </div>
     </div>
@@ -188,11 +213,17 @@ const state = {
   uuid: null,
   slug: null,
   company_name: null,
-  sections: [],     // [{ name, text }]
+  sections: [],     // [{ name, text, sm8_template_uuid }]
   photos: [],       // [{ name (category), photos: [{ key, filename }] }]
   uploadTargetCategory: null, // set when user clicks "Add photos" in a section
   selected: new Set(), // RFT-63 Q6: photo keys currently selected for bulk ops
-  dragSrcKey: null,    // RFT-63 Q6: drag-reorder src key
+  dragSrcKey: null,    // RFT-63 Q6: drag-reorder src key (per-photo within section)
+  // RFT-63 Bundle 3: collapsible sections. expanded is the set of section uuids
+  // currently open. Default empty (all closed). Section drag-reorder is only
+  // available when expanded.size === 0 — clean modes, no collision with the
+  // per-photo drag inside an open section.
+  expanded: new Set(),
+  dragSectionUuid: null, // section being dragged in section-reorder mode
 };
 
 function $(id) { return document.getElementById(id); }
@@ -316,8 +347,11 @@ function render() {
   if (!state.sections.length) {
     sectionsList.innerHTML = `<div class="no-photos">No sections yet — click "Sync from SM8" to import job templates.</div>`;
     $('paneRollup').style.display = 'none';
+    $('secControls').style.display = 'none';
     return;
   }
+  $('secControls').style.display = '';
+  updateSecControlsState();
 
   // RFT-63 Q6: count rollup at the top — total photos + per-section breakdown.
   let totalPhotos = 0;
@@ -337,29 +371,40 @@ function render() {
   }
   rollupEl.style.display = '';
 
-  // Render each section card
+  // Render each section card (Bundle 3: collapsible; default closed)
   for (const sec of state.sections) {
     const catSlug = slugify(sec.name);
     const photos = photoMap.get(catSlug) || [];
+    const secUuid = sec.sm8_template_uuid || '';
+    const isExpanded = secUuid && state.expanded.has(secUuid);
     const card = document.createElement('div');
-    card.className = 'section-card';
+    card.className = 'section-card' + (isExpanded ? ' expanded' : '');
     card.dataset.categorySlug = catSlug;
+    card.dataset.sectionUuid = secUuid;
+    // Section drag is only enabled when no section is expanded (drag mode).
+    // CSS gates the visual cue, draggable attribute gates the actual handler.
+    card.draggable = !!secUuid && state.expanded.size === 0;
     card.innerHTML = `
-      <div class="sec-head">
+      <div class="sec-head" data-action="toggle-sec">
+        <i class="ti ti-grip-vertical sec-drag-handle" title="Drag to reorder"></i>
         <span class="sec-name">${esc(sec.name)}</span>
+        <span class="sec-count">${photos.length} photo${photos.length === 1 ? '' : 's'}</span>
         <span class="sec-readonly-badge" title="Section prose is read-only here — edit in ServiceM8 and sync">SM8</span>
+        <i class="ti ti-chevron-down sec-chevron"></i>
       </div>
-      <div class="sec-prose ${sec.text ? '' : 'sec-prose-empty'}">${esc(sec.text || '(no prose set)')}</div>
-      <div class="sec-photos">
-        <div class="sec-photos-meta">
-          <span>${photos.length} photo${photos.length === 1 ? '' : 's'}</span>
-        </div>
-        ${photos.length === 0
-          ? '<div class="no-photos">No photos yet for this section.</div>'
-          : '<div class="photo-grid">' + photos.map(p => renderPhotoCell(p, catSlug)).join('') + '</div>'}
-        <div class="sec-bulk-bar" data-bulk-bar="${esc(catSlug)}"></div>
-        <div class="upload-row">
-          <button class="btn" data-action="add-photos" data-category="${esc(catSlug)}"><i class="ti ti-upload"></i>Add photos</button>
+      <div class="sec-body">
+        <div class="sec-prose ${sec.text ? '' : 'sec-prose-empty'}">${esc(sec.text || '(no prose set)')}</div>
+        <div class="sec-photos">
+          <div class="sec-photos-meta">
+            <span>${photos.length} photo${photos.length === 1 ? '' : 's'}</span>
+          </div>
+          ${photos.length === 0
+            ? '<div class="no-photos">No photos yet for this section.</div>'
+            : '<div class="photo-grid">' + photos.map(p => renderPhotoCell(p, catSlug)).join('') + '</div>'}
+          <div class="sec-bulk-bar" data-bulk-bar="${esc(catSlug)}"></div>
+          <div class="upload-row">
+            <button class="btn" data-action="add-photos" data-category="${esc(catSlug)}"><i class="ti ti-upload"></i>Add photos</button>
+          </div>
         </div>
       </div>
     `;
@@ -371,11 +416,32 @@ function render() {
 
   // Wire up Add-photos buttons
   sectionsList.querySelectorAll('[data-action="add-photos"]').forEach(btn => {
-    btn.addEventListener('click', () => {
+    btn.addEventListener('click', (e) => {
+      e.stopPropagation();
       state.uploadTargetCategory = btn.dataset.category;
       $('fileInput').click();
     });
   });
+
+  // Wire up expand/collapse on section headers
+  sectionsList.querySelectorAll('[data-action="toggle-sec"]').forEach(head => {
+    head.addEventListener('click', (e) => {
+      // Don't toggle when the click bubbled from a button (Add photos, photo
+      // actions etc.) or from a photo cell. Defensive — bulk-action buttons
+      // are inside .sec-body which is hidden when collapsed, but the cell
+      // event handlers also stopPropagation, so we just guard the head.
+      const card = head.closest('.section-card');
+      const secUuid = card?.dataset.sectionUuid;
+      if (!secUuid) return;
+      if (state.expanded.has(secUuid)) state.expanded.delete(secUuid);
+      else state.expanded.add(secUuid);
+      render();
+    });
+  });
+
+  // Wire up section drag-reorder. Drag is gated by CSS (.drag-mode on the
+  // list); when not in drag-mode, the dragstart still fires but we early-exit.
+  wireSectionDrag(sectionsList);
 
   updateBulkBars();
 }
@@ -622,6 +688,90 @@ function openMoveOrCopyModal(mode, keys, currentCat) {
       }
     });
   });
+}
+
+// RFT-63 Bundle 3 — collapse/expand + section drag-reorder
+
+function updateSecControlsState() {
+  const list = $('sectionsList');
+  if (!list) return;
+  if (state.expanded.size === 0) list.classList.add('drag-mode');
+  else list.classList.remove('drag-mode');
+}
+
+$('expandAllBtn').addEventListener('click', () => {
+  state.expanded = new Set(state.sections.map(s => s.sm8_template_uuid).filter(u => u));
+  render();
+});
+$('collapseAllBtn').addEventListener('click', () => {
+  state.expanded = new Set();
+  render();
+});
+
+// Section drag-reorder. Only effective when state.expanded.size === 0 (CSS
+// gates the cursor / handle, and the dragstart handler early-exits). On drop:
+// compute the new uuid order from the DOM (post-rearrange) and POST to
+// /settings/sections/reorder; loadState refreshes the array.
+function wireSectionDrag(root) {
+  root.querySelectorAll('.section-card').forEach(card => {
+    card.addEventListener('dragstart', (e) => {
+      // If any section is expanded we're not in section-reorder mode. Let the
+      // browser's drag still fire but mark this not-a-section-drag so handlers
+      // below short-circuit.
+      if (state.expanded.size !== 0) { state.dragSectionUuid = null; return; }
+      const uuid = card.dataset.sectionUuid;
+      if (!uuid) { state.dragSectionUuid = null; return; }
+      state.dragSectionUuid = uuid;
+      card.classList.add('drag-ghost');
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', uuid); } catch {}
+    });
+    card.addEventListener('dragend', () => {
+      card.classList.remove('drag-ghost');
+      cleanSectionDragOver();
+    });
+    card.addEventListener('dragover', (e) => {
+      const src = state.dragSectionUuid;
+      if (!src) return;
+      if (card.dataset.sectionUuid === src) return;
+      e.preventDefault();
+      card.classList.add('drag-over');
+    });
+    card.addEventListener('dragleave', () => {
+      card.classList.remove('drag-over');
+    });
+    card.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      card.classList.remove('drag-over');
+      const src = state.dragSectionUuid;
+      state.dragSectionUuid = null;
+      if (!src) return;
+      const dst = card.dataset.sectionUuid;
+      if (!dst || src === dst) return;
+      // Compute new order by reading current section UUIDs in DOM order,
+      // moving src in front of dst.
+      const allCards = [...root.querySelectorAll('.section-card')];
+      const uuids = allCards.map(c => c.dataset.sectionUuid).filter(u => u);
+      const filtered = uuids.filter(u => u !== src);
+      const dstIdx = filtered.indexOf(dst);
+      if (dstIdx < 0) return;
+      filtered.splice(dstIdx, 0, src);
+      try {
+        const res = await authedFetch(`${ADMIN_API}/settings/sections/reorder`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ order: filtered }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `reorder_${res.status}`);
+        await loadState();
+      } catch (err) {
+        toast(`Couldn't reorder: ${err.message || err}`, 'err');
+      }
+    });
+  });
+}
+function cleanSectionDragOver() {
+  document.querySelectorAll('.section-card.drag-over').forEach(el => el.classList.remove('drag-over'));
 }
 
 async function uploadFiles(files) {

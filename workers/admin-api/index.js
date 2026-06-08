@@ -447,6 +447,7 @@ async function handleSettings(request, env, url, jwtPayload) {
   if (method === 'POST' && path === '/settings/photos/bulk-recategorise')  return handleSettingsPhotoBulkRecategorise(uuid, request, env);
   if (method === 'POST' && path === '/settings/photos/bulk-copy')          return handleSettingsPhotoBulkCopy(uuid, request, env);
   if (method === 'POST' && path === '/settings/photos/reorder')            return handleSettingsPhotoReorder(uuid, request, env);
+  if (method === 'POST' && path === '/settings/sections/reorder')          return handleSettingsSectionReorder(uuid, request, env);
   if (method === 'POST' && path === '/settings/sections/sync')             return handleSettingsSectionsSync(uuid, env);
 
   return json({ ok: false, error: 'Not Found', path }, 404);
@@ -478,17 +479,24 @@ async function handleSettingsState(uuid, env) {
   catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
 
   // Sections from KV templates field (set by onboarding seedText, kept in sync
-  // by /settings/sections/sync). Read-only prose per RFT-63 Q1.
-  const sections = Array.isArray(record.templates) ? record.templates.map(t => ({
+  // by /settings/sections/sync). Read-only prose per RFT-63 Q1. Bundle 3
+  // surfaces sm8_template_uuid so the settings UI has a stable identity to
+  // reorder by.
+  const templates = Array.isArray(record.templates) ? record.templates : [];
+  const sections = templates.map(t => ({
     name: t.name || '',
     text: t.text || '',
-  })) : [];
+    sm8_template_uuid: t.sm8_template_uuid || '',
+  }));
 
   // Photos grouped by R2 category prefix, sorted by photo_order from the KV
   // record. Mirror handleListPhotos in materials-sync — same per-tenant key
-  // shape (clients/<uuid>/photos/<cat>/<file>).
+  // shape (clients/<uuid>/photos/<cat>/<file>). Bundle 3: category order
+  // mirrors the templates array, so settings-side section reorder flows
+  // through to category display.
   const photoOrderMap = (record.photo_order && typeof record.photo_order === 'object') ? record.photo_order : {};
-  const photos = await listPhotosByCategory(uuid, env, photoOrderMap);
+  const templateSlugOrder = templates.map(t => sanitisePathSegment(t.name || ''));
+  const photos = await listPhotosByCategory(uuid, env, photoOrderMap, templateSlugOrder);
 
   return json({
     ok: true,
@@ -500,7 +508,7 @@ async function handleSettingsState(uuid, env) {
   });
 }
 
-async function listPhotosByCategory(uuid, env, photoOrderMap = {}) {
+async function listPhotosByCategory(uuid, env, photoOrderMap = {}, templateSlugOrder = []) {
   if (!env.RAFTER_ASSETS) return [];
   const prefix = `clients/${uuid}/photos/`;
   const categories = new Map();
@@ -519,11 +527,19 @@ async function listPhotosByCategory(uuid, env, photoOrderMap = {}) {
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
-  // For each category: sort by photo_order if set, then any keys not in the
-  // order list go to the end alphabetically (covers fresh uploads + legacy
-  // photos uploaded before order persistence existed).
+  // Bundle 3: categories sort by their position in templateSlugOrder (matches
+  // admin-side section order). Unknown slugs (R2 prefix with no matching
+  // section — should not normally happen post-sync) go to the end
+  // alphabetically. For each category: per-photo sort by photo_order, fresh
+  // uploads append alphabetically (unchanged from Commit 6).
+  const slugIndex = new Map(templateSlugOrder.map((s, i) => [s, i]));
   return [...categories.entries()]
-    .sort(([a], [b]) => a.localeCompare(b))
+    .sort(([a], [b]) => {
+      const ai = slugIndex.has(a) ? slugIndex.get(a) : Infinity;
+      const bi = slugIndex.has(b) ? slugIndex.get(b) : Infinity;
+      if (ai !== bi) return ai - bi;
+      return a.localeCompare(b);
+    })
     .map(([name, items]) => {
       const order = Array.isArray(photoOrderMap[name]) ? photoOrderMap[name] : [];
       const orderIndex = new Map(order.map((k, i) => [k, i]));
@@ -826,6 +842,67 @@ async function handleSettingsPhotoReorder(uuid, request, env) {
   return json({ ok: true, category, count: keyOrder.length });
 }
 
+// POST /settings/sections/reorder — body: { order: [sm8_template_uuid, ...] }
+//
+// Reorders record.templates to match the supplied uuid list. Sections with a
+// uuid not present in the order list are appended at the end in their prior
+// order (defensive — shouldn't normally happen since the UI sends the full
+// known set, but it means a stale tab can't drop rows). Sections without any
+// sm8_template_uuid (pre-Bundle-2 backfill, hypothetical) are appended last.
+//
+// This is the source of truth for section order across the platform:
+//   - admin-api handleSettingsState returns sections in this order
+//   - admin-api listPhotosByCategory sorts category list by this order
+//   - materials-sync handleListPhotos mirrors the same sort
+//   - the form photo picker carousel renders in this order
+//   - PDF section rendering inherits from the form payload, which inherits
+//     from the picker order
+// Settings reorder = picker reorder = PDF reorder. One lever.
+async function handleSettingsSectionReorder(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const order = body?.order;
+  if (!Array.isArray(order)) return json({ ok: false, error: 'missing_order' }, 400);
+  if (order.some(u => typeof u !== 'string' || !u)) return json({ ok: false, error: 'invalid_uuid_in_order' }, 400);
+
+  let applied = 0;
+  let totalRows = 0;
+  const ok = await mutateClientRecord(uuid, env, (rec) => {
+    if (!Array.isArray(rec.templates)) return;
+    const byUuid = new Map();
+    const noUuidRows = [];
+    for (const t of rec.templates) {
+      if (t.sm8_template_uuid) byUuid.set(t.sm8_template_uuid, t);
+      else noUuidRows.push(t);
+    }
+    const positioned = [];
+    const seen = new Set();
+    for (const u of order) {
+      const t = byUuid.get(u);
+      if (t && !seen.has(u)) {
+        positioned.push(t);
+        seen.add(u);
+        applied++;
+      }
+    }
+    // Append uuid-ed rows the caller didn't include (defensive)
+    for (const t of rec.templates) {
+      if (t.sm8_template_uuid && !seen.has(t.sm8_template_uuid)) {
+        positioned.push(t);
+        seen.add(t.sm8_template_uuid);
+      }
+    }
+    positioned.push(...noUuidRows);
+    rec.templates = positioned;
+    totalRows = positioned.length;
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+
+  console.log(JSON.stringify({ event: 'settings_sections_reordered', uuid, applied, total: totalRows }));
+  return json({ ok: true, applied, total: totalRows });
+}
+
 // POST /settings/sections/sync — mirror SM8 active templates onto Rafter.
 //
 // Bundle 2 (RFT-63, 2026-06-08) rewrote the prior "add-only" sync into a
@@ -1028,11 +1105,16 @@ async function handleSettingsSectionsSync(uuid, env) {
     }
 
     // ── ADD ─────────────────────────────────────────────────────────────
+    // Bundle 3: new sync-added sections prepend to the TOP of the list,
+    // preserving SM8's order among the new arrivals. Admin can drag them
+    // down later — putting them at the top makes additions noticeable
+    // rather than buried at the bottom.
+    const newEntries = [];
     for (const sm8Tpl of toAdd) {
       let prose;
       try { prose = await cloneReadProse(token, sm8Tpl.uuid, createdJobUuids); }
       catch (err) { failed.push({ name: sm8Tpl.name, step: err.step || 'add', detail: err.message }); continue; }
-      survivors.push({
+      newEntries.push({
         name: sm8Tpl.name,
         text: prose,
         sm8_edit_date: sm8Tpl.edit_date || '',
@@ -1040,6 +1122,7 @@ async function handleSettingsSectionsSync(uuid, env) {
       });
       added.push(sm8Tpl.name);
     }
+    if (newEntries.length) survivors.unshift(...newEntries);
 
     // photo_order defence in depth — drop entries for slugs no section now
     // claims. Covers cases where a remove or rename touched a slug that the
