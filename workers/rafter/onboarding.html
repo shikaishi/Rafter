@@ -365,8 +365,39 @@ textarea { resize: vertical; min-height: 68px; }
 .pac-item-query { font-size: 13px; }
 
 /* ===== Photo upload (Step 4) ===== */
-.photo-controls { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
-.photo-controls .field { margin: 0; flex: 1; min-width: 160px; }
+.photo-controls { display: flex; flex-direction: column; gap: 12px; margin-bottom: 16px; }
+.photo-controls .field { margin: 0; }
+.photo-controls .field-label { display: block; font-size: 12px; font-weight: 600; color: var(--rf-navy); margin-bottom: 8px; }
+/* RFT-78 #5: pill pattern for the Step 4 category selector — mirrors the
+   form's chips-row + .chip styles, scoped here so the onboarding worker
+   doesn't take a dependency on form CSS. Smaller font, tap target kept via
+   padding + min-height (separation of concerns). */
+.cat-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+.cat-pills .cat-pill {
+  background: var(--rf-teal-bg);
+  color: var(--rf-navy);
+  border: 0.5px solid var(--rf-teal-border);
+  border-radius: 18px;
+  padding: 8px 14px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 1.3;
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition: filter 0.12s;
+  font-family: inherit;
+}
+.cat-pills .cat-pill:hover { filter: brightness(0.97); }
+.cat-pills .cat-pill.active {
+  background: var(--rf-navy);
+  color: #fff;
+  border-color: var(--rf-navy);
+}
+.photo-controls .btn-add-photos { align-self: flex-start; }
 .btn-add-photos {
   flex-shrink: 0; display: inline-flex; align-items: center; gap: 6px;
   padding: 8px 16px; border-radius: 6px; font-size: 13px; font-weight: 700;
@@ -782,8 +813,8 @@ textarea { resize: vertical; min-height: 68px; }
 
       <div class="photo-controls">
         <div class="field">
-          <label for="photo-category">Category</label>
-          <select id="photo-category"></select>
+          <span class="field-label">Category</span>
+          <div id="photo-category-pills" class="cat-pills"></div>
         </div>
         <button type="button" class="btn-add-photos" id="photo-add-btn">
           <i class="ti ti-plus"></i> Add photos
@@ -1536,17 +1567,31 @@ const PHOTO_UPLOAD_TIMEOUT = 30_000; // 30s watchdog per file
 // Chip state machine entries
 let _photoChips = []; // { file, chipEl, barFillEl, state, retryFn }
 
+// RFT-78 #5: selected category lives in JS state (was a <select>'s value).
+// First pill in the list is active by default.
+let _photoSelectedCategory = null;
+
 function enterPhotoStep() {
-  // Build category dropdown from Step 2 section names + "General"
-  const sel = document.getElementById('photo-category');
-  sel.innerHTML = '';
+  // RFT-78 #5: render Step 2 section names + "General" as pill chips,
+  // matching the form's section selector pattern instead of an ugly <select>.
+  const pillsContainer = document.getElementById('photo-category-pills');
+  pillsContainer.innerHTML = '';
   const sectionNames = Array.from(document.querySelectorAll('#section-list .rep-name'))
     .map(el => el.value.trim()).filter(Boolean);
   const categories = [...new Set([...sectionNames, 'General'])];
-  categories.forEach(name => {
-    const opt = document.createElement('option');
-    opt.value = name; opt.textContent = name;
-    sel.appendChild(opt);
+  _photoSelectedCategory = categories[0] || 'General';
+  categories.forEach((name, i) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'cat-pill' + (i === 0 ? ' active' : '');
+    btn.dataset.cat = name;
+    btn.textContent = name;
+    btn.addEventListener('click', () => {
+      _photoSelectedCategory = name;
+      pillsContainer.querySelectorAll('.cat-pill').forEach(el => el.classList.remove('active'));
+      btn.classList.add('active');
+    });
+    pillsContainer.appendChild(btn);
   });
 
   const addBtn = document.getElementById('photo-add-btn');
@@ -1559,7 +1604,7 @@ function enterPhotoStep() {
     const files = Array.from(fileInput.files ?? []);
     fileInput.value = ''; // reset so same file can be added again
     if (!files.length) return;
-    const category = sel.value || 'General';
+    const category = _photoSelectedCategory || 'General';
     enqueuePhotos(files, category);
   });
   doneBtn.addEventListener('click', () => showResultArea('ok', null, null));
