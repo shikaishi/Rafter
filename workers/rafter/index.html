@@ -235,11 +235,19 @@
     display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8a5a00;
   }
 
-  /* ===== SECTION HEADER BAR ===== */
+  /* ===== SECTION HEADER BAR =====
+     Top corners rounded to match .card's 12px. Without this, Section 1's
+     bar looked square-cornered because its card uses overflow: visible
+     (forced by .card:has(.dropdown) at line 65, needed so the customer-
+     search dropdown can escape). Sections 2-4 had overflow: hidden and
+     got their corners clipped to the card's radius "for free". Owning
+     the radius here makes the bar look consistent regardless of parent
+     clip mode. */
   .section-bar {
     background: var(--rf-navy);
     color: #fff;
     padding: 10px 18px;
+    border-radius: 12px 12px 0 0;
     display: flex;
     align-items: center;
     gap: 10px;
