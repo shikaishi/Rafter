@@ -57,6 +57,14 @@ export default {
       if (error) return withCors(error);
       return withCors(await handleOnboarding(request, env, url, payload));
     }
+    // RFT-87 commit 7: public tenant-mode lookup. Form calls this BEFORE
+    // knowing whether to demand a Clerk session — answer comes from the
+    // per-tenant gate_enforced flag. No auth. Resolves slug→uuid as a
+    // side-effect (replaces the retired /resolve-slug function).
+    const tenantModeMatch = request.method === 'GET' && pathname.match(/^\/form\/tenant-mode\/([a-z0-9-]+)$/i);
+    if (tenantModeMatch) {
+      return withCors(await handleTenantMode(tenantModeMatch[1], env));
+    }
     // RFT-87 scope (a): /form/* is the verification surface other workers
     // proxy form requests through. Same Clerk-JWT auth as /onboarding/*; the
     // distinction is purpose — /onboarding is for the onboarding flow itself,
@@ -291,6 +299,36 @@ async function handleOnboarding(request, env, url, jwtPayload) {
 // The single endpoint here is the cross-tenant verifier: given a target_uuid
 // or target_slug, confirm the JWT's org owns that tenant. Single source of
 // truth for "does this caller's session map to this tenant" — closes RFT-86.
+
+// RFT-87 commit 7 — public tenant-mode lookup. No auth: the form calls this
+// at boot to decide whether to demand a Clerk session at all. Returns the
+// tenant's uuid (replaces the retired /resolve-slug function) plus the
+// gate_enforced flag from the client KV record.
+//
+// Default: missing flag = ungated (false). Safe for tenants that exist
+// today without a Clerk user (e.g. Andy on his current production setup).
+// NOTE for follow-up: once the passkey/invite flow lands (scope b), the
+// default semantics should flip — new tenants closed-by-default with the
+// flag explicitly set by the provisioning flow. Until then, missing=ungated
+// keeps the rollout safe.
+async function handleTenantMode(slug, env) {
+  if (!/^[a-z0-9-]+$/i.test(slug)) {
+    return json({ ok: false, error: 'invalid_slug' }, 400);
+  }
+  const uuid = await env.RAFTER_CLIENTS.get(SLUG_PREFIX + slug).catch(() => null);
+  if (!uuid) {
+    return json({ ok: false, error: 'slug_not_found', slug }, 404);
+  }
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) {
+    return json({ ok: false, error: 'client_not_found', uuid }, 404);
+  }
+  let config;
+  try { config = JSON.parse(raw); }
+  catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
+  const gate_enforced = config.gate_enforced === true;
+  return json({ ok: true, slug, uuid, gate_enforced });
+}
 
 async function handleForm(request, env, url, jwtPayload) {
   const { method } = request;

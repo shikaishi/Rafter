@@ -1045,6 +1045,24 @@ async function requireFormJWT(request, env, { target_uuid, target_slug }) {
     return { ok: true, uuid: resolved, role: "internal" };
   }
 
+  // RFT-87 commit 7 — per-tenant gate flag. Resolve target uuid (from input
+  // or via slug), read the tenant's `gate_enforced` flag. If false or missing,
+  // this is a noop: handler runs as it did pre-RFT-87 (no JWT required, same
+  // exposure as today for the existing prod tenant). Only flag=true requires
+  // the full Clerk JWT verification chain. This is the per-tenant rollout
+  // primitive — flip BVT/Trial → gated, Andy stays default-missing = ungated.
+  let targetUuid = target_uuid;
+  if (!targetUuid && target_slug) {
+    targetUuid = await env.RAFTER_CLIENTS.get(`slug:${target_slug}`).catch(() => null);
+    if (!targetUuid) return { error: json({ error: "slug_not_found", slug: target_slug }, { status: 404 }) };
+  }
+  if (!targetUuid) return { error: json({ error: "missing_target" }, { status: 400 }) };
+
+  const tenantConfig = await readClient(env, targetUuid);
+  if (!tenantConfig || tenantConfig.gate_enforced !== true) {
+    return { ok: true, uuid: targetUuid, role: "ungated" };
+  }
+
   if (!env.ADMIN_API) {
     return { error: json({ error: "server_misconfigured", detail: "ADMIN_API binding not set" }, { status: 500 }) };
   }
@@ -1052,11 +1070,10 @@ async function requireFormJWT(request, env, { target_uuid, target_slug }) {
     return { error: json({ error: "unauthorized", detail: "missing_bearer" }, { status: 401 }) };
   }
 
-  const verifyBody = target_uuid ? { target_uuid } : { target_slug };
   const res = await env.ADMIN_API.fetch("https://internal/form/verify-tenant", {
     method: "POST",
     headers: { "Authorization": auth, "Content-Type": "application/json" },
-    body: JSON.stringify(verifyBody),
+    body: JSON.stringify({ target_uuid: targetUuid }),
   });
 
   if (res.status === 401) return { error: json({ error: "unauthorized" }, { status: 401 }) };

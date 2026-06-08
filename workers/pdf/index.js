@@ -123,6 +123,22 @@ async function requireFormJWT(request, env, targetUuid) {
     return { ok: true, uuid: targetUuid, role: "internal" };
   }
 
+  // RFT-87 commit 7 — per-tenant gate flag. Read the tenant's `gate_enforced`
+  // flag from KV. If false or missing, this is a noop: handler runs as it did
+  // pre-RFT-87 (no JWT required). Only flag=true requires Clerk JWT verification.
+  // pdf only ever receives target_uuid (from payload.client_uuid) — no slug
+  // resolution path here.
+  const raw = await env.RAFTER_CLIENTS.get(`client:${targetUuid}`).catch(() => null);
+  if (!raw) {
+    return { error: json({ error: "client_not_found", uuid: targetUuid }, 404) };
+  }
+  let tenantConfig;
+  try { tenantConfig = JSON.parse(raw); }
+  catch { return { error: json({ error: "client_record_corrupt" }, 500) }; }
+  if (tenantConfig.gate_enforced !== true) {
+    return { ok: true, uuid: targetUuid, role: "ungated" };
+  }
+
   if (!env.ADMIN_API) {
     return { error: json({ error: "server_misconfigured", detail: "ADMIN_API binding not set" }, 500) };
   }
