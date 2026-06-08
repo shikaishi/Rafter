@@ -14,6 +14,14 @@ bucket_name = "rafter-assets"
 [browser]
 binding = "BROWSER"
 
+# RFT-87 scope (a): service binding to admin-api for Clerk-JWT verification on
+# /generate. Form sends JWT in Authorization; handleGenerate proxies that
+# header to admin-api's /form/verify-tenant which does the verifyToken + the
+# cross-tenant uuid match against payload.client_uuid.
+[[services]]
+binding = "ADMIN_API"
+service = "rafter-admin-api"
+
 # RFT-95: per-IP submit rate limit. 10/60s per cf-connecting-ip on
 # /generate?mode=submit — survives double-tap + page-refresh retries, blocks
 # scripted abuse. preview mode (admin smoketest, internal preview) is NOT

@@ -40,7 +40,7 @@ export default {
     const { pathname } = url;
 
     // CORS preflight — must be handled before any auth check
-    if (request.method === 'OPTIONS' && pathname.startsWith('/onboarding/')) {
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/onboarding/') || pathname.startsWith('/form/'))) {
       return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
     }
 
@@ -56,6 +56,15 @@ export default {
       const { error, payload } = await requireClerkJWT(request, env);
       if (error) return withCors(error);
       return withCors(await handleOnboarding(request, env, url, payload));
+    }
+    // RFT-87 scope (a): /form/* is the verification surface other workers
+    // proxy form requests through. Same Clerk-JWT auth as /onboarding/*; the
+    // distinction is purpose — /onboarding is for the onboarding flow itself,
+    // /form is for runtime tenant-ownership verification from the operator form.
+    if ((request.method === 'POST' || request.method === 'GET') && pathname.startsWith('/form/')) {
+      const { error, payload } = await requireClerkJWT(request, env);
+      if (error) return withCors(error);
+      return withCors(await handleForm(request, env, url, payload));
     }
     return new Response('Not Found', { status: 404 });
   },
@@ -269,6 +278,90 @@ async function handleOnboarding(request, env, url, jwtPayload) {
   }
 
   return json({ ok: false, error: 'Not Found' }, 404);
+}
+
+// ── Form route dispatcher (RFT-87 scope a) ───────────────────────────────────
+//
+// /form/* is the verification surface that materials-sync and pdf proxy the
+// operator form's requests through. The form sends its Clerk JWT as a Bearer
+// token; service-binding callers (materials-sync, pdf) forward that same JWT
+// in the Authorization header — no second auth gate. /form/* is gated by
+// requireClerkJWT in the dispatcher (same as /onboarding/*).
+//
+// The single endpoint here is the cross-tenant verifier: given a target_uuid
+// or target_slug, confirm the JWT's org owns that tenant. Single source of
+// truth for "does this caller's session map to this tenant" — closes RFT-86.
+
+async function handleForm(request, env, url, jwtPayload) {
+  const { method } = request;
+  const path = url.pathname;
+
+  if (method === 'POST' && path === '/form/verify-tenant') {
+    return handleVerifyTenant(request, env, jwtPayload);
+  }
+
+  return json({ ok: false, error: 'Not Found' }, 404);
+}
+
+// RFT-87 scope (a) — cross-tenant verifier.
+// Input (body):  { target_uuid }  OR  { target_slug }
+// Output:        { ok: true, uuid, org_id, role } on match;
+//                401 invalid/missing JWT (caught upstream by requireClerkJWT);
+//                403 cross_tenant_forbidden — JWT org does not own the target;
+//                404 slug/org/uuid not resolvable;
+//                400 missing or malformed target.
+//
+// The cross-tenant gate: even with a valid JWT, an org-A user cannot access
+// org-B data. This is the RFT-86 fix at the auth layer.
+async function handleVerifyTenant(request, env, jwtPayload) {
+  const orgId = jwtPayload.org_id;
+  if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+
+  const target_uuid = body?.target_uuid;
+  const target_slug = body?.target_slug;
+  if (!target_uuid && !target_slug) {
+    return json({ ok: false, error: 'missing_target', detail: 'provide target_uuid or target_slug' }, 400);
+  }
+
+  // Resolve JWT's org → uuid
+  const orgUuid = await env.RAFTER_CLIENTS.get(`clerk_org:${orgId}`).catch(() => null);
+  if (!orgUuid) {
+    return json({ ok: false, error: 'org_not_provisioned' }, 404);
+  }
+
+  // Resolve target uuid (from explicit uuid or via slug lookup)
+  let resolvedTargetUuid;
+  if (target_uuid) {
+    if (typeof target_uuid !== 'string' || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(target_uuid)) {
+      return json({ ok: false, error: 'invalid_target_uuid' }, 400);
+    }
+    resolvedTargetUuid = target_uuid;
+  } else {
+    if (typeof target_slug !== 'string' || !/^[a-z0-9-]+$/i.test(target_slug)) {
+      return json({ ok: false, error: 'invalid_target_slug' }, 400);
+    }
+    const slugUuid = await env.RAFTER_CLIENTS.get(`slug:${target_slug}`).catch(() => null);
+    if (!slugUuid) {
+      return json({ ok: false, error: 'slug_not_found', slug: target_slug }, 404);
+    }
+    resolvedTargetUuid = slugUuid;
+  }
+
+  // Cross-tenant check — the actual RFT-86 fix
+  if (orgUuid !== resolvedTargetUuid) {
+    return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  }
+
+  return json({
+    ok: true,
+    uuid: resolvedTargetUuid,
+    org_id: orgId,
+    role: extractOrgRole(jwtPayload),
+  });
 }
 
 // ── SM8 OAuth callback (RFT-69 Path 2 — removes Make from the auth path) ────
