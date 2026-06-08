@@ -1017,9 +1017,15 @@ async function runSmoketest(uuid, { destructive }, env) {
       let pdfJobUuid = null;
       try {
         // Step 1: generate minimal test PDF via Service Binding (W2W — cannot use workers.dev URL)
+        // RFT-87 scope (a): /generate now requires auth on both modes. Pass
+        // Bearer RAFTER_WORKER_SECRET so pdf's requireFormJWT bypasses the
+        // JWT path for this trusted internal call.
         const pdfReq = new Request('https://rafter-pdf.will-8e8.workers.dev/generate?mode=preview', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${env.RAFTER_WORKER_SECRET}`,
+          },
           body: JSON.stringify({
             client_uuid: uuid,
             client_name: 'Smoketest',

@@ -1441,10 +1441,18 @@ async function fetchAmendPdf(env, payload) {
     return { ok: false, status: 500, error: { error: "pdf_worker_binding_missing", detail: "Service binding PDF_WORKER not configured — redeploy materials-sync" } };
   }
   // Service binding URL hostname is ignored by Cloudflare; the binding routes
-  // directly to the bound worker. mode=preview returns binary, no auth required.
+  // directly to the bound worker. RFT-87 scope (a): /generate now requires
+  // auth on both modes — pass Bearer RAFTER_WORKER_SECRET so pdf's
+  // requireFormJWT recognises us as the internal-caller bypass path.
+  if (!env.RAFTER_WORKER_SECRET) {
+    return { ok: false, status: 500, error: { error: "server_misconfigured", detail: "RAFTER_WORKER_SECRET not set on materials-sync" } };
+  }
   const req = new Request("https://rafter-pdf.internal/generate?mode=preview", {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${env.RAFTER_WORKER_SECRET}`,
+    },
     body: JSON.stringify(payload),
   });
   const res = await env.PDF_WORKER.fetch(req);
