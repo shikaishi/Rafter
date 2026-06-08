@@ -39,9 +39,12 @@
   .card { background: var(--rf-card); border-radius: 12px; box-shadow: var(--shadow-card); border: 0.5px solid var(--rf-border); }
   .card + .card { margin-top: 12px; }
 
-  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; }
-  .topbar-title { font-size: 16px; font-weight: 600; color: var(--rf-navy); display: flex; align-items: center; gap: 8px; }
-  .topbar-title i { font-size: 18px; }
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; gap: 12px; }
+  .topbar-title { display: flex; align-items: center; gap: 10px; min-width: 0; flex: 1 1 auto; }
+  .topbar-title > i { font-size: 18px; color: var(--rf-navy); }
+  .topbar-text { display: flex; flex-direction: column; min-width: 0; }
+  .topbar-company { font-size: 14px; font-weight: 500; color: var(--rf-navy); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .topbar-sub { font-size: 11px; color: var(--rf-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 
   .pane { padding: 16px 18px 18px; }
   .pane-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 0.5px solid var(--rf-divider); margin-bottom: 12px; }
@@ -153,13 +156,18 @@
 <body>
 <div class="page">
 
-  <!-- Topbar -->
+  <!-- Topbar — mirrors quote-page brand-text pattern (tenant name top,
+       surface label muted underneath). Keeps both pieces of info legible:
+       which tenant the admin is in, and which surface they're on. -->
   <div class="card topbar">
     <div class="topbar-title">
       <i class="ti ti-settings"></i>
-      <span id="topbarTitle">Settings</span>
+      <div class="topbar-text">
+        <div id="topbarCompany" class="topbar-company">—</div>
+        <div class="topbar-sub">Rafter · Settings</div>
+      </div>
     </div>
-    <a href="/" id="backLink" class="btn small" style="text-decoration:none;"><i class="ti ti-arrow-left"></i><span>Back to quote builder</span></a>
+    <a href="/" id="backLink" class="btn small" style="text-decoration:none;"><i class="ti ti-arrow-left"></i><span>Back to Quote Builder</span></a>
   </div>
 
   <!-- Loading state -->
@@ -173,7 +181,7 @@
     <div class="err-msg" id="errMsg"></div>
     <div style="margin-top:12px;display:flex;gap:8px;">
       <button class="btn" id="errSignOutBtn" style="display:none;"><i class="ti ti-logout"></i>Sign out &amp; try a different account</button>
-      <a class="btn" id="errBackBtn" href="/" style="display:none;text-decoration:none;"><i class="ti ti-arrow-left"></i>Back to quote builder</a>
+      <a class="btn" id="errBackBtn" href="/" style="display:none;text-decoration:none;"><i class="ti ti-arrow-left"></i>Back to Quote Builder</a>
     </div>
   </div>
 
@@ -187,14 +195,14 @@
             <button class="btn" id="syncSectionsBtn"><i class="ti ti-refresh"></i>Sync from SM8</button>
           </div>
         </div>
-        <div style="font-size:12px;color:var(--rf-muted);line-height:1.5;margin-bottom:6px;">
-          Sections come from your ServiceM8 job templates and aren't edited here. Photos can be added, removed, moved between sections, and reordered by drag.
+        <div style="font-size:12px;color:var(--rf-muted);line-height:1.5;margin-bottom:8px;">
+          Drag to set the order sections appear in the Quote Builder.
         </div>
         <div id="paneRollup" class="pane-rollup" style="display:none;"></div>
         <div id="secControls" class="sec-controls" style="display:none;">
           <button class="btn small" id="expandAllBtn"><i class="ti ti-chevrons-down"></i>Expand all</button>
           <button class="btn small" id="collapseAllBtn"><i class="ti ti-chevrons-up"></i>Collapse all</button>
-          <span class="sec-instruction">Open a section to edit photos. Close all to drag sections into a new order. This order is what the tradie sees in the quote builder.</span>
+          <span class="sec-instruction">Expand to edit photos · Collapse all to reorder sections</span>
         </div>
         <div id="sectionsList"></div>
       </div>
@@ -337,7 +345,7 @@ async function loadState() {
 function render() {
   $('loadingState').style.display = 'none';
   $('mainPane').style.display = '';
-  $('topbarTitle').textContent = `Settings · ${state.company_name || state.slug || ''}`;
+  $('topbarCompany').textContent = state.company_name || state.slug || '—';
   $('backLink').href = state.slug ? `/${encodeURIComponent(state.slug)}` : '/';
 
   const photoMap = new Map(state.photos.map(c => [c.name, c.photos]));
@@ -353,22 +361,17 @@ function render() {
   $('secControls').style.display = '';
   updateSecControlsState();
 
-  // RFT-63 Q6: count rollup at the top — total photos + per-section breakdown.
+  // Count rollup at the top — total photos · section count. The "of N
+  // sections-with-photos" fraction was retired (raised an unanswered
+  // question and the empty-section case isn't worth flagging).
   let totalPhotos = 0;
-  const perSection = [];
   for (const sec of state.sections) {
     const catSlug = slugify(sec.name);
-    const count = (photoMap.get(catSlug) || []).length;
-    perSection.push({ name: sec.name, count });
-    totalPhotos += count;
+    totalPhotos += (photoMap.get(catSlug) || []).length;
   }
+  const sCount = state.sections.length;
   const rollupEl = $('paneRollup');
-  if (totalPhotos === 0) {
-    rollupEl.innerHTML = `<strong>0 photos</strong> across ${state.sections.length} section${state.sections.length === 1 ? '' : 's'}.`;
-  } else {
-    const sectionsWithPhotos = perSection.filter(s => s.count > 0).length;
-    rollupEl.innerHTML = `<strong>${totalPhotos}</strong> photo${totalPhotos === 1 ? '' : 's'} across ${sectionsWithPhotos} of ${state.sections.length} section${state.sections.length === 1 ? '' : 's'}.`;
-  }
+  rollupEl.innerHTML = `<strong>${totalPhotos}</strong> photo${totalPhotos === 1 ? '' : 's'} · ${sCount} section${sCount === 1 ? '' : 's'}`;
   rollupEl.style.display = '';
 
   // Render each section card (Bundle 3: collapsible; default closed)
