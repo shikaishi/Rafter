@@ -438,11 +438,14 @@ async function handleSettings(request, env, url, jwtPayload) {
   const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
   if (!uuid) return json({ ok: false, error: 'org_not_provisioned' }, 404);
 
-  if (method === 'GET'  && path === '/settings/state')                return handleSettingsState(uuid, env);
-  if (method === 'POST' && path === '/settings/photos/upload')        return handleSettingsPhotoUpload(uuid, request, env);
-  if (method === 'POST' && path === '/settings/photos/delete')        return handleSettingsPhotoDelete(uuid, request, env);
-  if (method === 'POST' && path === '/settings/photos/recategorise')  return handleSettingsPhotoRecategorise(uuid, request, env);
-  if (method === 'POST' && path === '/settings/sections/sync')        return handleSettingsSectionsSync(uuid, env);
+  if (method === 'GET'  && path === '/settings/state')                     return handleSettingsState(uuid, env);
+  if (method === 'POST' && path === '/settings/photos/upload')             return handleSettingsPhotoUpload(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/delete')             return handleSettingsPhotoDelete(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/recategorise')       return handleSettingsPhotoRecategorise(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/bulk-delete')        return handleSettingsPhotoBulkDelete(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/bulk-recategorise')  return handleSettingsPhotoBulkRecategorise(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/reorder')            return handleSettingsPhotoReorder(uuid, request, env);
+  if (method === 'POST' && path === '/settings/sections/sync')             return handleSettingsSectionsSync(uuid, env);
 
   return json({ ok: false, error: 'Not Found', path }, 404);
 }
@@ -463,7 +466,8 @@ function settingsAdminGate(jwtPayload) {
 
 // GET /settings/state — returns everything the settings surface needs in one
 // call: tenant record (sanitised), sections (read-only prose from KV), and
-// photos grouped by R2 category. Single request keeps the page boot fast.
+// photos grouped by R2 category, sorted by the per-category photo_order
+// stored on the client record (RFT-63 Q6 drag-reorder persistence).
 async function handleSettingsState(uuid, env) {
   const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
   if (!raw) return json({ ok: false, error: 'client_not_found' }, 404);
@@ -478,9 +482,11 @@ async function handleSettingsState(uuid, env) {
     text: t.text || '',
   })) : [];
 
-  // Photos grouped by R2 category prefix. Mirror handleListPhotos in
-  // materials-sync — same per-tenant key shape (clients/<uuid>/photos/<cat>/<file>).
-  const photos = await listPhotosByCategory(uuid, env);
+  // Photos grouped by R2 category prefix, sorted by photo_order from the KV
+  // record. Mirror handleListPhotos in materials-sync — same per-tenant key
+  // shape (clients/<uuid>/photos/<cat>/<file>).
+  const photoOrderMap = (record.photo_order && typeof record.photo_order === 'object') ? record.photo_order : {};
+  const photos = await listPhotosByCategory(uuid, env, photoOrderMap);
 
   return json({
     ok: true,
@@ -492,7 +498,7 @@ async function handleSettingsState(uuid, env) {
   });
 }
 
-async function listPhotosByCategory(uuid, env) {
+async function listPhotosByCategory(uuid, env, photoOrderMap = {}) {
   if (!env.RAFTER_ASSETS) return [];
   const prefix = `clients/${uuid}/photos/`;
   const categories = new Map();
@@ -511,13 +517,52 @@ async function listPhotosByCategory(uuid, env) {
     }
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
+  // For each category: sort by photo_order if set, then any keys not in the
+  // order list go to the end alphabetically (covers fresh uploads + legacy
+  // photos uploaded before order persistence existed).
   return [...categories.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
-    .map(([name, items]) => ({ name, photos: items.sort((a, b) => a.filename.localeCompare(b.filename)) }));
+    .map(([name, items]) => {
+      const order = Array.isArray(photoOrderMap[name]) ? photoOrderMap[name] : [];
+      const orderIndex = new Map(order.map((k, i) => [k, i]));
+      const sorted = items.slice().sort((a, b) => {
+        const ai = orderIndex.has(a.key) ? orderIndex.get(a.key) : Infinity;
+        const bi = orderIndex.has(b.key) ? orderIndex.get(b.key) : Infinity;
+        if (ai !== bi) return ai - bi;
+        return a.filename.localeCompare(b.filename);
+      });
+      return { name, photos: sorted };
+    });
+}
+
+// Helper — atomically read client record, apply a mutation, write back.
+// Used by all handlers that touch photo_order or other KV state.
+async function mutateClientRecord(uuid, env, mutator) {
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return false;
+  let record;
+  try { record = JSON.parse(raw); }
+  catch { return false; }
+  await mutator(record);
+  await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
+  return true;
+}
+
+// Order-list helpers — ensure photo_order is shape { [category]: [key, ...] }
+function appendToOrder(record, category, key) {
+  if (!record.photo_order || typeof record.photo_order !== 'object') record.photo_order = {};
+  if (!Array.isArray(record.photo_order[category])) record.photo_order[category] = [];
+  if (!record.photo_order[category].includes(key)) record.photo_order[category].push(key);
+}
+function removeFromOrder(record, category, key) {
+  if (!record.photo_order || !Array.isArray(record.photo_order[category])) return;
+  record.photo_order[category] = record.photo_order[category].filter(k => k !== key);
 }
 
 // POST /settings/photos/upload — multipart: file + category.
 // Reuses sanitisePathSegment + makePhotoFilename (the onboarding-upload primitives).
+// Appends the new key to photo_order[category] so it lands at the end of the
+// section's list (matches typical add-to-end UX).
 async function handleSettingsPhotoUpload(uuid, request, env) {
   let formData;
   try { formData = await request.formData(); }
@@ -531,13 +576,15 @@ async function handleSettingsPhotoUpload(uuid, request, env) {
   const key = `clients/${uuid}/photos/${safeCategory}/${safeFilename}`;
   const buffer = await file.arrayBuffer();
   await env.RAFTER_ASSETS.put(key, buffer, { httpMetadata: { contentType: 'image/jpeg' } });
+  await mutateClientRecord(uuid, env, (rec) => appendToOrder(rec, safeCategory, key));
   console.log(JSON.stringify({ event: 'settings_photo_uploaded', uuid, key }));
   return json({ ok: true, key, category: safeCategory, filename: safeFilename });
 }
 
 // POST /settings/photos/delete — body: { key }
 // Tenant-scopes the key against the JWT's uuid (defence in depth — a malicious
-// body shouldn't be able to delete a different tenant's photo).
+// body shouldn't be able to delete a different tenant's photo). Removes from
+// photo_order if present.
 async function handleSettingsPhotoDelete(uuid, request, env) {
   let body;
   try { body = await request.json(); }
@@ -547,13 +594,17 @@ async function handleSettingsPhotoDelete(uuid, request, env) {
   const prefix = `clients/${uuid}/photos/`;
   if (!key.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
   await env.RAFTER_ASSETS.delete(key);
+  const category = categoryFromKey(key, prefix);
+  if (category) {
+    await mutateClientRecord(uuid, env, (rec) => removeFromOrder(rec, category, key));
+  }
   console.log(JSON.stringify({ event: 'settings_photo_deleted', uuid, key }));
   return json({ ok: true, key });
 }
 
 // POST /settings/photos/recategorise — body: { key, to_category }
 // R2 has no rename — copy to new key + delete the original. Same tenant-scope
-// check on the source key.
+// check on the source key. Removes from source order, appends to dest order.
 async function handleSettingsPhotoRecategorise(uuid, request, env) {
   let body;
   try { body = await request.json(); }
@@ -566,11 +617,9 @@ async function handleSettingsPhotoRecategorise(uuid, request, env) {
   const prefix = `clients/${uuid}/photos/`;
   if (!fromKey.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
 
-  // Extract filename from current key, build new key under new category.
-  const rest = fromKey.slice(prefix.length);
-  const slash = rest.indexOf('/');
-  if (slash < 0) return json({ ok: false, error: 'invalid_key_shape' }, 400);
-  const filename = rest.slice(slash + 1);
+  const fromCategory = categoryFromKey(fromKey, prefix);
+  if (!fromCategory) return json({ ok: false, error: 'invalid_key_shape' }, 400);
+  const filename = fromKey.slice(prefix.length + fromCategory.length + 1);
   const toCategory = sanitisePathSegment(toCategoryRaw);
   const toKey = `${prefix}${toCategory}/${filename}`;
   if (toKey === fromKey) return json({ ok: true, key: fromKey, noop: true });
@@ -580,16 +629,147 @@ async function handleSettingsPhotoRecategorise(uuid, request, env) {
   const buffer = await obj.arrayBuffer();
   await env.RAFTER_ASSETS.put(toKey, buffer, { httpMetadata: obj.httpMetadata });
   await env.RAFTER_ASSETS.delete(fromKey);
+  await mutateClientRecord(uuid, env, (rec) => {
+    removeFromOrder(rec, fromCategory, fromKey);
+    appendToOrder(rec, toCategory, toKey);
+  });
   console.log(JSON.stringify({ event: 'settings_photo_recategorised', uuid, fromKey, toKey }));
   return json({ ok: true, key: toKey, from_key: fromKey });
 }
 
-// POST /settings/sections/sync — pull jobtemplate names from SM8, ADD any new
-// templates to KV (preserve existing prose untouched, generate seedText for
-// new). Conservative: never removes templates already in KV — protects against
-// SM8-side template churn breaking quote history. RFT-84 will deepen this.
+function categoryFromKey(key, prefix) {
+  const rest = key.slice(prefix.length);
+  const slash = rest.indexOf('/');
+  return slash >= 0 ? rest.slice(0, slash) : null;
+}
+
+// POST /settings/photos/bulk-delete — body: { keys: [...] }
+// Per-key tenant-scope check; per-key failure isolated (continue on R2 error,
+// report counts). Atomically removes all from photo_order at the end.
+async function handleSettingsPhotoBulkDelete(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const keys = body?.keys;
+  if (!Array.isArray(keys) || keys.length === 0) return json({ ok: false, error: 'missing_keys' }, 400);
+  const prefix = `clients/${uuid}/photos/`;
+  const scoped = keys.filter(k => typeof k === 'string' && k.startsWith(prefix));
+  if (scoped.length !== keys.length) return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+
+  let deleted = 0, failed = 0;
+  for (const key of scoped) {
+    try { await env.RAFTER_ASSETS.delete(key); deleted++; }
+    catch (err) { failed++; console.error(JSON.stringify({ event: 'settings_bulk_delete_r2_err', uuid, key, detail: err.message })); }
+  }
+  await mutateClientRecord(uuid, env, (rec) => {
+    for (const key of scoped) {
+      const category = categoryFromKey(key, prefix);
+      if (category) removeFromOrder(rec, category, key);
+    }
+  });
+  console.log(JSON.stringify({ event: 'settings_photos_bulk_deleted', uuid, deleted, failed }));
+  return json({ ok: true, deleted, failed });
+}
+
+// POST /settings/photos/bulk-recategorise — body: { keys: [...], to_category }
+// Per-key copy + delete in R2. Atomic photo_order update at the end.
+async function handleSettingsPhotoBulkRecategorise(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const keys = body?.keys;
+  const toCategoryRaw = body?.to_category;
+  if (!Array.isArray(keys) || keys.length === 0) return json({ ok: false, error: 'missing_keys' }, 400);
+  if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
+  const prefix = `clients/${uuid}/photos/`;
+  const scoped = keys.filter(k => typeof k === 'string' && k.startsWith(prefix));
+  if (scoped.length !== keys.length) return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  const toCategory = sanitisePathSegment(toCategoryRaw);
+
+  const moves = []; // [{ fromKey, toKey, fromCategory }]
+  let moved = 0, failed = 0;
+  for (const fromKey of scoped) {
+    const fromCategory = categoryFromKey(fromKey, prefix);
+    if (!fromCategory) { failed++; continue; }
+    if (fromCategory === toCategory) { continue; } // no-op for same-category
+    const filename = fromKey.slice(prefix.length + fromCategory.length + 1);
+    const toKey = `${prefix}${toCategory}/${filename}`;
+    try {
+      const obj = await env.RAFTER_ASSETS.get(fromKey);
+      if (!obj) { failed++; continue; }
+      const buffer = await obj.arrayBuffer();
+      await env.RAFTER_ASSETS.put(toKey, buffer, { httpMetadata: obj.httpMetadata });
+      await env.RAFTER_ASSETS.delete(fromKey);
+      moves.push({ fromKey, toKey, fromCategory });
+      moved++;
+    } catch (err) {
+      failed++;
+      console.error(JSON.stringify({ event: 'settings_bulk_recat_r2_err', uuid, fromKey, detail: err.message }));
+    }
+  }
+  await mutateClientRecord(uuid, env, (rec) => {
+    for (const m of moves) {
+      removeFromOrder(rec, m.fromCategory, m.fromKey);
+      appendToOrder(rec, toCategory, m.toKey);
+    }
+  });
+  console.log(JSON.stringify({ event: 'settings_photos_bulk_recategorised', uuid, moved, failed }));
+  return json({ ok: true, moved, failed });
+}
+
+// POST /settings/photos/reorder — body: { category, key_order: [key, ...] }
+// Replaces photo_order[category] with the supplied order. Validates: every
+// key in the new order is tenant-scoped + lives in the named category. Keys
+// not in key_order keep their slot — but absence after a known prior listing
+// usually means the client just sent the rendered ordering, so we treat
+// key_order as authoritative for the listed keys.
+async function handleSettingsPhotoReorder(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const categoryRaw = body?.category;
+  const keyOrder = body?.key_order;
+  if (typeof categoryRaw !== 'string' || !categoryRaw) return json({ ok: false, error: 'missing_category' }, 400);
+  if (!Array.isArray(keyOrder)) return json({ ok: false, error: 'missing_key_order' }, 400);
+  const category = sanitisePathSegment(categoryRaw);
+  const catPrefix = `clients/${uuid}/photos/${category}/`;
+  for (const k of keyOrder) {
+    if (typeof k !== 'string' || !k.startsWith(catPrefix)) {
+      return json({ ok: false, error: 'invalid_key_in_order', detail: 'all keys must be in the named category for this tenant' }, 400);
+    }
+  }
+  await mutateClientRecord(uuid, env, (rec) => {
+    if (!rec.photo_order || typeof rec.photo_order !== 'object') rec.photo_order = {};
+    rec.photo_order[category] = keyOrder.slice(); // copy
+  });
+  console.log(JSON.stringify({ event: 'settings_photos_reordered', uuid, category, count: keyOrder.length }));
+  return json({ ok: true, category, count: keyOrder.length });
+}
+
+// POST /settings/sections/sync — pull section PROSE from SM8 via the proven
+// clone-read-soft-delete mechanism (RFT-80 verification, RFT-84 spec).
+//
+// SM8 exposes no direct read of jobtemplate scope/description. Documented
+// route: POST /jobtemplate/{uuid}/job.json → response field `jobUUID` (NOT
+// `uuid` — docs gotcha). GET that job → job_description carries the
+// template's prose. DELETE the job → soft-delete (sets active=0; hard-delete
+// is browser-only and undocumented per RFT-80).
+//
+// edit_date diffing keeps litter to genuine template edits — only re-clone
+// templates whose SM8 edit_date changed since last sync. Store
+// sm8_edit_date per template alongside the prose. First-run on a fresh
+// record (no sm8_edit_date) re-clones everything; thereafter, "sync all"
+// with no SM8-side edits creates zero jobs.
+//
+// Transactional cleanup: every jobUUID we create is tracked in
+// createdJobUuids and soft-deleted in finally{} regardless of which step
+// failed. RFT-80 first run left 13 active clone jobs when the read step
+// bailed mid-loop; this pattern prevents that.
+//
+// Adds new templates (with their fresh prose) — never removes existing
+// templates that have disappeared from SM8 (protects quote history).
 async function handleSettingsSectionsSync(uuid, env) {
-  // Refresh SM8 token via materials-sync (same primitive as handleSm8Prefill)
+  // Refresh SM8 token via materials-sync
   try {
     const syncRes = await syncFetch(env, `/refresh-materials?uuid=${uuid}`);
     if (!syncRes.ok) {
@@ -606,43 +786,146 @@ async function handleSettingsSectionsSync(uuid, env) {
   const token = record.access_token;
   if (!token) return json({ ok: false, error: 'no_sm8_token', code: 'NO_TOKEN' }, 422);
 
-  const sm8Res = await fetch(`${SM8_BASE}/jobtemplate.json?$filter=active eq 1`, {
+  // List active templates with their edit_date for diffing
+  const listRes = await fetch(`${SM8_BASE}/jobtemplate.json?$filter=active eq 1`, {
     headers: { Authorization: `Bearer ${token}` },
   });
-  if (!sm8Res.ok) {
-    const detail = await sm8Res.text().catch(() => '');
-    return json({ ok: false, error: 'sm8_fetch_failed', status: sm8Res.status, detail: detail.slice(0, 200) }, 502);
+  if (!listRes.ok) {
+    const detail = await listRes.text().catch(() => '');
+    return json({ ok: false, error: 'sm8_list_failed', status: listRes.status, detail: detail.slice(0, 200) }, 502);
   }
   let sm8Templates;
-  try { sm8Templates = await sm8Res.json(); }
+  try { sm8Templates = await listRes.json(); }
   catch { return json({ ok: false, error: 'sm8_invalid_response' }, 502); }
   if (!Array.isArray(sm8Templates)) sm8Templates = [];
-  const sm8Names = sm8Templates
-    .filter(t => t && t.active !== 0 && typeof t.name === 'string' && t.name.trim())
-    .map(t => t.name.trim());
+  // Each entry: { uuid, name, edit_date, active, ... }
+  const activeTemplates = sm8Templates.filter(t => t && t.active !== 0 && t.uuid && typeof t.name === 'string' && t.name.trim());
 
   const existing = Array.isArray(record.templates) ? record.templates : [];
-  const existingByName = new Map(existing.map(t => [t.name, t]));
-  const added = [];
-  const merged = [...existing]; // preserve order + prose of existing
-  for (const name of sm8Names) {
-    if (!existingByName.has(name)) {
-      merged.push({ name, text: settingsSeedText(name) });
-      added.push(name);
+  const existingByName = new Map(existing.map(t => [t.name.trim(), t]));
+
+  // Decide which templates need cloning. Strategy:
+  //   - Template not in our records → must clone (new)
+  //   - Template in records but SM8 edit_date differs (or we never stamped
+  //     one) → must clone (changed)
+  //   - Template in records with matching edit_date → unchanged, skip
+  const toClone = [];
+  const unchanged = [];
+  for (const t of activeTemplates) {
+    const name = t.name.trim();
+    const prior = existingByName.get(name);
+    const sm8EditDate = t.edit_date || '';
+    if (!prior) {
+      toClone.push({ tplUuid: t.uuid, name, sm8EditDate, reason: 'new' });
+    } else if (!prior.sm8_edit_date || prior.sm8_edit_date !== sm8EditDate) {
+      toClone.push({ tplUuid: t.uuid, name, sm8EditDate, reason: 'updated' });
+    } else {
+      unchanged.push(name);
     }
   }
 
-  record.templates = merged;
-  await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
-  console.log(JSON.stringify({ event: 'settings_sections_synced', uuid, total: merged.length, added: added.length }));
-  return json({ ok: true, total: merged.length, added });
-}
+  // Track created job UUIDs across the whole loop so finally{} can always
+  // attempt soft-delete, even if an iteration mid-loop throws.
+  const createdJobUuids = [];
+  const added = [];
+  const updated = [];
+  const failed = [];
 
-// Mirror of onboarding.html seedText — same prose for new templates so a
-// section synced via /settings looks identical to one captured via onboarding.
-function settingsSeedText(name) {
-  const clean = String(name).replace(/\s*[-—–]\s+\S.*/u, '').trim().toLowerCase();
-  return `Supply and installation of materials as specified for ${clean} related work.`;
+  try {
+    for (const job of toClone) {
+      let clonedUuid = null;
+      try {
+        // Clone template → new job. No body fields — we want SM8 to populate
+        // job_description from the template's own prose unaltered.
+        const cloneRes = await fetch(`${SM8_BASE}/jobtemplate/${job.tplUuid}/job.json`, {
+          method: 'POST',
+          headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+          body: '{}',
+        });
+        if (!cloneRes.ok) {
+          const detail = await cloneRes.text().catch(() => '');
+          failed.push({ name: job.name, step: 'clone', status: cloneRes.status, detail: detail.slice(0, 200) });
+          continue;
+        }
+        let cloneBody;
+        try { cloneBody = await cloneRes.json(); }
+        catch { failed.push({ name: job.name, step: 'clone_body' }); continue; }
+        // Docs gotcha: response uses jobUUID, not uuid (RFT-80 finding)
+        clonedUuid = cloneBody.jobUUID;
+        if (!clonedUuid) {
+          failed.push({ name: job.name, step: 'clone_no_uuid' });
+          continue;
+        }
+        createdJobUuids.push(clonedUuid);
+
+        // Read cloned job → template prose is in job_description
+        const readRes = await fetch(`${SM8_BASE}/job/${clonedUuid}.json`, {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!readRes.ok) {
+          failed.push({ name: job.name, step: 'read', status: readRes.status });
+          continue;
+        }
+        let jobRecord;
+        try { jobRecord = await readRes.json(); }
+        catch { failed.push({ name: job.name, step: 'read_body' }); continue; }
+        // Empty prose is valid (e.g. Miscellaneous template) — store empty
+        const prose = typeof jobRecord.job_description === 'string' ? jobRecord.job_description : '';
+
+        // Merge into the templates array — by-name match, preserve order
+        const priorIdx = existing.findIndex(t => t.name.trim() === job.name);
+        const updatedEntry = { name: job.name, text: prose, sm8_edit_date: job.sm8EditDate };
+        if (priorIdx >= 0) {
+          existing[priorIdx] = updatedEntry;
+          updated.push(job.name);
+        } else {
+          existing.push(updatedEntry);
+          added.push(job.name);
+        }
+      } catch (err) {
+        failed.push({ name: job.name, step: 'exception', detail: err.message });
+      }
+    }
+
+    // Write the updated templates array back to KV
+    record.templates = existing;
+    await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
+  } finally {
+    // Transactional cleanup — soft-delete every job we created, regardless
+    // of which iteration failed. Log per-failure but don't throw.
+    for (const jobUuid of createdJobUuids) {
+      try {
+        const delRes = await fetch(`${SM8_BASE}/job/${jobUuid}.json`, {
+          method: 'DELETE',
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (!delRes.ok) {
+          console.error(JSON.stringify({ event: 'sections_sync_cleanup_failed', uuid, jobUuid, status: delRes.status }));
+        }
+      } catch (err) {
+        console.error(JSON.stringify({ event: 'sections_sync_cleanup_exception', uuid, jobUuid, detail: err.message }));
+      }
+    }
+  }
+
+  console.log(JSON.stringify({
+    event: 'settings_sections_synced',
+    uuid,
+    total: existing.length,
+    added: added.length,
+    updated: updated.length,
+    unchanged: unchanged.length,
+    failed: failed.length,
+    clones_created: createdJobUuids.length,
+  }));
+  return json({
+    ok: true,
+    total: existing.length,
+    added,
+    updated,
+    unchanged_count: unchanged.length,
+    failed,
+  });
 }
 
 // ── SM8 OAuth callback (RFT-69 Path 2 — removes Make from the auth path) ────
