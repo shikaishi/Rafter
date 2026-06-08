@@ -70,13 +70,34 @@
   .sec-photos-meta { font-size: 11px; color: var(--rf-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
   .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
   @media (max-width: 480px) { .photo-grid { grid-template-columns: repeat(3, 1fr); } }
-  .photo-cell { aspect-ratio: 1 / 1; border-radius: 6px; overflow: hidden; background: #f3f3f3; position: relative; cursor: pointer; }
-  .photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-cell { aspect-ratio: 1 / 1; border-radius: 6px; overflow: hidden; background: #f3f3f3; position: relative; cursor: grab; border: 2px solid transparent; transition: border 0.12s; }
+  .photo-cell:active { cursor: grabbing; }
+  .photo-cell.selected { border-color: var(--rf-navy); }
+  .photo-cell.drag-over { border-color: var(--rf-ocean); border-style: dashed; }
+  .photo-cell.drag-ghost { opacity: 0.4; }
+  .photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; pointer-events: none; }
+  /* Always-visible checkbox top-left (mobile-friendly — no hover dependency). */
+  .photo-check { position: absolute; top: 4px; left: 4px; width: 22px; height: 22px; border-radius: 4px; background: rgba(255,255,255,0.9); border: 1.5px solid var(--rf-border); display: inline-flex; align-items: center; justify-content: center; cursor: pointer; transition: background 0.12s; }
+  .photo-check:hover { background: #fff; }
+  .photo-cell.selected .photo-check { background: var(--rf-navy); border-color: var(--rf-navy); color: #fff; }
+  .photo-check .check-mark { font-size: 14px; color: inherit; opacity: 0; transition: opacity 0.12s; }
+  .photo-cell.selected .photo-check .check-mark { opacity: 1; }
+  /* Single-photo hover actions sit top-right (recategorise + delete). */
   .photo-cell .photo-actions { position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
   .photo-cell:hover .photo-actions { opacity: 1; }
   .photo-action-btn { width: 24px; height: 24px; border-radius: 4px; background: rgba(0,0,0,0.65); color: #fff; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
   .photo-action-btn:hover { background: rgba(0,0,0,0.85); }
   .no-photos { font-size: 11px; color: var(--rf-muted); font-style: italic; padding: 8px 0; }
+
+  /* RFT-63 Q6: per-section bulk-action bar shown when ≥1 photo in this
+     section is selected. Lives below the grid, scrolls with the section. */
+  .sec-bulk-bar { display: none; align-items: center; gap: 8px; padding: 8px 0 0; margin-top: 8px; border-top: 0.5px dashed var(--rf-divider); }
+  .sec-bulk-bar.visible { display: flex; flex-wrap: wrap; }
+  .sec-bulk-count { font-size: 11px; font-weight: 600; color: var(--rf-navy); }
+
+  /* RFT-63 Q6: count rollup at the top of the pane. */
+  .pane-rollup { font-size: 12px; color: var(--rf-muted); margin-bottom: 12px; padding: 8px 12px; background: var(--rf-row-bg); border-radius: 6px; }
+  .pane-rollup strong { color: var(--rf-navy); }
 
   .upload-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 0.5px dashed var(--rf-divider); }
 
@@ -122,6 +143,7 @@
     <div class="err-msg" id="errMsg"></div>
     <div style="margin-top:12px;display:flex;gap:8px;">
       <button class="btn" id="errSignOutBtn" style="display:none;"><i class="ti ti-logout"></i>Sign out &amp; try a different account</button>
+      <a class="btn" id="errBackBtn" href="/" style="display:none;text-decoration:none;"><i class="ti ti-arrow-left"></i>Back to quote builder</a>
     </div>
   </div>
 
@@ -136,8 +158,9 @@
           </div>
         </div>
         <div style="font-size:12px;color:var(--rf-muted);line-height:1.5;margin-bottom:6px;">
-          Sections come from your ServiceM8 job templates and aren't edited here. Photos can be added, removed, and moved between sections.
+          Sections come from your ServiceM8 job templates and aren't edited here. Photos can be added, removed, moved between sections, and reordered by drag.
         </div>
+        <div id="paneRollup" class="pane-rollup" style="display:none;"></div>
         <div id="sectionsList"></div>
       </div>
     </div>
@@ -158,6 +181,8 @@ const state = {
   sections: [],     // [{ name, text }]
   photos: [],       // [{ name (category), photos: [{ key, filename }] }]
   uploadTargetCategory: null, // set when user clicks "Add photos" in a section
+  selected: new Set(), // RFT-63 Q6: photo keys currently selected for bulk ops
+  dragSrcKey: null,    // RFT-63 Q6: drag-reorder src key
 };
 
 function $(id) { return document.getElementById(id); }
@@ -177,6 +202,10 @@ function showError(msg, opts) {
   if (opts && opts.title) $('errTitle').textContent = opts.title;
   $('errMsg').textContent = msg;
   $('errSignOutBtn').style.display = (opts && opts.showSignOut) ? '' : 'none';
+  // RFT-63 Q5: dead-end paths (admin-only) show a back link rather than
+  // a sign-out — let the user return to the form they came from.
+  const backBtn = $('errBackBtn');
+  if (backBtn) backBtn.style.display = (opts && opts.backToForm) ? '' : 'none';
 }
 
 async function signOutAndRetry() {
@@ -232,8 +261,13 @@ async function loadState() {
     if (res.status === 403) {
       const data = await res.json().catch(() => ({}));
       if (data.code === 'NOT_ADMIN') {
-        showError(data.detail || 'Settings access is admin-only. Ask the org admin to make changes.', { title: 'Admin access required', showSignOut: true });
+        // RFT-63 Q5: member is the RIGHT account with the WRONG role —
+        // sign-out solves nothing (they'd re-sign-in as the same member).
+        // Dead-end message + back-to-form link only. No sign-out button.
+        showError('Settings are admin-only. Ask your account admin if you need access.', { title: 'Admin access required', backToForm: true });
       } else {
+        // Cross-tenant (rare here — JWT org doesn't match tenant uuid).
+        // This IS a "wrong account" case, so the sign-out hatch still fits.
         showError("You don't have access. Sign in with the right account.", { title: 'Access denied', showSignOut: true });
       }
       return;
@@ -271,14 +305,35 @@ function render() {
 
   if (!state.sections.length) {
     sectionsList.innerHTML = `<div class="no-photos">No sections yet — click "Sync from SM8" to import job templates.</div>`;
+    $('paneRollup').style.display = 'none';
     return;
   }
 
+  // RFT-63 Q6: count rollup at the top — total photos + per-section breakdown.
+  let totalPhotos = 0;
+  const perSection = [];
+  for (const sec of state.sections) {
+    const catSlug = slugify(sec.name);
+    const count = (photoMap.get(catSlug) || []).length;
+    perSection.push({ name: sec.name, count });
+    totalPhotos += count;
+  }
+  const rollupEl = $('paneRollup');
+  if (totalPhotos === 0) {
+    rollupEl.innerHTML = `<strong>0 photos</strong> across ${state.sections.length} section${state.sections.length === 1 ? '' : 's'}.`;
+  } else {
+    const sectionsWithPhotos = perSection.filter(s => s.count > 0).length;
+    rollupEl.innerHTML = `<strong>${totalPhotos}</strong> photo${totalPhotos === 1 ? '' : 's'} across ${sectionsWithPhotos} of ${state.sections.length} section${state.sections.length === 1 ? '' : 's'}.`;
+  }
+  rollupEl.style.display = '';
+
+  // Render each section card
   for (const sec of state.sections) {
     const catSlug = slugify(sec.name);
     const photos = photoMap.get(catSlug) || [];
     const card = document.createElement('div');
     card.className = 'section-card';
+    card.dataset.categorySlug = catSlug;
     card.innerHTML = `
       <div class="sec-head">
         <span class="sec-name">${esc(sec.name)}</span>
@@ -292,6 +347,7 @@ function render() {
         ${photos.length === 0
           ? '<div class="no-photos">No photos yet for this section.</div>'
           : '<div class="photo-grid">' + photos.map(p => renderPhotoCell(p, catSlug)).join('') + '</div>'}
+        <div class="sec-bulk-bar" data-bulk-bar="${esc(catSlug)}"></div>
         <div class="upload-row">
           <button class="btn" data-action="add-photos" data-category="${esc(catSlug)}"><i class="ti ti-upload"></i>Add photos</button>
         </div>
@@ -299,6 +355,9 @@ function render() {
     `;
     sectionsList.appendChild(card);
   }
+
+  // Wire up cell-level events
+  wireCellEvents(sectionsList);
 
   // Wire up Add-photos buttons
   sectionsList.querySelectorAll('[data-action="add-photos"]').forEach(btn => {
@@ -308,26 +367,109 @@ function render() {
     });
   });
 
-  // Wire up delete + recategorise on photo cells
-  sectionsList.querySelectorAll('[data-action="delete-photo"]').forEach(btn => {
-    btn.addEventListener('click', (e) => { e.stopPropagation(); deletePhoto(btn.dataset.key); });
-  });
-  sectionsList.querySelectorAll('[data-action="recat-photo"]').forEach(btn => {
-    btn.addEventListener('click', (e) => { e.stopPropagation(); openRecategoriseModal(btn.dataset.key, btn.dataset.currentCat); });
-  });
+  updateBulkBars();
 }
 
 function renderPhotoCell(p, currentCat) {
   const url = `${PHOTO_HOST}/photo?uuid=${state.uuid}&key=${encodeURIComponent(p.key)}`;
+  const selected = state.selected.has(p.key) ? ' selected' : '';
   return `
-    <div class="photo-cell">
+    <div class="photo-cell${selected}" draggable="true" data-key="${esc(p.key)}" data-category="${esc(currentCat)}">
       <img loading="lazy" src="${esc(url)}" alt="${esc(p.filename)}">
+      <div class="photo-check" data-action="toggle-select" data-key="${esc(p.key)}" title="Select"><i class="ti ti-check check-mark"></i></div>
       <div class="photo-actions">
         <button class="photo-action-btn" data-action="recat-photo" data-key="${esc(p.key)}" data-current-cat="${esc(currentCat)}" title="Move to another section"><i class="ti ti-folder-symlink"></i></button>
         <button class="photo-action-btn" data-action="delete-photo" data-key="${esc(p.key)}" title="Delete"><i class="ti ti-trash"></i></button>
       </div>
     </div>
   `;
+}
+
+function wireCellEvents(root) {
+  // Single delete + recategorise
+  root.querySelectorAll('[data-action="delete-photo"]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); deletePhoto(btn.dataset.key); });
+  });
+  root.querySelectorAll('[data-action="recat-photo"]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openRecategoriseModal([btn.dataset.key], btn.dataset.currentCat); });
+  });
+  // RFT-63 Q6: select toggle
+  root.querySelectorAll('[data-action="toggle-select"]').forEach(box => {
+    box.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const key = box.dataset.key;
+      if (state.selected.has(key)) state.selected.delete(key);
+      else state.selected.add(key);
+      const cell = box.closest('.photo-cell');
+      if (cell) cell.classList.toggle('selected', state.selected.has(key));
+      updateBulkBars();
+    });
+  });
+  // RFT-63 Q6: drag-reorder within a section
+  root.querySelectorAll('.photo-cell').forEach(cell => {
+    cell.addEventListener('dragstart', (e) => {
+      state.dragSrcKey = cell.dataset.key;
+      cell.classList.add('drag-ghost');
+      try { e.dataTransfer.effectAllowed = 'move'; e.dataTransfer.setData('text/plain', cell.dataset.key); } catch {}
+    });
+    cell.addEventListener('dragend', () => { cell.classList.remove('drag-ghost'); cleanDragOverState(); });
+    cell.addEventListener('dragover', (e) => {
+      const srcKey = state.dragSrcKey;
+      if (!srcKey || srcKey === cell.dataset.key) return;
+      // Only allow drop within the same category
+      const srcCell = root.querySelector(`.photo-cell[data-key="${cssEscape(srcKey)}"]`);
+      if (!srcCell || srcCell.dataset.category !== cell.dataset.category) return;
+      e.preventDefault();
+      cell.classList.add('drag-over');
+    });
+    cell.addEventListener('dragleave', () => { cell.classList.remove('drag-over'); });
+    cell.addEventListener('drop', async (e) => {
+      e.preventDefault();
+      cell.classList.remove('drag-over');
+      const srcKey = state.dragSrcKey;
+      state.dragSrcKey = null;
+      if (!srcKey || srcKey === cell.dataset.key) return;
+      const cat = cell.dataset.category;
+      await reorderPhoto(cat, srcKey, cell.dataset.key);
+    });
+  });
+}
+
+function cleanDragOverState() {
+  document.querySelectorAll('.photo-cell.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
+// CSS.escape() is available in modern browsers — fall back to a minimal escape
+// for cases where it's not. Used for attribute-selector key lookups.
+function cssEscape(s) { return (typeof CSS !== 'undefined' && CSS.escape) ? CSS.escape(s) : String(s).replace(/[^a-zA-Z0-9-_]/g, '\\$&'); }
+
+// Update each section's bulk-action bar based on what's currently selected.
+function updateBulkBars() {
+  document.querySelectorAll('.sec-bulk-bar').forEach(bar => {
+    const cat = bar.dataset.bulkBar;
+    const cardPhotos = (state.photos.find(c => c.name === cat) || { photos: [] }).photos;
+    const selectedInSection = cardPhotos.filter(p => state.selected.has(p.key)).map(p => p.key);
+    if (selectedInSection.length === 0) {
+      bar.classList.remove('visible');
+      bar.innerHTML = '';
+      return;
+    }
+    bar.classList.add('visible');
+    bar.innerHTML = `
+      <span class="sec-bulk-count">${selectedInSection.length} selected</span>
+      <button class="btn small" data-bulk-action="move" data-cat="${esc(cat)}"><i class="ti ti-folder-symlink"></i>Move to…</button>
+      <button class="btn small danger" data-bulk-action="delete" data-cat="${esc(cat)}"><i class="ti ti-trash"></i>Delete selected</button>
+      <button class="btn small" data-bulk-action="clear" data-cat="${esc(cat)}">Clear</button>
+    `;
+    bar.querySelector('[data-bulk-action="delete"]').addEventListener('click', () => bulkDelete(selectedInSection));
+    bar.querySelector('[data-bulk-action="move"]').addEventListener('click', () => openRecategoriseModal(selectedInSection, cat));
+    bar.querySelector('[data-bulk-action="clear"]').addEventListener('click', () => {
+      for (const k of selectedInSection) state.selected.delete(k);
+      // Re-render only the affected cells' selected class; cheap loop
+      document.querySelectorAll(`.photo-cell[data-category="${cssEscape(cat)}"]`).forEach(c => c.classList.remove('selected'));
+      updateBulkBars();
+    });
+  });
 }
 
 // ─── Photo actions ───────────────────────────────────────────────────────────
@@ -343,6 +485,7 @@ async function deletePhoto(key) {
       const data = await res.json().catch(() => ({}));
       throw new Error(data.error || `delete_${res.status}`);
     }
+    state.selected.delete(key);
     toast('Photo deleted', 'ok');
     await loadState();
   } catch (e) {
@@ -350,13 +493,69 @@ async function deletePhoto(key) {
   }
 }
 
-function openRecategoriseModal(key, currentCat) {
+// RFT-63 Q6: bulk delete — single confirm, single API call.
+async function bulkDelete(keys) {
+  if (!keys.length) return;
+  if (!confirm(`Delete ${keys.length} photo${keys.length === 1 ? '' : 's'}? This cannot be undone.`)) return;
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/photos/bulk-delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ keys }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `bulk_delete_${res.status}`);
+    for (const k of keys) state.selected.delete(k);
+    const failedNote = data.failed ? ` (${data.failed} failed)` : '';
+    toast(`Deleted ${data.deleted}${failedNote}`, data.failed ? 'err' : 'ok');
+    await loadState();
+  } catch (e) {
+    toast(`Bulk delete failed: ${e.message || e}`, 'err');
+  }
+}
+
+// RFT-63 Q6: drag-reorder within a section. Optimistic compute → call API
+// with the new key order → server stores it → reload to confirm.
+async function reorderPhoto(category, srcKey, destKey) {
+  const cat = state.photos.find(c => c.name === category);
+  if (!cat) return;
+  const keys = cat.photos.map(p => p.key);
+  const srcIdx = keys.indexOf(srcKey);
+  const destIdx = keys.indexOf(destKey);
+  if (srcIdx < 0 || destIdx < 0 || srcIdx === destIdx) return;
+  // Pull src out, splice in at destIdx (move-before semantics)
+  const newOrder = keys.slice();
+  newOrder.splice(srcIdx, 1);
+  const insertAt = newOrder.indexOf(destKey); // recompute after removal
+  newOrder.splice(insertAt, 0, srcKey);
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/photos/reorder`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category, key_order: newOrder }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `reorder_${res.status}`);
+    }
+    await loadState();
+  } catch (e) {
+    toast(`Couldn't reorder: ${e.message || e}`, 'err');
+  }
+}
+
+// RFT-63 Q6: recategorise modal — handles BOTH single (called with [key]) and
+// bulk (called with [k1, k2, …]). The API call routes to /recategorise or
+// /bulk-recategorise based on count.
+function openRecategoriseModal(keys, currentCat) {
+  if (!keys || !keys.length) return;
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   const sectionNames = state.sections.map(s => ({ name: s.name, slug: slugify(s.name) }));
+  const title = keys.length === 1 ? 'Move photo to&hellip;' : `Move ${keys.length} photos to&hellip;`;
   backdrop.innerHTML = `
     <div class="modal">
-      <h3>Move photo to&hellip;</h3>
+      <h3>${title}</h3>
       <div class="modal-pills" id="modal-pills">
         ${sectionNames.map(s => `
           <button class="modal-pill ${s.slug === currentCat ? 'current' : ''}" data-cat="${esc(s.name)}" ${s.slug === currentCat ? 'disabled' : ''}>${esc(s.name)}</button>
@@ -376,16 +575,26 @@ function openRecategoriseModal(key, currentCat) {
       const toCategory = btn.dataset.cat;
       close();
       try {
-        const res = await authedFetch(`${ADMIN_API}/settings/photos/recategorise`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ key, to_category: toCategory }),
-        });
-        if (!res.ok) {
-          const data = await res.json().catch(() => ({}));
-          throw new Error(data.error || `recat_${res.status}`);
+        let res;
+        if (keys.length === 1) {
+          res = await authedFetch(`${ADMIN_API}/settings/photos/recategorise`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ key: keys[0], to_category: toCategory }),
+          });
+        } else {
+          res = await authedFetch(`${ADMIN_API}/settings/photos/bulk-recategorise`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ keys, to_category: toCategory }),
+          });
         }
-        toast(`Moved to "${toCategory}"`, 'ok');
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.error || `recat_${res.status}`);
+        for (const k of keys) state.selected.delete(k);
+        const okCount = data.moved ?? 1;
+        const failedNote = data.failed ? ` (${data.failed} failed)` : '';
+        toast(`Moved ${okCount} to "${toCategory}"${failedNote}`, data.failed ? 'err' : 'ok');
         await loadState();
       } catch (e) {
         toast(`Couldn't move: ${e.message || e}`, 'err');
