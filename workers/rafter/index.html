@@ -158,6 +158,17 @@
     margin-right: 8px;
   }
   .find-btn:hover { background: var(--rf-navy); color: #fff; }
+  /* RFT-63: settings cog. Same baseline as find-btn but icon-only and a
+     touch smaller — secondary affordance, not a primary action. */
+  .settings-cog {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px;
+    color: var(--rf-muted); border: 1px solid var(--rf-divider);
+    border-radius: 8px; text-decoration: none;
+    transition: background 0.12s, color 0.12s;
+  }
+  .settings-cog:hover { background: var(--rf-row-bg); color: var(--rf-navy); }
+  .settings-cog i { font-size: 18px; }
   .finder-view { max-width: 1120px; margin: 0 auto; padding: 28px 16px 24px; }
   .finder-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -873,6 +884,12 @@
         <span class="sep"></span>
         <span class="ts" id="matTs">checking…</span>
       </button>
+      <!-- RFT-63: settings cog. Hidden by default; shown when verifyGatedTenant
+           confirms the user is org:admin. Non-admins (including ungated tenants)
+           never see it — the settings page is admin-only at the backend anyway. -->
+      <a href="/settings" id="settingsCog" class="settings-cog" style="display:none;" aria-label="Settings" title="Settings">
+        <i class="ti ti-settings"></i>
+      </a>
     </div>
   </header>
 
@@ -1282,6 +1299,12 @@ async function boot() {
     }
     const ok = await verifyGatedTenant();
     if (!ok) return;
+    // RFT-63: settings is admin-only. Surface the cog only for admins —
+    // members never see an affordance they can't use.
+    if (state.orgRole === 'org:admin') {
+      const cog = $("settingsCog");
+      if (cog) cog.style.display = '';
+    }
   }
   // UNGATED path — proceed with no Clerk session. Endpoints accept unauth
   // because their tenant-flag check sees gate_enforced!==true and returns

@@ -1,0 +1,465 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rafter — Settings</title>
+<link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
+<!-- RFT-63: Clerk JS — settings is admin-only, JWT required before anything else.
+     Same instance + pattern as the form and onboarding pages. -->
+<script
+  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  crossorigin="anonymous"
+></script>
+<style>
+  :root {
+    --rf-navy: #1B4F72;
+    --rf-ocean: #2E86AB;
+    --rf-teal-bg: #EAF4F8;
+    --rf-teal-border: #A8D5E2;
+    --rf-outer: #1B3A52;
+    --rf-card: #FFFFFF;
+    --rf-row-bg: #F7F9FC;
+    --rf-border: #D4D0C8;
+    --rf-divider: #E8E4DC;
+    --rf-text: #1C1C1C;
+    --rf-muted: #6B7280;
+    --rf-danger: #B91C1C;
+    --rf-success: #166534;
+    --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.03);
+    --shadow-navy-btn: 0 1px 2px rgba(27, 79, 114, 0.25);
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--rf-text); background: var(--rf-outer); min-height: 100vh; }
+  body { padding: 16px; }
+  .page { max-width: 760px; margin: 0 auto; }
+
+  .card { background: var(--rf-card); border-radius: 12px; box-shadow: var(--shadow-card); border: 0.5px solid var(--rf-border); }
+  .card + .card { margin-top: 12px; }
+
+  .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; }
+  .topbar-title { font-size: 16px; font-weight: 600; color: var(--rf-navy); display: flex; align-items: center; gap: 8px; }
+  .topbar-title i { font-size: 18px; }
+  .back-link { font-size: 13px; color: var(--rf-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 6px; transition: background 0.12s; }
+  .back-link:hover { background: var(--rf-row-bg); }
+
+  .pane { padding: 16px 18px 18px; }
+  .pane-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 0.5px solid var(--rf-divider); margin-bottom: 12px; }
+  .pane-header h2 { font-size: 14px; font-weight: 600; color: var(--rf-navy); text-transform: uppercase; letter-spacing: 0.04em; }
+  .pane-actions { display: flex; gap: 8px; }
+
+  .btn { background: var(--rf-card); color: var(--rf-navy); border: 0.5px solid var(--rf-border); border-radius: 8px; padding: 8px 12px; font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; transition: filter 0.12s, background 0.12s; font-family: inherit; }
+  .btn:hover { filter: brightness(0.97); }
+  .btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .btn.primary { background: var(--rf-navy); color: #fff; border-color: var(--rf-navy); box-shadow: var(--shadow-navy-btn); }
+  .btn.danger { color: var(--rf-danger); border-color: #FCA5A5; }
+  .btn.small { padding: 5px 8px; font-size: 11px; }
+  .btn i { font-size: 14px; }
+
+  /* Section + its photos: mirrors the form's section card layout. */
+  .section-card { border: 0.5px solid var(--rf-border); border-radius: 10px; margin-top: 10px; overflow: hidden; }
+  .section-card .sec-head { display: flex; align-items: center; justify-content: space-between; padding: 10px 14px; background: var(--rf-row-bg); border-bottom: 0.5px solid var(--rf-divider); }
+  .sec-name { font-size: 13px; font-weight: 600; color: var(--rf-navy); }
+  .sec-prose { padding: 10px 14px; font-size: 12px; color: var(--rf-muted); line-height: 1.5; white-space: pre-wrap; border-bottom: 0.5px solid var(--rf-divider); background: #FAFAF7; }
+  .sec-prose-empty { font-style: italic; color: var(--rf-muted); }
+  .sec-readonly-badge { font-size: 9px; color: var(--rf-muted); background: var(--rf-divider); padding: 2px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+
+  .sec-photos { padding: 10px 14px; }
+  .sec-photos-meta { font-size: 11px; color: var(--rf-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
+  .photo-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+  @media (max-width: 480px) { .photo-grid { grid-template-columns: repeat(3, 1fr); } }
+  .photo-cell { aspect-ratio: 1 / 1; border-radius: 6px; overflow: hidden; background: #f3f3f3; position: relative; cursor: pointer; }
+  .photo-cell img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-cell .photo-actions { position: absolute; top: 2px; right: 2px; display: flex; gap: 2px; opacity: 0; transition: opacity 0.12s; }
+  .photo-cell:hover .photo-actions { opacity: 1; }
+  .photo-action-btn { width: 24px; height: 24px; border-radius: 4px; background: rgba(0,0,0,0.65); color: #fff; border: none; cursor: pointer; display: inline-flex; align-items: center; justify-content: center; font-size: 13px; padding: 0; }
+  .photo-action-btn:hover { background: rgba(0,0,0,0.85); }
+  .no-photos { font-size: 11px; color: var(--rf-muted); font-style: italic; padding: 8px 0; }
+
+  .upload-row { display: flex; align-items: center; gap: 8px; margin-top: 10px; padding-top: 10px; border-top: 0.5px dashed var(--rf-divider); }
+
+  .toast { position: fixed; bottom: 20px; left: 50%; transform: translateX(-50%); background: var(--rf-navy); color: #fff; padding: 10px 16px; border-radius: 8px; font-size: 13px; z-index: 1000; box-shadow: 0 4px 14px rgba(0,0,0,0.2); }
+  .toast.err { background: var(--rf-danger); }
+
+  /* Recategorise modal */
+  .modal-backdrop { position: fixed; inset: 0; background: rgba(0,0,0,0.5); display: flex; align-items: center; justify-content: center; z-index: 999; padding: 16px; }
+  .modal { background: var(--rf-card); border-radius: 12px; max-width: 400px; width: 100%; padding: 18px; }
+  .modal h3 { font-size: 14px; margin-bottom: 12px; }
+  .modal-pills { display: flex; flex-wrap: wrap; gap: 6px; max-height: 240px; overflow-y: auto; padding: 4px; margin-bottom: 12px; }
+  .modal-pill { background: var(--rf-teal-bg); color: var(--rf-navy); border: 0.5px solid var(--rf-teal-border); border-radius: 18px; padding: 8px 14px; font-size: 10px; font-weight: 500; text-transform: uppercase; letter-spacing: 0.04em; cursor: pointer; min-height: 32px; display: inline-flex; align-items: center; font-family: inherit; line-height: 1.3; }
+  .modal-pill:hover { filter: brightness(0.97); }
+  .modal-pill.current { opacity: 0.5; cursor: not-allowed; }
+  .modal-actions { display: flex; justify-content: flex-end; gap: 8px; }
+
+  .loading-card { text-align: center; padding: 40px 18px; color: var(--rf-muted); font-size: 13px; }
+  .error-card { padding: 16px 18px; }
+  .error-card .err-title { color: var(--rf-danger); font-weight: 600; margin-bottom: 4px; }
+  .error-card .err-msg { font-size: 13px; color: var(--rf-muted); }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <!-- Topbar -->
+  <div class="card topbar">
+    <div class="topbar-title">
+      <i class="ti ti-settings"></i>
+      <span id="topbarTitle">Settings</span>
+    </div>
+    <a href="#" id="backLink" class="back-link"><i class="ti ti-arrow-left"></i><span>Back to quote builder</span></a>
+  </div>
+
+  <!-- Loading state -->
+  <div id="loadingState" class="card loading-card">
+    <div>Loading settings…</div>
+  </div>
+
+  <!-- Error state -->
+  <div id="errorState" class="card error-card" style="display:none;">
+    <div class="err-title" id="errTitle">Something went wrong</div>
+    <div class="err-msg" id="errMsg"></div>
+    <div style="margin-top:12px;display:flex;gap:8px;">
+      <button class="btn" id="errSignOutBtn" style="display:none;"><i class="ti ti-logout"></i>Sign out &amp; try a different account</button>
+    </div>
+  </div>
+
+  <!-- Sections + photos pane -->
+  <div id="mainPane" style="display:none;">
+    <div class="card">
+      <div class="pane">
+        <div class="pane-header">
+          <h2><i class="ti ti-folders" style="vertical-align:middle;margin-right:4px;"></i>Sections &amp; photos</h2>
+          <div class="pane-actions">
+            <button class="btn" id="syncSectionsBtn"><i class="ti ti-refresh"></i>Sync from SM8</button>
+          </div>
+        </div>
+        <div style="font-size:12px;color:var(--rf-muted);line-height:1.5;margin-bottom:6px;">
+          Sections come from your ServiceM8 job templates and aren't edited here. Photos can be added, removed, and moved between sections.
+        </div>
+        <div id="sectionsList"></div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<input type="file" id="fileInput" multiple accept="image/*" style="display:none">
+
+<script>
+const ADMIN_API = "https://rafter-admin-api.will-8e8.workers.dev";
+const PHOTO_HOST = "https://rafter-materials-sync.will-8e8.workers.dev";
+
+const state = {
+  uuid: null,
+  slug: null,
+  company_name: null,
+  sections: [],     // [{ name, text }]
+  photos: [],       // [{ name (category), photos: [{ key, filename }] }]
+  uploadTargetCategory: null, // set when user clicks "Add photos" in a section
+};
+
+function $(id) { return document.getElementById(id); }
+
+function toast(msg, type) {
+  const t = document.createElement('div');
+  t.className = 'toast' + (type === 'err' ? ' err' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 3500);
+}
+
+function showError(msg, opts) {
+  $('loadingState').style.display = 'none';
+  $('mainPane').style.display = 'none';
+  $('errorState').style.display = '';
+  if (opts && opts.title) $('errTitle').textContent = opts.title;
+  $('errMsg').textContent = msg;
+  $('errSignOutBtn').style.display = (opts && opts.showSignOut) ? '' : 'none';
+}
+
+async function signOutAndRetry() {
+  try { if (window.Clerk?.signOut) await Clerk.signOut(); } catch (e) { /* swallow */ }
+  if (window.Clerk?.redirectToSignIn) {
+    Clerk.redirectToSignIn({ redirectUrl: window.location.href });
+  } else {
+    window.location.replace('/sign-up');
+  }
+}
+
+async function authedFetch(url, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  const jwt = await Clerk.session.getToken();
+  if (jwt) headers.set('Authorization', `Bearer ${jwt}`);
+  const res = await fetch(url, { ...opts, headers });
+  return res;
+}
+
+// ─── Boot ────────────────────────────────────────────────────────────────────
+async function boot() {
+  $('errSignOutBtn').addEventListener('click', signOutAndRetry);
+
+  if (!window.Clerk) {
+    showError('Authentication library failed to load. Please refresh.');
+    return;
+  }
+  try {
+    await Clerk.load();
+  } catch (e) {
+    showError('Could not load authentication. Please refresh.');
+    return;
+  }
+  if (!Clerk.user) {
+    if (Clerk.redirectToSignIn) {
+      Clerk.redirectToSignIn({ redirectUrl: window.location.href });
+    } else {
+      window.location.replace('/sign-up');
+    }
+    return;
+  }
+
+  await loadState();
+}
+
+async function loadState() {
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/state`);
+    if (res.status === 401) {
+      if (Clerk.redirectToSignIn) Clerk.redirectToSignIn({ redirectUrl: window.location.href });
+      return;
+    }
+    if (res.status === 403) {
+      const data = await res.json().catch(() => ({}));
+      if (data.code === 'NOT_ADMIN') {
+        showError(data.detail || 'Settings access is admin-only. Ask the org admin to make changes.', { title: 'Admin access required', showSignOut: true });
+      } else {
+        showError("You don't have access. Sign in with the right account.", { title: 'Access denied', showSignOut: true });
+      }
+      return;
+    }
+    if (res.status === 404) {
+      showError('No client record found for this organisation.', { title: 'Not provisioned' });
+      return;
+    }
+    if (!res.ok) {
+      showError(`Couldn't load settings (HTTP ${res.status}). Please refresh.`);
+      return;
+    }
+    const data = await res.json();
+    state.uuid = data.uuid;
+    state.slug = data.slug;
+    state.company_name = data.company_name;
+    state.sections = data.sections || [];
+    state.photos = data.photos || [];
+    render();
+  } catch (e) {
+    showError('Network error loading settings. Please refresh.');
+  }
+}
+
+// ─── Render ──────────────────────────────────────────────────────────────────
+function render() {
+  $('loadingState').style.display = 'none';
+  $('mainPane').style.display = '';
+  $('topbarTitle').textContent = `Settings · ${state.company_name || state.slug || ''}`;
+  $('backLink').href = state.slug ? `/${encodeURIComponent(state.slug)}` : '/';
+
+  const photoMap = new Map(state.photos.map(c => [c.name, c.photos]));
+  const sectionsList = $('sectionsList');
+  sectionsList.innerHTML = '';
+
+  if (!state.sections.length) {
+    sectionsList.innerHTML = `<div class="no-photos">No sections yet — click "Sync from SM8" to import job templates.</div>`;
+    return;
+  }
+
+  for (const sec of state.sections) {
+    const catSlug = slugify(sec.name);
+    const photos = photoMap.get(catSlug) || [];
+    const card = document.createElement('div');
+    card.className = 'section-card';
+    card.innerHTML = `
+      <div class="sec-head">
+        <span class="sec-name">${esc(sec.name)}</span>
+        <span class="sec-readonly-badge" title="Section prose is read-only here — edit in ServiceM8 and sync">SM8</span>
+      </div>
+      <div class="sec-prose ${sec.text ? '' : 'sec-prose-empty'}">${esc(sec.text || '(no prose set)')}</div>
+      <div class="sec-photos">
+        <div class="sec-photos-meta">
+          <span>${photos.length} photo${photos.length === 1 ? '' : 's'}</span>
+        </div>
+        ${photos.length === 0
+          ? '<div class="no-photos">No photos yet for this section.</div>'
+          : '<div class="photo-grid">' + photos.map(p => renderPhotoCell(p, catSlug)).join('') + '</div>'}
+        <div class="upload-row">
+          <button class="btn" data-action="add-photos" data-category="${esc(catSlug)}"><i class="ti ti-upload"></i>Add photos</button>
+        </div>
+      </div>
+    `;
+    sectionsList.appendChild(card);
+  }
+
+  // Wire up Add-photos buttons
+  sectionsList.querySelectorAll('[data-action="add-photos"]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      state.uploadTargetCategory = btn.dataset.category;
+      $('fileInput').click();
+    });
+  });
+
+  // Wire up delete + recategorise on photo cells
+  sectionsList.querySelectorAll('[data-action="delete-photo"]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); deletePhoto(btn.dataset.key); });
+  });
+  sectionsList.querySelectorAll('[data-action="recat-photo"]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openRecategoriseModal(btn.dataset.key, btn.dataset.currentCat); });
+  });
+}
+
+function renderPhotoCell(p, currentCat) {
+  const url = `${PHOTO_HOST}/photo?uuid=${state.uuid}&key=${encodeURIComponent(p.key)}`;
+  return `
+    <div class="photo-cell">
+      <img loading="lazy" src="${esc(url)}" alt="${esc(p.filename)}">
+      <div class="photo-actions">
+        <button class="photo-action-btn" data-action="recat-photo" data-key="${esc(p.key)}" data-current-cat="${esc(currentCat)}" title="Move to another section"><i class="ti ti-folder-symlink"></i></button>
+        <button class="photo-action-btn" data-action="delete-photo" data-key="${esc(p.key)}" title="Delete"><i class="ti ti-trash"></i></button>
+      </div>
+    </div>
+  `;
+}
+
+// ─── Photo actions ───────────────────────────────────────────────────────────
+async function deletePhoto(key) {
+  if (!confirm('Delete this photo? This cannot be undone.')) return;
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/photos/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key }),
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.error || `delete_${res.status}`);
+    }
+    toast('Photo deleted', 'ok');
+    await loadState();
+  } catch (e) {
+    toast(`Couldn't delete: ${e.message || e}`, 'err');
+  }
+}
+
+function openRecategoriseModal(key, currentCat) {
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  const sectionNames = state.sections.map(s => ({ name: s.name, slug: slugify(s.name) }));
+  backdrop.innerHTML = `
+    <div class="modal">
+      <h3>Move photo to&hellip;</h3>
+      <div class="modal-pills" id="modal-pills">
+        ${sectionNames.map(s => `
+          <button class="modal-pill ${s.slug === currentCat ? 'current' : ''}" data-cat="${esc(s.name)}" ${s.slug === currentCat ? 'disabled' : ''}>${esc(s.name)}</button>
+        `).join('')}
+      </div>
+      <div class="modal-actions">
+        <button class="btn" id="modal-cancel">Cancel</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+  const close = () => backdrop.remove();
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) close(); });
+  backdrop.querySelector('#modal-cancel').addEventListener('click', close);
+  backdrop.querySelectorAll('.modal-pill:not(.current)').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const toCategory = btn.dataset.cat;
+      close();
+      try {
+        const res = await authedFetch(`${ADMIN_API}/settings/photos/recategorise`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ key, to_category: toCategory }),
+        });
+        if (!res.ok) {
+          const data = await res.json().catch(() => ({}));
+          throw new Error(data.error || `recat_${res.status}`);
+        }
+        toast(`Moved to "${toCategory}"`, 'ok');
+        await loadState();
+      } catch (e) {
+        toast(`Couldn't move: ${e.message || e}`, 'err');
+      }
+    });
+  });
+}
+
+async function uploadFiles(files) {
+  const category = state.uploadTargetCategory;
+  if (!category) { toast('No section selected for upload', 'err'); return; }
+  let okCount = 0, failCount = 0;
+  for (const file of files) {
+    try {
+      const fd = new FormData();
+      fd.append('file', file);
+      fd.append('category', category);
+      const res = await authedFetch(`${ADMIN_API}/settings/photos/upload`, {
+        method: 'POST',
+        body: fd,
+      });
+      if (!res.ok) throw new Error(`upload_${res.status}`);
+      okCount++;
+    } catch (e) {
+      failCount++;
+      console.warn('upload failed:', e);
+    }
+  }
+  toast(`Uploaded ${okCount}${failCount ? ` (${failCount} failed)` : ''}`, failCount ? 'err' : 'ok');
+  state.uploadTargetCategory = null;
+  await loadState();
+}
+
+$('fileInput').addEventListener('change', () => {
+  const files = Array.from($('fileInput').files || []);
+  $('fileInput').value = '';
+  if (files.length) uploadFiles(files);
+});
+
+// ─── Sections sync ───────────────────────────────────────────────────────────
+$('syncSectionsBtn').addEventListener('click', async () => {
+  const btn = $('syncSectionsBtn');
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Syncing&hellip;';
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/sections/sync`, { method: 'POST' });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `sync_${res.status}`);
+    const addedNote = data.added && data.added.length ? ` (${data.added.length} new: ${data.added.join(', ')})` : ' (no new sections)';
+    toast(`Synced ${data.total} sections${addedNote}`, 'ok');
+    await loadState();
+  } catch (e) {
+    toast(`Sync failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+});
+
+// ─── Helpers ─────────────────────────────────────────────────────────────────
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+}
+// Same slugify rule as admin-api sanitisePathSegment + RFT-78 #4 v2 — so the
+// section name → category slug round-trips with the photo storage.
+function slugify(s) {
+  return String(s || '').trim().toLowerCase()
+    .replace(/[^a-z0-9-]/g, '-')
+    .replace(/-+/g, '-')
+    .replace(/^-|-$/g, '');
+}
+
+boot();
+</script>
+</body>
+</html>
