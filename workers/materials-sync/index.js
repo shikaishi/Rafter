@@ -9,6 +9,11 @@ const CLIENT_KEY_PREFIX = "client:";
 const MATERIALS_KEY_PREFIX = "materials:";
 const PHOTO_PREFIX = (uuid) => `clients/${uuid}/photos/`;
 const SENSITIVE_CLIENT_FIELDS = ["access_token", "refresh_token", "expires_at", "token_updated_at", "webhook_url", "bank_details"];
+// RFT-93: SM8 material.json fields exposed via /materials/{uuid}. cost is the
+// tenant's wholesale buy-price (markup leak); quantity_in_stock is inventory
+// state; tax_rate_uuid is an internal SM8 ref the form never consumes.
+// Conservative scope — leaves barcode/edit_date/internal-flags untouched.
+const SENSITIVE_MATERIAL_FIELDS = ["cost", "quantity_in_stock", "tax_rate_uuid"];
 
 const ALLOWED_ORIGINS = new Set([
   "https://rafter.deepgreensea.au",
@@ -65,6 +70,18 @@ function sanitizeClient(config) {
     if (!SENSITIVE_CLIENT_FIELDS.includes(k)) out[k] = v;
   }
   return out;
+}
+
+function sanitizeMaterials(data) {
+  if (!Array.isArray(data)) return data;
+  return data.map((item) => {
+    if (!item || typeof item !== "object") return item;
+    const out = {};
+    for (const [k, v] of Object.entries(item)) {
+      if (!SENSITIVE_MATERIAL_FIELDS.includes(k)) out[k] = v;
+    }
+    return out;
+  });
 }
 
 function constantTimeEqual(a, b) {
@@ -454,7 +471,7 @@ async function handleReadMaterials(uuid, env) {
   let data;
   try { data = JSON.parse(raw); }
   catch { return json({ error: "materials_corrupt", uuid }, { status: 500 }); }
-  return json({ ok: true, uuid, materials: data });
+  return json({ ok: true, uuid, materials: sanitizeMaterials(data) });
 }
 
 async function handleListPhotos(uuid, env) {
