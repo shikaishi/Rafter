@@ -855,6 +855,10 @@ function showStep(n) {
     }
   });
   if (n === 2) initAddressAutocomplete();
+  // RFT-78 #2: scroll to top on every step transition. Without this, the
+  // operator lands at wherever the previous step's scroll happened to be
+  // (often the bottom for long steps), missing the new step's intro.
+  window.scrollTo(0, 0);
 }
 
 // ── Section seed text ────────────────────────────────────────────────────────
@@ -1575,7 +1579,9 @@ function enqueuePhotos(files, category) {
       <span class="chip-err"></span>
       <button type="button" class="chip-retry" hidden><i class="ti ti-refresh"></i> Retry</button>
       <div class="chip-bar"><div class="chip-bar-fill"></div></div>`;
-    chipList.appendChild(chipEl);
+    // RFT-78 #1: prepend so most-recently-added is visible at top, not
+    // appended off-screen below an already-long list.
+    chipList.insertBefore(chipEl, chipList.firstChild);
     const entry = {
       file, category, chipEl,
       barFillEl: chipEl.querySelector('.chip-bar-fill'),

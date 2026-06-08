@@ -1658,6 +1658,14 @@ function toggleSection(key, name) {
 }
 function defaultCategoryFor(sectionName) {
   if (!state.photos.length) return null;
+  // RFT-78 #4: exact section-name → category match wins first (case-insensitive,
+  // trimmed). Covers the common case where the operator named a photo category
+  // the same as a section ("Switchboard Upgrade" section ↔ "Switchboard Upgrade"
+  // photos). Falls back to landscape-flavour regex map, then first category.
+  const norm = (s) => (s || "").trim().toLowerCase();
+  const target = norm(sectionName);
+  const exact = state.photos.find((p) => norm(p.name) === target);
+  if (exact) return exact.name;
   const map = [
     [/site setup|site set/i, /site setup/i],
     [/excavat/i, /excavat/i],
