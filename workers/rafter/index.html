@@ -6,6 +6,14 @@
 <title>Rafter — Quote builder</title>
 <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
+<!-- RFT-87 scope (a): Clerk JS — session check + JWT minting for API auth.
+     Loaded from Clerk's instance CDN per docs/clerk-reference.md (jsDelivr is
+     blocked by Brave/ad-blockers). RP origin = rafter.deepgreensea.au. -->
+<script
+  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  crossorigin="anonymous"
+></script>
 <style>
   :root {
     --rf-navy: #1B4F72;
@@ -1005,6 +1013,47 @@
 <script>
 const API = "https://rafter-materials-sync.will-8e8.workers.dev";
 const PDF_API = "https://rafter-pdf.will-8e8.workers.dev";
+// RFT-87 scope (a): admin-api hosts /form/verify-tenant — the JWT-gated
+// tenant-resolution endpoint that replaces the public /resolve-slug call.
+const ADMIN_API = "https://rafter-admin-api.will-8e8.workers.dev";
+
+// RFT-87 scope (a): wrap fetch with Authorization: Bearer <Clerk JWT>.
+// All API calls to materials-sync + pdf must use this; the underlying
+// endpoints reject (401) anything without a valid JWT. The Clerk session
+// token is fetched on demand from window.Clerk (loaded in <head>).
+//
+// 401 from any call usually means the session expired mid-page-life; we
+// redirect to sign-in so the user reauthenticates and the form reloads
+// with a fresh JWT.
+async function authedFetch(url, opts = {}) {
+  if (!window.Clerk || !Clerk.session) {
+    redirectToSignIn();
+    throw new Error("no_session");
+  }
+  const jwt = await Clerk.session.getToken();
+  if (!jwt) {
+    redirectToSignIn();
+    throw new Error("no_session_token");
+  }
+  const headers = new Headers(opts.headers || {});
+  headers.set("Authorization", `Bearer ${jwt}`);
+  const res = await fetch(url, { ...opts, headers });
+  if (res.status === 401) {
+    redirectToSignIn();
+    throw new Error("session_invalid");
+  }
+  return res;
+}
+
+function redirectToSignIn() {
+  if (window.Clerk && typeof Clerk.redirectToSignIn === "function") {
+    Clerk.redirectToSignIn({ redirectUrl: window.location.href });
+    return;
+  }
+  // Fallback: send to the existing sign-up entry page (Clerk's hosted UI
+  // offers sign-in too for users with an existing account).
+  window.location.replace("/sign-up");
+}
 
 const AUD = new Intl.NumberFormat("en-AU", { style: "currency", currency: "AUD", minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const MEL_TZ = "Australia/Melbourne";
@@ -1125,24 +1174,42 @@ function showError(msg) {
   $("errorState").style.display = "flex";
 }
 
-async function resolveClientSlug() {
+// RFT-87 scope (a): replaces the public /resolve-slug call. Calls admin-api
+// /form/verify-tenant with the page's slug; admin-api checks the JWT's org
+// against slug:<x> → uuid. 403 means signed in to the wrong org; 404 means
+// slug doesn't exist.
+async function verifyTenant() {
   const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
   if (!slug) {
     showError("No operator found. Please check your URL.");
     return false;
   }
   try {
-    const r = await fetch(`${API}/resolve-slug/${encodeURIComponent(slug)}`);
+    const jwt = await Clerk.session.getToken();
+    const r = await fetch(`${ADMIN_API}/form/verify-tenant`, {
+      method: "POST",
+      headers: { "Authorization": `Bearer ${jwt}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ target_slug: slug }),
+    });
+    if (r.status === 401) {
+      redirectToSignIn();
+      return false;
+    }
+    if (r.status === 403) {
+      showError("You don't have access to this operator. Sign in with the right account, or check the URL.");
+      return false;
+    }
     if (r.status === 404) {
       showError("No operator found. Please check your URL.");
       return false;
     }
-    if (!r.ok) throw new Error(`slug_${r.status}`);
+    if (!r.ok) throw new Error(`verify_${r.status}`);
     const data = await r.json();
     state.clientUuid = data.uuid;
+    state.orgRole = data.role;
     return true;
   } catch (e) {
-    showError("Could not load operator config. Please try again.");
+    showError("Could not verify access. Please refresh.");
     return false;
   }
 }
@@ -1153,7 +1220,25 @@ async function boot() {
   state.proposalDate = generateProposalDate();
   $("quoteRef").textContent = state.quoteRef;
 
-  const ok = await resolveClientSlug();
+  // RFT-87 scope (a): Clerk session is required before anything else loads.
+  // Without it the page can't authenticate any API call. The Clerk script tag
+  // in <head> kicks off async load; we await Clerk.load() then check session.
+  if (!window.Clerk) {
+    showError("Authentication library failed to load. Please refresh.");
+    return;
+  }
+  try {
+    await Clerk.load();
+  } catch (e) {
+    showError("Could not load authentication. Please refresh.");
+    return;
+  }
+  if (!Clerk.user) {
+    redirectToSignIn();
+    return;
+  }
+
+  const ok = await verifyTenant();
   if (!ok) return;
 
   // RFT-32 mode routing — three entry shapes:
@@ -1212,14 +1297,11 @@ async function loadDraftsList({ sm8JobUuid, q } = {}) {
   $("finderEmpty").style.display = "none";
   $("finderList").innerHTML = "";
   try {
-    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
-    if (!tokenRes.ok) throw new Error(`token_${tokenRes.status}`);
-    const { token } = await tokenRes.json();
     const url = new URL(`${API}/drafts`);
     url.searchParams.set("client_uuid", state.clientUuid);
     if (sm8JobUuid) url.searchParams.set("sm8_job_uuid", sm8JobUuid);
     if (q) url.searchParams.set("q", q);
-    const r = await fetch(url.toString(), { headers: { Authorization: `Bearer ${token}` } });
+    const r = await authedFetch(url.toString());
     if (!r.ok) throw new Error(`drafts_${r.status}`);
     const data = await r.json();
     renderFinderResults(data.results || []);
@@ -1305,12 +1387,9 @@ function bindFinderEvents() {
 // ===== REHYDRATE (RFT-32) =====
 async function rehydrateFromDraft(quoteRef) {
   try {
-    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
-    if (!tokenRes.ok) throw new Error(`token_${tokenRes.status}`);
-    const { token } = await tokenRes.json();
-    const r = await fetch(`${API}/draft/${encodeURIComponent(quoteRef)}`, {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    // RFT-87 scope (a): /draft/{ref} now requires ?client_uuid=X so the
+    // JWT verifier can check tenant ownership before the D1 lookup runs.
+    const r = await authedFetch(`${API}/draft/${encodeURIComponent(quoteRef)}?client_uuid=${encodeURIComponent(state.clientUuid)}`);
     if (!r.ok) {
       toast("Could not load that quote. Starting a new one.", "err");
       return false;
@@ -1405,13 +1484,9 @@ async function doAmend(sendEmail) {
     // defensive: amend op requires payload.quote_ref differs from parent.
     payload.quote_ref = newRef;
 
-    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
-    if (!tokenRes.ok) throw new Error("Failed to get amend authorisation — please try again.");
-    const { token } = await tokenRes.json();
-
-    const r = await fetch(`${API}/amend-quote`, {
+    const r = await authedFetch(`${API}/amend-quote`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ parent_quote_ref: state.amendOf, payload, send_email: sendEmail === true }),
     });
     const data = await r.json().catch(() => ({}));
@@ -1458,7 +1533,7 @@ function amendWithEmail() {
 
 async function loadClient() {
   try {
-    const r = await fetch(`${API}/client/${state.clientUuid}`);
+    const r = await authedFetch(`${API}/client/${state.clientUuid}`);
     if (!r.ok) throw new Error(`client_${r.status}`);
     const data = await r.json();
     state.client = data.client;
@@ -1469,7 +1544,7 @@ async function loadClient() {
 }
 async function loadMaterials() {
   try {
-    const r = await fetch(`${API}/materials/${state.clientUuid}`);
+    const r = await authedFetch(`${API}/materials/${state.clientUuid}`);
     if (r.status === 404) { state.materialsAvailable = false; return; }
     if (!r.ok) throw new Error(`materials_${r.status}`);
     const data = await r.json();
@@ -1482,7 +1557,7 @@ async function loadMaterials() {
 }
 async function loadPhotos() {
   try {
-    const r = await fetch(`${API}/photos/${state.clientUuid}`);
+    const r = await authedFetch(`${API}/photos/${state.clientUuid}`);
     if (!r.ok) throw new Error(`photos_${r.status}`);
     const data = await r.json();
     state.photos = data.categories || [];
@@ -1525,7 +1600,7 @@ async function sm8Search(q) {
   if (!state.sm8SearchAvailable) { dd.style.display = "none"; $("clientHint").textContent = "ServiceM8 search unavailable — token expired"; return; }
   if (!q || q.length < 3) { dd.style.display = "none"; $("clientHint").textContent = ""; return; }
   try {
-    const r = await fetch(`${API}/sm8-search?uuid=${state.clientUuid}&q=${encodeURIComponent(q)}`);
+    const r = await authedFetch(`${API}/sm8-search?uuid=${state.clientUuid}&q=${encodeURIComponent(q)}`);
     if (r.status === 401 || r.status === 412) {
       state.sm8SearchAvailable = false;
       dd.style.display = "none";
@@ -2139,7 +2214,7 @@ ${_safeUrl ? `<img class="logo" src="${_safeUrl}" alt="${_safeName}">` : `<div c
 
   try {
     const payload = buildPayload("preview");
-    const r = await fetch(`${PDF_API}/generate?mode=preview`, {
+    const r = await authedFetch(`${PDF_API}/generate?mode=preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
@@ -2212,12 +2287,9 @@ async function doSubmit(sendEmail) {
   btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Submitting…';
   try {
     const payload = buildPayload("submit", sendEmail);
-    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
-    if (!tokenRes.ok) throw new Error("Failed to get submit authorisation — please try again.");
-    const { token } = await tokenRes.json();
-    const r = await fetch(`${PDF_API}/generate?mode=submit`, {
+    const r = await authedFetch(`${PDF_API}/generate?mode=submit`, {
       method: "POST",
-      headers: { "Content-Type": "application/json", "Authorization": `Bearer ${token}` },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
     const data = await r.json().catch(() => ({}));
@@ -2255,12 +2327,7 @@ async function refreshMaterials() {
   const span = btn.querySelector('span');
   if (span) span.textContent = 'Syncing…';
   try {
-    const tokenRes = await fetch(`${API}/get-form-token?uuid=${encodeURIComponent(state.clientUuid)}`);
-    if (!tokenRes.ok) throw new Error("Failed to get refresh authorisation");
-    const { token } = await tokenRes.json();
-    const r = await fetch(`${API}/refresh-materials?uuid=${encodeURIComponent(state.clientUuid)}`, {
-      headers: { "Authorization": `Bearer ${token}` },
-    });
+    const r = await authedFetch(`${API}/refresh-materials?uuid=${encodeURIComponent(state.clientUuid)}`);
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
       state.materialsAvailable = false;

@@ -484,8 +484,13 @@ async function handleGetPhoto(request, url, env) {
   const uuid = url.searchParams.get("uuid");
   const key = url.searchParams.get("key");
   if (!uuid || !key) return new Response("missing_params", { status: 400 });
-  const a = await requireFormJWT(request, env, { target_uuid: uuid });
-  if (a.error) return a.error;
+  // RFT-87 scope (a) intentionally leaves /photo unauth — gating it would 401
+  // every <img src> in the form (img tags cannot send Authorization headers,
+  // and the API is cross-origin so the Clerk session cookie isn't sent
+  // either). Listing endpoint /photos/{uuid} IS gated so key enumeration is
+  // closed; R2 paths embed random-suffixed filenames so per-key guessing is
+  // impractical. Follow-up to convert <img src> sites to blob-loaded fetches
+  // (or a signed-URL pattern) tracked separately.
   if (!key.startsWith(PHOTO_PREFIX(uuid))) return new Response("forbidden", { status: 403 });
   const obj = await env.RAFTER_ASSETS.get(key);
   if (!obj) return new Response("not_found", { status: 404 });
