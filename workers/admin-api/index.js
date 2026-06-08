@@ -442,8 +442,10 @@ async function handleSettings(request, env, url, jwtPayload) {
   if (method === 'POST' && path === '/settings/photos/upload')             return handleSettingsPhotoUpload(uuid, request, env);
   if (method === 'POST' && path === '/settings/photos/delete')             return handleSettingsPhotoDelete(uuid, request, env);
   if (method === 'POST' && path === '/settings/photos/recategorise')       return handleSettingsPhotoRecategorise(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/copy')               return handleSettingsPhotoCopy(uuid, request, env);
   if (method === 'POST' && path === '/settings/photos/bulk-delete')        return handleSettingsPhotoBulkDelete(uuid, request, env);
   if (method === 'POST' && path === '/settings/photos/bulk-recategorise')  return handleSettingsPhotoBulkRecategorise(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/bulk-copy')          return handleSettingsPhotoBulkCopy(uuid, request, env);
   if (method === 'POST' && path === '/settings/photos/reorder')            return handleSettingsPhotoReorder(uuid, request, env);
   if (method === 'POST' && path === '/settings/sections/sync')             return handleSettingsSectionsSync(uuid, env);
 
@@ -637,6 +639,41 @@ async function handleSettingsPhotoRecategorise(uuid, request, env) {
   return json({ ok: true, key: toKey, from_key: fromKey });
 }
 
+// POST /settings/photos/copy — body: { key, to_category }
+// Same R2 copy as recategorise, but no source delete and source photo_order
+// stays intact. If source and dest resolve to the same key (same category)
+// it's a no-op. appendToOrder is idempotent (dedupes), so re-copying the same
+// photo to the same dest is safe.
+async function handleSettingsPhotoCopy(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const fromKey = body?.key;
+  const toCategoryRaw = body?.to_category;
+  if (typeof fromKey !== 'string' || !fromKey) return json({ ok: false, error: 'missing_key' }, 400);
+  if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
+
+  const prefix = `clients/${uuid}/photos/`;
+  if (!fromKey.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+
+  const fromCategory = categoryFromKey(fromKey, prefix);
+  if (!fromCategory) return json({ ok: false, error: 'invalid_key_shape' }, 400);
+  const filename = fromKey.slice(prefix.length + fromCategory.length + 1);
+  const toCategory = sanitisePathSegment(toCategoryRaw);
+  const toKey = `${prefix}${toCategory}/${filename}`;
+  if (toKey === fromKey) return json({ ok: true, key: fromKey, noop: true });
+
+  const obj = await env.RAFTER_ASSETS.get(fromKey);
+  if (!obj) return json({ ok: false, error: 'source_not_found' }, 404);
+  const buffer = await obj.arrayBuffer();
+  await env.RAFTER_ASSETS.put(toKey, buffer, { httpMetadata: obj.httpMetadata });
+  await mutateClientRecord(uuid, env, (rec) => {
+    appendToOrder(rec, toCategory, toKey);
+  });
+  console.log(JSON.stringify({ event: 'settings_photo_copied', uuid, fromKey, toKey }));
+  return json({ ok: true, key: toKey, from_key: fromKey });
+}
+
 function categoryFromKey(key, prefix) {
   const rest = key.slice(prefix.length);
   const slash = rest.indexOf('/');
@@ -715,6 +752,49 @@ async function handleSettingsPhotoBulkRecategorise(uuid, request, env) {
   });
   console.log(JSON.stringify({ event: 'settings_photos_bulk_recategorised', uuid, moved, failed }));
   return json({ ok: true, moved, failed });
+}
+
+// POST /settings/photos/bulk-copy — body: { keys: [...], to_category }
+// Per-key R2 get + R2 put against the dest key (no delete). Same-category
+// keys skip silently. appendToOrder is idempotent for repeat copies.
+async function handleSettingsPhotoBulkCopy(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const keys = body?.keys;
+  const toCategoryRaw = body?.to_category;
+  if (!Array.isArray(keys) || keys.length === 0) return json({ ok: false, error: 'missing_keys' }, 400);
+  if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
+  const prefix = `clients/${uuid}/photos/`;
+  const scoped = keys.filter(k => typeof k === 'string' && k.startsWith(prefix));
+  if (scoped.length !== keys.length) return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  const toCategory = sanitisePathSegment(toCategoryRaw);
+
+  const copies = []; // [{ toKey }]
+  let copied = 0, failed = 0;
+  for (const fromKey of scoped) {
+    const fromCategory = categoryFromKey(fromKey, prefix);
+    if (!fromCategory) { failed++; continue; }
+    if (fromCategory === toCategory) { continue; } // no-op for same-category
+    const filename = fromKey.slice(prefix.length + fromCategory.length + 1);
+    const toKey = `${prefix}${toCategory}/${filename}`;
+    try {
+      const obj = await env.RAFTER_ASSETS.get(fromKey);
+      if (!obj) { failed++; continue; }
+      const buffer = await obj.arrayBuffer();
+      await env.RAFTER_ASSETS.put(toKey, buffer, { httpMetadata: obj.httpMetadata });
+      copies.push({ toKey });
+      copied++;
+    } catch (err) {
+      failed++;
+      console.error(JSON.stringify({ event: 'settings_bulk_copy_r2_err', uuid, fromKey, detail: err.message }));
+    }
+  }
+  await mutateClientRecord(uuid, env, (rec) => {
+    for (const c of copies) appendToOrder(rec, toCategory, c.toKey);
+  });
+  console.log(JSON.stringify({ event: 'settings_photos_bulk_copied', uuid, copied, failed }));
+  return json({ ok: true, copied, failed });
 }
 
 // POST /settings/photos/reorder — body: { category, key_order: [key, ...] }

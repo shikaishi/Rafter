@@ -42,8 +42,6 @@
   .topbar { display: flex; align-items: center; justify-content: space-between; padding: 14px 18px; }
   .topbar-title { font-size: 16px; font-weight: 600; color: var(--rf-navy); display: flex; align-items: center; gap: 8px; }
   .topbar-title i { font-size: 18px; }
-  .back-link { font-size: 13px; color: var(--rf-muted); text-decoration: none; display: inline-flex; align-items: center; gap: 4px; padding: 6px 10px; border-radius: 6px; transition: background 0.12s; }
-  .back-link:hover { background: var(--rf-row-bg); }
 
   .pane { padding: 16px 18px 18px; }
   .pane-header { display: flex; align-items: center; justify-content: space-between; padding-bottom: 12px; border-bottom: 0.5px solid var(--rf-divider); margin-bottom: 12px; }
@@ -129,7 +127,7 @@
       <i class="ti ti-settings"></i>
       <span id="topbarTitle">Settings</span>
     </div>
-    <a href="#" id="backLink" class="back-link"><i class="ti ti-arrow-left"></i><span>Back to quote builder</span></a>
+    <a href="/" id="backLink" class="btn small" style="text-decoration:none;"><i class="ti ti-arrow-left"></i><span>Back to quote builder</span></a>
   </div>
 
   <!-- Loading state -->
@@ -379,6 +377,7 @@ function renderPhotoCell(p, currentCat) {
       <div class="photo-check" data-action="toggle-select" data-key="${esc(p.key)}" title="Select"><i class="ti ti-check check-mark"></i></div>
       <div class="photo-actions">
         <button class="photo-action-btn" data-action="recat-photo" data-key="${esc(p.key)}" data-current-cat="${esc(currentCat)}" title="Move to another section"><i class="ti ti-folder-symlink"></i></button>
+        <button class="photo-action-btn" data-action="copy-photo" data-key="${esc(p.key)}" data-current-cat="${esc(currentCat)}" title="Copy to another section"><i class="ti ti-copy"></i></button>
         <button class="photo-action-btn" data-action="delete-photo" data-key="${esc(p.key)}" title="Delete"><i class="ti ti-trash"></i></button>
       </div>
     </div>
@@ -391,7 +390,10 @@ function wireCellEvents(root) {
     btn.addEventListener('click', (e) => { e.stopPropagation(); deletePhoto(btn.dataset.key); });
   });
   root.querySelectorAll('[data-action="recat-photo"]').forEach(btn => {
-    btn.addEventListener('click', (e) => { e.stopPropagation(); openRecategoriseModal([btn.dataset.key], btn.dataset.currentCat); });
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openMoveOrCopyModal('move', [btn.dataset.key], btn.dataset.currentCat); });
+  });
+  root.querySelectorAll('[data-action="copy-photo"]').forEach(btn => {
+    btn.addEventListener('click', (e) => { e.stopPropagation(); openMoveOrCopyModal('copy', [btn.dataset.key], btn.dataset.currentCat); });
   });
   // RFT-63 Q6: select toggle
   root.querySelectorAll('[data-action="toggle-select"]').forEach(box => {
@@ -457,12 +459,14 @@ function updateBulkBars() {
     bar.classList.add('visible');
     bar.innerHTML = `
       <span class="sec-bulk-count">${selectedInSection.length} selected</span>
-      <button class="btn small" data-bulk-action="move" data-cat="${esc(cat)}"><i class="ti ti-folder-symlink"></i>Move to…</button>
+      <button class="btn small" data-bulk-action="move" data-cat="${esc(cat)}"><i class="ti ti-folder-symlink"></i>Move to&hellip;</button>
+      <button class="btn small" data-bulk-action="copy" data-cat="${esc(cat)}"><i class="ti ti-copy"></i>Copy to&hellip;</button>
       <button class="btn small danger" data-bulk-action="delete" data-cat="${esc(cat)}"><i class="ti ti-trash"></i>Delete selected</button>
       <button class="btn small" data-bulk-action="clear" data-cat="${esc(cat)}">Clear</button>
     `;
     bar.querySelector('[data-bulk-action="delete"]').addEventListener('click', () => bulkDelete(selectedInSection));
-    bar.querySelector('[data-bulk-action="move"]').addEventListener('click', () => openRecategoriseModal(selectedInSection, cat));
+    bar.querySelector('[data-bulk-action="move"]').addEventListener('click', () => openMoveOrCopyModal('move', selectedInSection, cat));
+    bar.querySelector('[data-bulk-action="copy"]').addEventListener('click', () => openMoveOrCopyModal('copy', selectedInSection, cat));
     bar.querySelector('[data-bulk-action="clear"]').addEventListener('click', () => {
       for (const k of selectedInSection) state.selected.delete(k);
       // Re-render only the affected cells' selected class; cheap loop
@@ -544,15 +548,23 @@ async function reorderPhoto(category, srcKey, destKey) {
   }
 }
 
-// RFT-63 Q6: recategorise modal — handles BOTH single (called with [key]) and
-// bulk (called with [k1, k2, …]). The API call routes to /recategorise or
-// /bulk-recategorise based on count.
-function openRecategoriseModal(keys, currentCat) {
+// Move-or-copy modal — handles BOTH single (called with [key]) and bulk
+// (called with [k1, k2, …]) for BOTH operations. mode ∈ 'move' | 'copy'.
+// Routes to /recategorise|/bulk-recategorise (move) or /copy|/bulk-copy (copy)
+// based on (mode, count). After move: clear selection (source gone). After
+// copy: also clear selection (the originals are still in place; selection
+// reset matches the move pattern so behaviour is symmetrical).
+function openMoveOrCopyModal(mode, keys, currentCat) {
   if (!keys || !keys.length) return;
+  const isCopy = mode === 'copy';
+  const verb = isCopy ? 'Copy' : 'Move';
+  const verbPast = isCopy ? 'Copied' : 'Moved';
+  const verbLower = verb.toLowerCase();
   const backdrop = document.createElement('div');
   backdrop.className = 'modal-backdrop';
   const sectionNames = state.sections.map(s => ({ name: s.name, slug: slugify(s.name) }));
-  const title = keys.length === 1 ? 'Move photo to&hellip;' : `Move ${keys.length} photos to&hellip;`;
+  const noun = keys.length === 1 ? 'photo' : `${keys.length} photos`;
+  const title = `${verb} ${noun} to&hellip;`;
   backdrop.innerHTML = `
     <div class="modal">
       <h3>${title}</h3>
@@ -575,29 +587,26 @@ function openRecategoriseModal(keys, currentCat) {
       const toCategory = btn.dataset.cat;
       close();
       try {
-        let res;
-        if (keys.length === 1) {
-          res = await authedFetch(`${ADMIN_API}/settings/photos/recategorise`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ key: keys[0], to_category: toCategory }),
-          });
-        } else {
-          res = await authedFetch(`${ADMIN_API}/settings/photos/bulk-recategorise`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ keys, to_category: toCategory }),
-          });
-        }
+        const endpoint = isCopy
+          ? (keys.length === 1 ? '/settings/photos/copy' : '/settings/photos/bulk-copy')
+          : (keys.length === 1 ? '/settings/photos/recategorise' : '/settings/photos/bulk-recategorise');
+        const body = keys.length === 1
+          ? { key: keys[0], to_category: toCategory }
+          : { keys, to_category: toCategory };
+        const res = await authedFetch(`${ADMIN_API}${endpoint}`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw new Error(data.error || `recat_${res.status}`);
+        if (!res.ok) throw new Error(data.error || `${verbLower}_${res.status}`);
         for (const k of keys) state.selected.delete(k);
-        const okCount = data.moved ?? 1;
+        const okCount = isCopy ? (data.copied ?? 1) : (data.moved ?? 1);
         const failedNote = data.failed ? ` (${data.failed} failed)` : '';
-        toast(`Moved ${okCount} to "${toCategory}"${failedNote}`, data.failed ? 'err' : 'ok');
+        toast(`${verbPast} ${okCount} to "${toCategory}"${failedNote}`, data.failed ? 'err' : 'ok');
         await loadState();
       } catch (e) {
-        toast(`Couldn't move: ${e.message || e}`, 'err');
+        toast(`Couldn't ${verbLower}: ${e.message || e}`, 'err');
       }
     });
   });
