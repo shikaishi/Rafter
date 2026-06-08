@@ -40,7 +40,7 @@ export default {
     const { pathname } = url;
 
     // CORS preflight — must be handled before any auth check
-    if (request.method === 'OPTIONS' && (pathname.startsWith('/onboarding/') || pathname.startsWith('/form/'))) {
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/onboarding/') || pathname.startsWith('/form/') || pathname.startsWith('/settings/'))) {
       return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
     }
 
@@ -73,6 +73,14 @@ export default {
       const { error, payload } = await requireClerkJWT(request, env);
       if (error) return withCors(error);
       return withCors(await handleForm(request, env, url, payload));
+    }
+    // RFT-63: /settings/* is the post-onboarding tenant config surface. Same
+    // Clerk-JWT gate as /onboarding/*, plus an org:admin role requirement at
+    // the handler layer (per RFT-63 decision — start closed, loosen later).
+    if (pathname.startsWith('/settings/')) {
+      const { error, payload } = await requireClerkJWT(request, env);
+      if (error) return withCors(error);
+      return withCors(await handleSettings(request, env, url, payload));
     }
     return new Response('Not Found', { status: 404 });
   },
@@ -400,6 +408,241 @@ async function handleVerifyTenant(request, env, jwtPayload) {
     org_id: orgId,
     role: extractOrgRole(jwtPayload),
   });
+}
+
+// ── Settings route dispatcher (RFT-63) ───────────────────────────────────────
+//
+// Post-onboarding tenant config surface. All endpoints under /settings/* are
+// gated by:
+//   1. Clerk JWT (dispatcher-level requireClerkJWT — same as /onboarding/*)
+//   2. org:admin role (handler-level via settingsAdminGate — same pattern as
+//      handleSm8Callback's RFT-70 Option C check)
+//
+// Decision (RFT-63, 2026-06-08): start fully admin-only. Per-pane tiering can
+// loosen later if a tenant asks; clawing back access is hard, granting is easy.
+//
+// Tenant scoping: JWT.org_id → clerk_org:<org_id> KV → uuid. Endpoints never
+// trust a client-supplied uuid — same primitive that closes RFT-86 at /form.
+
+async function handleSettings(request, env, url, jwtPayload) {
+  const { method } = request;
+  const path = url.pathname;
+
+  // Admin-only gate. Members get a clear 403 with the role they're holding.
+  const gateErr = settingsAdminGate(jwtPayload);
+  if (gateErr) return gateErr;
+
+  // Tenant uuid is always resolved from the JWT's org — never from input.
+  const orgId = jwtPayload.org_id;
+  if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+  const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+  if (!uuid) return json({ ok: false, error: 'org_not_provisioned' }, 404);
+
+  if (method === 'GET'  && path === '/settings/state')                return handleSettingsState(uuid, env);
+  if (method === 'POST' && path === '/settings/photos/upload')        return handleSettingsPhotoUpload(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/delete')        return handleSettingsPhotoDelete(uuid, request, env);
+  if (method === 'POST' && path === '/settings/photos/recategorise')  return handleSettingsPhotoRecategorise(uuid, request, env);
+  if (method === 'POST' && path === '/settings/sections/sync')        return handleSettingsSectionsSync(uuid, env);
+
+  return json({ ok: false, error: 'Not Found', path }, 404);
+}
+
+function settingsAdminGate(jwtPayload) {
+  const role = extractOrgRole(jwtPayload);
+  if (role !== 'org:admin') {
+    return json({
+      ok: false,
+      error: 'role_forbidden',
+      code: 'NOT_ADMIN',
+      detail: 'Settings access is admin-only. Ask the org admin to make changes.',
+      org_role: role,
+    }, 403);
+  }
+  return null;
+}
+
+// GET /settings/state — returns everything the settings surface needs in one
+// call: tenant record (sanitised), sections (read-only prose from KV), and
+// photos grouped by R2 category. Single request keeps the page boot fast.
+async function handleSettingsState(uuid, env) {
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return json({ ok: false, error: 'client_not_found' }, 404);
+  let record;
+  try { record = JSON.parse(raw); }
+  catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
+
+  // Sections from KV templates field (set by onboarding seedText, kept in sync
+  // by /settings/sections/sync). Read-only prose per RFT-63 Q1.
+  const sections = Array.isArray(record.templates) ? record.templates.map(t => ({
+    name: t.name || '',
+    text: t.text || '',
+  })) : [];
+
+  // Photos grouped by R2 category prefix. Mirror handleListPhotos in
+  // materials-sync — same per-tenant key shape (clients/<uuid>/photos/<cat>/<file>).
+  const photos = await listPhotosByCategory(uuid, env);
+
+  return json({
+    ok: true,
+    uuid,
+    company_name: record.company_name || '',
+    slug: record.slug || '',
+    sections,
+    photos,
+  });
+}
+
+async function listPhotosByCategory(uuid, env) {
+  if (!env.RAFTER_ASSETS) return [];
+  const prefix = `clients/${uuid}/photos/`;
+  const categories = new Map();
+  let cursor;
+  do {
+    const page = await env.RAFTER_ASSETS.list({ prefix, cursor, limit: 1000 });
+    for (const obj of page.objects) {
+      const rest = obj.key.slice(prefix.length);
+      const slash = rest.indexOf('/');
+      if (slash < 0) continue;
+      const category = rest.slice(0, slash);
+      const filename = rest.slice(slash + 1);
+      if (!filename || filename.includes('/')) continue;
+      if (!categories.has(category)) categories.set(category, []);
+      categories.get(category).push({ key: obj.key, filename, size: obj.size, uploaded: obj.uploaded });
+    }
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+  return [...categories.entries()]
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([name, items]) => ({ name, photos: items.sort((a, b) => a.filename.localeCompare(b.filename)) }));
+}
+
+// POST /settings/photos/upload — multipart: file + category.
+// Reuses sanitisePathSegment + makePhotoFilename (the onboarding-upload primitives).
+async function handleSettingsPhotoUpload(uuid, request, env) {
+  let formData;
+  try { formData = await request.formData(); }
+  catch { return json({ ok: false, error: 'invalid_multipart' }, 400); }
+  const file = formData.get('file');
+  const category = formData.get('category');
+  if (!file || typeof file === 'string') return json({ ok: false, error: 'missing_file' }, 400);
+  if (!category) return json({ ok: false, error: 'missing_category' }, 400);
+  const safeCategory = sanitisePathSegment(category);
+  const safeFilename = makePhotoFilename(file.name || 'photo');
+  const key = `clients/${uuid}/photos/${safeCategory}/${safeFilename}`;
+  const buffer = await file.arrayBuffer();
+  await env.RAFTER_ASSETS.put(key, buffer, { httpMetadata: { contentType: 'image/jpeg' } });
+  console.log(JSON.stringify({ event: 'settings_photo_uploaded', uuid, key }));
+  return json({ ok: true, key, category: safeCategory, filename: safeFilename });
+}
+
+// POST /settings/photos/delete — body: { key }
+// Tenant-scopes the key against the JWT's uuid (defence in depth — a malicious
+// body shouldn't be able to delete a different tenant's photo).
+async function handleSettingsPhotoDelete(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const key = body?.key;
+  if (typeof key !== 'string' || !key) return json({ ok: false, error: 'missing_key' }, 400);
+  const prefix = `clients/${uuid}/photos/`;
+  if (!key.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  await env.RAFTER_ASSETS.delete(key);
+  console.log(JSON.stringify({ event: 'settings_photo_deleted', uuid, key }));
+  return json({ ok: true, key });
+}
+
+// POST /settings/photos/recategorise — body: { key, to_category }
+// R2 has no rename — copy to new key + delete the original. Same tenant-scope
+// check on the source key.
+async function handleSettingsPhotoRecategorise(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const fromKey = body?.key;
+  const toCategoryRaw = body?.to_category;
+  if (typeof fromKey !== 'string' || !fromKey) return json({ ok: false, error: 'missing_key' }, 400);
+  if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
+
+  const prefix = `clients/${uuid}/photos/`;
+  if (!fromKey.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+
+  // Extract filename from current key, build new key under new category.
+  const rest = fromKey.slice(prefix.length);
+  const slash = rest.indexOf('/');
+  if (slash < 0) return json({ ok: false, error: 'invalid_key_shape' }, 400);
+  const filename = rest.slice(slash + 1);
+  const toCategory = sanitisePathSegment(toCategoryRaw);
+  const toKey = `${prefix}${toCategory}/${filename}`;
+  if (toKey === fromKey) return json({ ok: true, key: fromKey, noop: true });
+
+  const obj = await env.RAFTER_ASSETS.get(fromKey);
+  if (!obj) return json({ ok: false, error: 'source_not_found' }, 404);
+  const buffer = await obj.arrayBuffer();
+  await env.RAFTER_ASSETS.put(toKey, buffer, { httpMetadata: obj.httpMetadata });
+  await env.RAFTER_ASSETS.delete(fromKey);
+  console.log(JSON.stringify({ event: 'settings_photo_recategorised', uuid, fromKey, toKey }));
+  return json({ ok: true, key: toKey, from_key: fromKey });
+}
+
+// POST /settings/sections/sync — pull jobtemplate names from SM8, ADD any new
+// templates to KV (preserve existing prose untouched, generate seedText for
+// new). Conservative: never removes templates already in KV — protects against
+// SM8-side template churn breaking quote history. RFT-84 will deepen this.
+async function handleSettingsSectionsSync(uuid, env) {
+  // Refresh SM8 token via materials-sync (same primitive as handleSm8Prefill)
+  try {
+    const syncRes = await syncFetch(env, `/refresh-materials?uuid=${uuid}`);
+    if (!syncRes.ok) {
+      const detail = await syncRes.text().catch(() => String(syncRes.status));
+      return json({ ok: false, error: `Token refresh failed: ${detail.slice(0, 200)}`, code: 'REFRESH_FAILED' }, 422);
+    }
+  } catch (err) {
+    return json({ ok: false, error: `Token refresh error: ${err.message}`, code: 'REFRESH_FAILED' }, 502);
+  }
+
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return json({ ok: false, error: 'client_not_found' }, 404);
+  const record = JSON.parse(raw);
+  const token = record.access_token;
+  if (!token) return json({ ok: false, error: 'no_sm8_token', code: 'NO_TOKEN' }, 422);
+
+  const sm8Res = await fetch(`${SM8_BASE}/jobtemplate.json?$filter=active eq 1`, {
+    headers: { Authorization: `Bearer ${token}` },
+  });
+  if (!sm8Res.ok) {
+    const detail = await sm8Res.text().catch(() => '');
+    return json({ ok: false, error: 'sm8_fetch_failed', status: sm8Res.status, detail: detail.slice(0, 200) }, 502);
+  }
+  let sm8Templates;
+  try { sm8Templates = await sm8Res.json(); }
+  catch { return json({ ok: false, error: 'sm8_invalid_response' }, 502); }
+  if (!Array.isArray(sm8Templates)) sm8Templates = [];
+  const sm8Names = sm8Templates
+    .filter(t => t && t.active !== 0 && typeof t.name === 'string' && t.name.trim())
+    .map(t => t.name.trim());
+
+  const existing = Array.isArray(record.templates) ? record.templates : [];
+  const existingByName = new Map(existing.map(t => [t.name, t]));
+  const added = [];
+  const merged = [...existing]; // preserve order + prose of existing
+  for (const name of sm8Names) {
+    if (!existingByName.has(name)) {
+      merged.push({ name, text: settingsSeedText(name) });
+      added.push(name);
+    }
+  }
+
+  record.templates = merged;
+  await env.RAFTER_CLIENTS.put(CLIENT_PREFIX + uuid, JSON.stringify(record));
+  console.log(JSON.stringify({ event: 'settings_sections_synced', uuid, total: merged.length, added: added.length }));
+  return json({ ok: true, total: merged.length, added });
+}
+
+// Mirror of onboarding.html seedText — same prose for new templates so a
+// section synced via /settings looks identical to one captured via onboarding.
+function settingsSeedText(name) {
+  const clean = String(name).replace(/\s*[-—–]\s+\S.*/u, '').trim().toLowerCase();
+  return `Supply and installation of materials as specified for ${clean} related work.`;
 }
 
 // ── SM8 OAuth callback (RFT-69 Path 2 — removes Make from the auth path) ────
