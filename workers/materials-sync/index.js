@@ -320,7 +320,10 @@ async function handleRenderEmail(request, env) {
   return json({ html });
 }
 
-async function handleGetFormToken(url, env) {
+async function handleGetFormToken(request, url, env) {
+  // RFT-95: per-IP rate limit before any work — cheapest reject path.
+  const rl = await rateLimitOrInternal(request, env, env.RATE_TOKEN_MINT);
+  if (rl) return rl;
   const uuid = url.searchParams.get("uuid");
   if (!uuid || !/^[0-9a-f-]{36}$/i.test(uuid)) {
     return json({ error: "invalid_uuid" }, { status: 400 });
@@ -993,6 +996,26 @@ function requireMakeSecret(request, env) {
 //     a client_uuid. Returns scopedToUuid so handlers can enforce that the
 //     requested row's client_uuid matches. Without scoping, a form token for
 //     tenant A could read/edit tenant B's quotes.
+// RFT-95: per-IP rate limit gate. Trusted internal callers (admin-api W2W,
+// internal scripts using x-rafter-secret) bypass — same trust boundary as
+// requireFormOrInternal. Public callers are keyed by cf-connecting-ip.
+// Fail-open if binding missing (defence-in-depth supplementing the RFT-87
+// auth gate, not the primary security control).
+async function rateLimitOrInternal(request, env, binding) {
+  if (!binding) return null;
+  const internal = request.headers.get("x-rafter-secret") || "";
+  if (env.RAFTER_INTERNAL_SECRET && constantTimeEqual(internal, env.RAFTER_INTERNAL_SECRET)) {
+    return null;
+  }
+  const ip = request.headers.get("cf-connecting-ip") || "unknown";
+  const { success } = await binding.limit({ key: ip });
+  if (success) return null;
+  return new Response(JSON.stringify({ error: "rate_limited", retry_after: 60 }), {
+    status: 429,
+    headers: { "content-type": "application/json", "retry-after": "60" },
+  });
+}
+
 async function requireFormOrInternal(request, env) {
   if (!env.RAFTER_INTERNAL_SECRET) {
     return { error: json({ error: "server_misconfigured", detail: "RAFTER_INTERNAL_SECRET not set" }, { status: 500 }) };
@@ -1631,6 +1654,9 @@ async function sm8FetchActiveSet(accessToken, jobUuids) {
 }
 
 async function handleAmendQuote(request, env) {
+  // RFT-95: per-IP rate limit before auth + parent lookup + SM8 work.
+  const rl = await rateLimitOrInternal(request, env, env.RATE_AMEND);
+  if (rl) return rl;
   const a = await requireFormOrInternal(request, env);
   if (a.error) return a.error;
 
@@ -1833,7 +1859,7 @@ async function route(request, env) {
   if (method === "POST" && path === "/render-email") return handleRenderEmail(request, env);
   if (method === "GET" && path === "/client-config") return handleClientConfig(request, url, env);
   if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(url, env, request);
-  if (method === "GET" && path === "/get-form-token") return handleGetFormToken(url, env);
+  if (method === "GET" && path === "/get-form-token") return handleGetFormToken(request, url, env);
   if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
   if (method === "POST" && path === "/send-test-alert") return handleSendTestAlert(request, env);

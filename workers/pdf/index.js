@@ -138,6 +138,18 @@ async function handleGenerate(request, env, url) {
 
   // submit requires a short-lived HMAC token issued by materials-sync /get-form-token
   if (mode === "submit") {
+    // RFT-95: per-IP rate limit BEFORE auth + PDF render — cheapest reject
+    // path. Fail-open if binding missing (defence-in-depth, not primary gate).
+    if (env.RATE_SUBMIT) {
+      const ip = request.headers.get("cf-connecting-ip") || "unknown";
+      const { success } = await env.RATE_SUBMIT.limit({ key: ip });
+      if (!success) {
+        return new Response(JSON.stringify({ error: "rate_limited", retry_after: 60 }), {
+          status: 429,
+          headers: { "content-type": "application/json", "retry-after": "60" },
+        });
+      }
+    }
     const authHeader = request.headers.get("authorization") || "";
     const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : "";
     if (!token || !await verifyFormToken(token, client_uuid, env)) {

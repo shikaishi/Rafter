@@ -28,3 +28,18 @@ service = "rafter-pdf"
 
 [triggers]
 crons = ["0 10 * * *"]
+
+# RFT-95: per-IP rate limits with x-rafter-secret bypass for trusted internal
+# callers. Two namespaces — 1002 token-mint (60/60s — form mints several per
+# session: refresh-materials, submit, amend, drafts, preview), 1003 amend
+# (10/60s — deliberate human action). namespace 1001 (submit) lives on the
+# pdf worker.
+[[ratelimits]]
+name = "RATE_TOKEN_MINT"
+namespace_id = "1002"
+simple = { limit = 60, period = 60 }
+
+[[ratelimits]]
+name = "RATE_AMEND"
+namespace_id = "1003"
+simple = { limit = 10, period = 60 }

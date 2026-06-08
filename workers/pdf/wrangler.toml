@@ -13,3 +13,12 @@ bucket_name = "rafter-assets"
 
 [browser]
 binding = "BROWSER"
+
+# RFT-95: per-IP submit rate limit. 10/60s per cf-connecting-ip on
+# /generate?mode=submit — survives double-tap + page-refresh retries, blocks
+# scripted abuse. preview mode (admin smoketest, internal preview) is NOT
+# limited. namespace 1001 reserved for submit across the platform.
+[[ratelimits]]
+name = "RATE_SUBMIT"
+namespace_id = "1001"
+simple = { limit = 10, period = 60 }
