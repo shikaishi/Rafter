@@ -183,6 +183,74 @@
   .config-save-status { font-size: 11px; color: var(--rf-muted); }
   .config-save-status.ok { color: var(--rf-success); }
   .config-save-status.err { color: var(--rf-danger); }
+  .config-field textarea { width: 100%; padding: 8px 10px; font-size: 13px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; color: var(--rf-text); background: #fff; resize: vertical; min-height: 60px; }
+  .config-field textarea:focus { outline: none; border-color: var(--rf-ocean); box-shadow: 0 0 0 2px rgba(46,134,171,0.18); }
+
+  /* Repeater rows (T&Cs, credentials) — lifted shape from onboarding.html
+     but namespaced .config-rep-* so the styling never collides with
+     existing onboarding rules if they're ever loaded side-by-side. */
+  .config-rep-list { display: flex; flex-direction: column; gap: 8px; }
+  .config-rep-item { border: 0.5px solid var(--rf-border); border-radius: 8px; background: var(--rf-row-bg); overflow: hidden; }
+  .config-rep-item-head { display: flex; align-items: center; gap: 8px; padding: 8px 10px; background: #fff; border-bottom: 0.5px solid var(--rf-divider); }
+  .config-rep-item-head input[type=text] { flex: 1; padding: 6px 8px; font-size: 13px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; background: #fff; }
+  .config-rep-clause-label { font-size: 12px; font-weight: 600; color: var(--rf-navy); padding-left: 4px; flex: 1; }
+  .config-rep-del { background: transparent; color: var(--rf-danger); border: none; padding: 4px; cursor: pointer; display: inline-flex; align-items: center; border-radius: 4px; font-size: 14px; }
+  .config-rep-del:hover { background: rgba(185,28,28,0.08); }
+  .config-rep-body-pad { padding: 8px 10px; background: #fff; }
+  .config-rep-body-pad input[type=text],
+  .config-rep-body-pad textarea { width: 100%; padding: 6px 8px; font-size: 13px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; background: #fff; resize: vertical; }
+  .config-rep-add { background: transparent; color: var(--rf-navy); border: 1px dashed var(--rf-border); padding: 8px 12px; border-radius: 6px; font-size: 12px; font-weight: 500; cursor: pointer; display: inline-flex; align-items: center; gap: 6px; margin-top: 8px; font-family: inherit; }
+  .config-rep-add:hover { background: var(--rf-row-bg); border-style: solid; }
+
+  /* T&Cs paste-to-clauses */
+  .config-tc-paste-area { margin-bottom: 10px; }
+  .config-tc-paste-area textarea { width: 100%; padding: 8px 10px; font-size: 13px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; background: #fff; resize: vertical; min-height: 100px; margin-bottom: 8px; }
+
+  /* Payment threshold table */
+  .config-threshold-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .config-threshold-table th { text-align: left; padding: 8px 8px; font-size: 11px; font-weight: 600; color: var(--rf-muted); text-transform: uppercase; letter-spacing: 0.04em; border-bottom: 0.5px solid var(--rf-divider); }
+  .config-threshold-table td { padding: 6px 8px; border-bottom: 0.5px solid var(--rf-divider); vertical-align: middle; }
+  .config-threshold-table tr:last-child td { border-bottom: none; }
+  .config-tier-label { font-weight: 500; color: var(--rf-navy); white-space: nowrap; }
+  .config-threshold-table input { width: 100%; padding: 6px 8px; font-size: 13px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; background: #fff; }
+  .config-threshold-table .col-sum { width: 70px; text-align: right; }
+  .config-tier-sum { font-size: 12px; font-weight: 600; color: var(--rf-muted); }
+  .config-tier-sum.ok { color: var(--rf-success); }
+  .config-tier-sum.bad { color: var(--rf-danger); }
+  .config-tier-sum.empty { color: var(--rf-muted); font-weight: 400; }
+
+  /* Email template merge tags + preview */
+  .config-merge-fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
+  .config-merge-tag { background: var(--rf-teal-bg); color: var(--rf-navy); border: 0.5px solid var(--rf-teal-border); border-radius: 4px; padding: 3px 8px; font-size: 11px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; cursor: pointer; transition: filter 0.12s; }
+  .config-merge-tag:hover { filter: brightness(0.95); }
+  .config-email-template-ta { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; min-height: 160px; }
+  .config-email-preview-box { border: 0.5px solid var(--rf-border); border-radius: 6px; padding: 14px; background: #fff; font-size: 13px; min-height: 50px; margin-top: 10px; }
+  .config-email-preview-box mark { background: #fffde7; color: inherit; padding: 0 2px; border-radius: 2px; }
+  .config-email-preview-label { font-size: 11px; color: var(--rf-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
+
+  /* Branding pane — preset swatches + custom hex + live preview */
+  .config-branding-modes { display: flex; gap: 6px; margin-bottom: 12px; }
+  .config-branding-mode-btn { padding: 6px 12px; font-size: 12px; font-weight: 500; border: 0.5px solid var(--rf-border); background: #fff; color: var(--rf-navy); border-radius: 6px; cursor: pointer; font-family: inherit; }
+  .config-branding-mode-btn.active { background: var(--rf-navy); color: #fff; border-color: var(--rf-navy); }
+  .config-preset-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 8px; }
+  .config-preset-card { border: 1px solid var(--rf-border); border-radius: 8px; padding: 10px; cursor: pointer; background: #fff; transition: border-color 0.12s, box-shadow 0.12s; }
+  .config-preset-card:hover { border-color: var(--rf-ocean); }
+  .config-preset-card.selected { border-color: var(--rf-navy); box-shadow: 0 0 0 2px rgba(27,79,114,0.18); }
+  .config-preset-name { font-size: 12px; font-weight: 600; color: var(--rf-navy); margin-bottom: 8px; }
+  .config-preset-swatch { display: flex; height: 22px; border-radius: 4px; overflow: hidden; border: 0.5px solid var(--rf-divider); }
+  .config-preset-swatch > span { flex: 1; }
+  .config-hex-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .config-hex-row { grid-template-columns: 1fr; } }
+  .config-hex-pair { display: flex; gap: 6px; align-items: center; }
+  .config-hex-pair input[type=color] { width: 36px; height: 32px; padding: 0; border: 0.5px solid var(--rf-border); border-radius: 4px; background: #fff; cursor: pointer; }
+  .config-hex-pair input[type=text] { flex: 1; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; text-transform: uppercase; }
+  .config-branding-preview { border: 0.5px solid var(--rf-border); border-radius: 8px; padding: 14px; margin-top: 14px; }
+  .config-branding-preview-label { font-size: 11px; color: var(--rf-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.04em; }
+  .config-branding-preview-bars { display: flex; gap: 8px; margin-bottom: 8px; }
+  .config-branding-preview-bar { flex: 1; height: 30px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 600; }
+  .config-branding-preview-sample { padding: 12px; border-radius: 6px; font-size: 13px; }
+
+  .config-loading-pane { padding: 14px; text-align: center; color: var(--rf-muted); font-size: 12px; font-style: italic; }
 </style>
 </head>
 <body>
@@ -283,6 +351,10 @@ const state = {
   // successful save). configExpanded tracks which Zone 2 cards are open.
   config: null,
   configExpanded: new Set(),
+  // Lazy-loaded from GET /settings/branding-presets on first branding-card
+  // expand. Single-source — never inlined into this file.
+  brandingPresets: null,
+  brandingPresetsLoading: false,
 };
 
 function $(id) { return document.getElementById(id); }
@@ -870,10 +942,63 @@ function cleanSectionDragOver() {
 // Generic helpers reused across all panes.
 
 function configCardOpen(pane) { return state.configExpanded.has(pane); }
+
+// Toggle a card open/closed via CSS class only — do NOT re-render the whole
+// config list. Re-rendering blows away unsaved DOM state in other cards.
+// Branding has a special case: on first expand, lazy-load the presets and
+// then re-render just the branding card.
 function configToggleCard(pane) {
-  if (state.configExpanded.has(pane)) state.configExpanded.delete(pane);
-  else state.configExpanded.add(pane);
-  renderConfigCards();
+  const card = document.querySelector(`.config-card[data-pane="${pane}"]`);
+  if (!card) return;
+  if (state.configExpanded.has(pane)) {
+    state.configExpanded.delete(pane);
+    card.classList.remove('expanded');
+    return;
+  }
+  state.configExpanded.add(pane);
+  card.classList.add('expanded');
+  if (pane === 'branding' && !state.brandingPresets && !state.brandingPresetsLoading) {
+    state.brandingPresetsLoading = true;
+    loadBrandingPresets().finally(() => {
+      state.brandingPresetsLoading = false;
+      rerenderCard('branding');
+    });
+  }
+}
+
+// Single-pane re-render — replace the card node with fresh HTML and rewire
+// just this pane. Used after a save (to refresh the collapsed summary line)
+// and after branding presets finish loading. Other cards' DOM state survives.
+const PANE_RENDERERS = {
+  'business-details':   () => renderBusinessDetailsCard(),
+  'bank-details':       () => renderBankDetailsCard(),
+  'payment-thresholds': () => renderPaymentThresholdsCard(),
+  'terms':              () => renderTermsCard(),
+  'credentials':        () => renderCredentialsCard(),
+  'email-template':     () => renderEmailTemplateCard(),
+  'branding':           () => renderBrandingCard(),
+};
+const PANE_WIRERS = {
+  'business-details':   wireBusinessDetailsPane,
+  'bank-details':       wireBankDetailsPane,
+  'payment-thresholds': wirePaymentThresholdsPane,
+  'terms':              wireTermsPane,
+  'credentials':        wireCredentialsPane,
+  'email-template':     wireEmailTemplatePane,
+  'branding':           wireBrandingPane,
+};
+function rerenderCard(pane) {
+  const existing = document.querySelector(`.config-card[data-pane="${pane}"]`);
+  const renderer = PANE_RENDERERS[pane];
+  if (!existing || !renderer) return;
+  const tmp = document.createElement('div');
+  tmp.innerHTML = renderer().trim();
+  const fresh = tmp.firstElementChild;
+  if (!fresh) return;
+  existing.replaceWith(fresh);
+  fresh.querySelector('[data-action="toggle-config"]')?.addEventListener('click', () => configToggleCard(pane));
+  const wirer = PANE_WIRERS[pane];
+  if (wirer) wirer(document);
 }
 
 // Compact display value for scalar pane summaries. Omits empty fields and
@@ -896,14 +1021,23 @@ function previewTrunc(s, max = 60) {
   return (lastSpace > 30 ? cut.slice(0, lastSpace) : cut) + '…';
 }
 
-// Render the Business Configuration cards. Only business-details is wired
-// at the checkpoint; the other six panes will mount here after sign-off.
+// Render the Business Configuration cards. All seven panes mount here.
 function renderConfigCards() {
   const root = $('configCards');
   if (!root) return;
   if (!state.config) { root.innerHTML = ''; return; }
 
-  root.innerHTML = renderBusinessDetailsCard();
+  // Card order (decided): business → bank → payment thresholds → T&Cs →
+  // credentials → email template → branding. Most-edited at top.
+  root.innerHTML = [
+    renderBusinessDetailsCard(),
+    renderBankDetailsCard(),
+    renderPaymentThresholdsCard(),
+    renderTermsCard(),
+    renderCredentialsCard(),
+    renderEmailTemplateCard(),
+    renderBrandingCard(),
+  ].join('');
 
   // Wire toggle on the card head (delegated to the head element only — body
   // clicks should NOT collapse the card).
@@ -914,8 +1048,14 @@ function renderConfigCards() {
     });
   });
 
-  // Wire the business-details pane (the only pane built at this checkpoint).
+  // Wire each pane (only fires for those whose card body is in the DOM).
   wireBusinessDetailsPane(root);
+  wireBankDetailsPane(root);
+  wirePaymentThresholdsPane(root);
+  wireTermsPane(root);
+  wireCredentialsPane(root);
+  wireEmailTemplatePane(root);
+  wireBrandingPane(root);
 }
 
 // ─── 1 of 7: Business details ───────────────────────────────────────────────
@@ -1029,16 +1169,934 @@ async function saveBusinessDetails() {
 
     if (status) { status.textContent = 'Saved'; status.className = 'config-save-status ok'; }
     toast('Business details saved', 'ok');
-    // Re-render so the collapsed summary line reflects the new values when
-    // the user closes the card. Keep the card expanded for now (less jarring
-    // than auto-collapsing after a save).
-    renderConfigCards();
+    // Re-render just THIS card so the collapsed summary reflects the new
+    // values. Single-card rerender avoids blowing away unsaved DOM state in
+    // other open cards.
+    rerenderCard('business-details');
   } catch (e) {
     if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
     toast(`Save failed: ${e.message || e}`, 'err');
   } finally {
     btn.disabled = false;
     btn.innerHTML = originalLabel;
+  }
+}
+
+// ─── 2 of 7: Bank details ───────────────────────────────────────────────────
+
+function renderBankDetailsCard() {
+  const bd = (state.config?.bank_details && typeof state.config.bank_details === 'object') ? state.config.bank_details : {};
+  const expanded = configCardOpen('bank-details');
+  const summary = compactSummary([bd.name, bd.bsb, bd.account]);
+  const summaryHtml = summary ? esc(summary) : 'Not set yet';
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="bank-details">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Bank details</div>
+          <div class="config-card-summary${summary ? '' : ' empty'}">${summaryHtml}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">Shown on PDF quotes so customers can make direct transfers.</div>
+        <div class="config-field">
+          <label for="cfg-bank_name">Account name</label>
+          <input type="text" id="cfg-bank_name" value="${esc(bd.name || '')}" placeholder="e.g. Acme Plumbing Pty Ltd" autocomplete="off">
+        </div>
+        <div class="config-field-row">
+          <div class="config-field">
+            <label for="cfg-bank_bsb">BSB</label>
+            <input type="text" id="cfg-bank_bsb" value="${esc(bd.bsb || '')}" placeholder="000-000" maxlength="7" autocomplete="off" inputmode="numeric">
+            <div id="cfg-bank_bsb-hint" class="config-field-hint">6 digits, formatted XXX-XXX</div>
+          </div>
+          <div class="config-field">
+            <label for="cfg-bank_account">Account number</label>
+            <input type="text" id="cfg-bank_account" value="${esc(bd.account || '')}" placeholder="123456789" maxlength="12" autocomplete="off" inputmode="numeric">
+          </div>
+        </div>
+        <div class="config-actions">
+          <button class="btn primary" data-action="save-bank-details"><i class="ti ti-check"></i>Save</button>
+          <span class="config-save-status" data-status="bank-details"></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function wireBankDetailsPane(root) {
+  const bsb = root.querySelector('#cfg-bank_bsb');
+  const hint = root.querySelector('#cfg-bank_bsb-hint');
+  if (bsb && hint) {
+    bsb.addEventListener('input', () => {
+      // Format as XXX-XXX. Strip non-digits, cap at 6, insert dash.
+      const d = bsb.value.replace(/\D/g, '').slice(0, 6);
+      bsb.value = d.length > 3 ? `${d.slice(0, 3)}-${d.slice(3)}` : d;
+      if (!d.length) { hint.textContent = '6 digits, formatted XXX-XXX'; hint.className = 'config-field-hint'; }
+      else if (d.length < 6) { hint.textContent = `${d.length}/6 digits`; hint.className = 'config-field-hint'; }
+      else { hint.textContent = '✓ 6 digits'; hint.className = 'config-field-hint ok'; }
+    });
+  }
+  const saveBtn = root.querySelector('[data-action="save-bank-details"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveBankDetails);
+}
+
+async function saveBankDetails() {
+  const status = document.querySelector('[data-status="bank-details"]');
+  const btn = document.querySelector('[data-action="save-bank-details"]');
+  if (!btn) return;
+  const body = {
+    bank_details: {
+      name:    $('cfg-bank_name').value.trim(),
+      bsb:     $('cfg-bank_bsb').value.trim(),
+      account: $('cfg-bank_account').value.trim(),
+    },
+  };
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/bank-details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+    state.config.bank_details = { ...(state.config.bank_details || {}), ...body.bank_details };
+    if (status) { status.textContent = 'Saved'; status.className = 'config-save-status ok'; }
+    toast('Bank details saved', 'ok');
+    rerenderCard('bank-details');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// ─── 3 of 7: Payment thresholds ─────────────────────────────────────────────
+//
+// Mirror onboarding.html TIERS list — same six tier keys. Sum-to-100
+// validation is client-side advisory (matches onboarding behaviour); the
+// server's regex floor is permissive so a partial-save with an in-progress
+// tier doesn't 500.
+
+const CONFIG_TIERS = [
+  { key: 'under_20k',     label: 'Under $20,000',       def: '50, 50' },
+  { key: '20k_to_35k',    label: '$20,001 – $35,000',   def: '20, 60, 20' },
+  { key: '35k_to_50k',    label: '$35,001 – $50,000',   def: '5, 45, 45, 5' },
+  { key: '50k_to_100k',   label: '$50,001 – $100,000',  def: '5, 31, 31, 31, 2' },
+  { key: '100k_to_200k',  label: '$100,001 – $200,000', def: '5, 27, 22, 22, 22, 2' },
+  { key: 'over_200k',     label: 'Over $200,000',       def: '5, 21, 18, 18, 18, 18, 2' },
+];
+
+function renderPaymentThresholdsCard() {
+  const pt = (state.config?.payment_thresholds && typeof state.config.payment_thresholds === 'object') ? state.config.payment_thresholds : {};
+  const expanded = configCardOpen('payment-thresholds');
+  // Summary: count of tiers configured + first label
+  const configuredTiers = CONFIG_TIERS.filter(t => pt[t.key]);
+  let summary, isEmpty;
+  if (configuredTiers.length === 0) { summary = 'Not set yet'; isEmpty = true; }
+  else { summary = `${configuredTiers.length}/${CONFIG_TIERS.length} tiers · e.g. ${configuredTiers[0].label} → ${pt[configuredTiers[0].key]}`; isEmpty = false; }
+  const rows = CONFIG_TIERS.map(t => {
+    const current = pt[t.key] || '';
+    // KV stores "50/50"; UI shows comma-separated (same as onboarding).
+    const display = current ? current.replace(/\//g, ', ') : '';
+    return `
+      <tr>
+        <td class="config-tier-label">${esc(t.label)}</td>
+        <td><input type="text" id="cfg-tier-${esc(t.key)}" value="${esc(display)}" placeholder="e.g. ${esc(t.def)}"></td>
+        <td class="col-sum"><span class="config-tier-sum" id="cfg-tier-sum-${esc(t.key)}"></span></td>
+      </tr>
+    `;
+  }).join('');
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="payment-thresholds">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Payment thresholds</div>
+          <div class="config-card-summary${isEmpty ? ' empty' : ''}">${esc(summary)}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;line-height:1.5;">
+          Enter payment percentages as comma-separated values. Each tier must sum to 100%. Example: <code style="font-size:11px;background:var(--rf-row-bg);padding:1px 4px;border-radius:3px;">20, 60, 20</code> = 20% deposit · 60% progress · 20% final.
+        </div>
+        <table class="config-threshold-table">
+          <thead>
+            <tr>
+              <th>Job value</th>
+              <th>Payment breakdown (comma-separated %)</th>
+              <th class="col-sum">Sum</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div class="config-actions">
+          <button class="btn primary" data-action="save-payment-thresholds"><i class="ti ti-check"></i>Save</button>
+          <span class="config-save-status" data-status="payment-thresholds"></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function wirePaymentThresholdsPane(root) {
+  for (const tier of CONFIG_TIERS) {
+    const input = root.querySelector(`#cfg-tier-${tier.key}`);
+    const sumEl = root.querySelector(`#cfg-tier-sum-${tier.key}`);
+    if (!input || !sumEl) continue;
+    const refreshSum = () => {
+      const raw = input.value.trim();
+      if (!raw) { sumEl.textContent = '—'; sumEl.className = 'config-tier-sum empty'; return; }
+      const parts = raw.split(',').map(v => parseFloat(v.trim())).filter(v => !isNaN(v));
+      const s = Math.round(parts.reduce((a, b) => a + b, 0) * 10) / 10;
+      sumEl.textContent = s + '%';
+      sumEl.className = 'config-tier-sum ' + (Math.abs(s - 100) < 0.05 ? 'ok' : 'bad');
+    };
+    input.addEventListener('input', refreshSum);
+    refreshSum();
+  }
+  const saveBtn = root.querySelector('[data-action="save-payment-thresholds"]');
+  if (saveBtn) saveBtn.addEventListener('click', savePaymentThresholds);
+}
+
+async function savePaymentThresholds() {
+  const status = document.querySelector('[data-status="payment-thresholds"]');
+  const btn = document.querySelector('[data-action="save-payment-thresholds"]');
+  if (!btn) return;
+  const payment_thresholds = {};
+  for (const tier of CONFIG_TIERS) {
+    const raw = $('cfg-tier-' + tier.key).value.trim();
+    if (!raw) { payment_thresholds[tier.key] = ''; continue; }
+    const parts = raw.split(',').map(v => v.trim()).filter(Boolean);
+    payment_thresholds[tier.key] = parts.join('/');
+  }
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/payment-thresholds`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ payment_thresholds }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+    // Server normalises ("50, 50" → "50/50"); reflect that locally.
+    state.config.payment_thresholds = { ...(state.config.payment_thresholds || {}), ...payment_thresholds };
+    if (status) { status.textContent = 'Saved'; status.className = 'config-save-status ok'; }
+    toast('Payment thresholds saved', 'ok');
+    rerenderCard('payment-thresholds');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// ─── 4 of 7: Terms & Conditions ─────────────────────────────────────────────
+//
+// Array of clause strings. Repeater pattern + paste-to-clauses lifted from
+// onboarding.html lines 1272-1362.
+
+function renderTermsCard() {
+  const tc = Array.isArray(state.config?.terms_and_conditions) ? state.config.terms_and_conditions : [];
+  const expanded = configCardOpen('terms');
+  // Array-pane summary: COUNT + truncated first-item preview, visually
+  // unmistakable as a preview (muted/italic, prefixed by count). Per the
+  // build prompt: never read as the full live value.
+  let summaryInner, isEmpty;
+  if (tc.length === 0) { summaryInner = 'No clauses set yet'; isEmpty = true; }
+  else {
+    const first = previewTrunc(tc[0], 50);
+    summaryInner = `<span class="preview-count">${tc.length} clause${tc.length === 1 ? '' : 's'}</span><span class="preview-quote">“${esc(first)}”</span>`;
+    isEmpty = false;
+  }
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="terms">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Terms &amp; conditions</div>
+          <div class="config-card-summary${isEmpty ? ' empty' : ''}">${isEmpty ? esc(summaryInner) : summaryInner}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">Shown at the bottom of PDF quotes. Add one clause per entry, or paste your full T&amp;Cs as a block.</div>
+        <div id="cfg-tc-paste-toggle-wrap" style="margin-bottom:10px;">
+          <button type="button" class="btn small" id="cfg-tc-paste-toggle"><i class="ti ti-clipboard-text"></i>Paste T&amp;Cs text</button>
+        </div>
+        <div id="cfg-tc-paste-area" class="config-tc-paste-area" hidden>
+          <textarea id="cfg-tc-paste-input" placeholder="Paste your full Terms &amp; Conditions here. Each paragraph (blank line between paragraphs) becomes a separate clause."></textarea>
+          <div style="display:flex;gap:8px;align-items:center;">
+            <button type="button" class="btn primary small" id="cfg-tc-paste-apply"><i class="ti ti-plus"></i>Add as clauses</button>
+            <button type="button" class="btn small" id="cfg-tc-paste-cancel">Cancel</button>
+          </div>
+        </div>
+        <div id="cfg-tc-list" class="config-rep-list">${tc.map((t, i) => renderTcRow(t, i)).join('')}</div>
+        <button type="button" class="config-rep-add" id="cfg-tc-add"><i class="ti ti-plus"></i>Add clause</button>
+        <div class="config-actions">
+          <button class="btn primary" data-action="save-terms"><i class="ti ti-check"></i>Save</button>
+          <span class="config-save-status" data-status="terms"></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderTcRow(text, idx) {
+  return `
+    <div class="config-rep-item" data-rep-type="tc">
+      <div class="config-rep-item-head">
+        <span class="config-rep-clause-label">Clause ${idx + 1}</span>
+        <button type="button" class="config-rep-del" title="Remove"><i class="ti ti-trash"></i></button>
+      </div>
+      <div class="config-rep-body-pad">
+        <textarea rows="2" placeholder="Enter this clause…">${esc(text || '')}</textarea>
+      </div>
+    </div>
+  `;
+}
+
+function relabelTcClauses(listEl) {
+  listEl.querySelectorAll('.config-rep-clause-label').forEach((el, i) => {
+    el.textContent = `Clause ${i + 1}`;
+  });
+}
+
+function wireTermsPane(root) {
+  const list = root.querySelector('#cfg-tc-list');
+  const addBtn = root.querySelector('#cfg-tc-add');
+  if (list && addBtn) {
+    addBtn.addEventListener('click', () => {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = renderTcRow('', list.children.length).trim();
+      const node = wrap.firstElementChild;
+      list.appendChild(node);
+      relabelTcClauses(list);
+      node.querySelector('textarea')?.focus();
+    });
+    list.addEventListener('click', (e) => {
+      const del = e.target.closest('.config-rep-del');
+      if (!del) return;
+      del.closest('.config-rep-item')?.remove();
+      relabelTcClauses(list);
+    });
+  }
+  // Paste-to-clauses
+  const pasteToggle = root.querySelector('#cfg-tc-paste-toggle');
+  const pasteArea = root.querySelector('#cfg-tc-paste-area');
+  const pasteInput = root.querySelector('#cfg-tc-paste-input');
+  const pasteApply = root.querySelector('#cfg-tc-paste-apply');
+  const pasteCancel = root.querySelector('#cfg-tc-paste-cancel');
+  const pasteWrap = root.querySelector('#cfg-tc-paste-toggle-wrap');
+  if (pasteToggle && pasteArea && pasteInput && pasteApply && pasteCancel && pasteWrap) {
+    pasteToggle.addEventListener('click', () => { pasteArea.hidden = false; pasteWrap.hidden = true; pasteInput.focus(); });
+    pasteCancel.addEventListener('click', () => { pasteArea.hidden = true; pasteWrap.hidden = false; pasteInput.value = ''; });
+    pasteApply.addEventListener('click', () => {
+      const raw = pasteInput.value.trim();
+      if (raw && list) {
+        const paragraphs = raw.split(/\n{2,}/).map(p => p.trim()).filter(Boolean);
+        for (const p of paragraphs) {
+          const wrap = document.createElement('div');
+          wrap.innerHTML = renderTcRow(p, list.children.length).trim();
+          list.appendChild(wrap.firstElementChild);
+        }
+        relabelTcClauses(list);
+      }
+      pasteArea.hidden = true;
+      pasteWrap.hidden = false;
+      pasteInput.value = '';
+    });
+  }
+  const saveBtn = root.querySelector('[data-action="save-terms"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveTerms);
+}
+
+function readTcFromDom() {
+  const list = document.querySelector('#cfg-tc-list');
+  if (!list) return [];
+  const result = [];
+  list.querySelectorAll('.config-rep-item textarea').forEach(ta => {
+    const v = ta.value.trim();
+    if (v) result.push(v);
+  });
+  return result;
+}
+
+async function saveTerms() {
+  const status = document.querySelector('[data-status="terms"]');
+  const btn = document.querySelector('[data-action="save-terms"]');
+  if (!btn) return;
+  const terms_and_conditions = readTcFromDom();
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/terms`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ terms_and_conditions }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+    state.config.terms_and_conditions = terms_and_conditions;
+    if (status) { status.textContent = `Saved (${data.count ?? terms_and_conditions.length} clause${(data.count ?? terms_and_conditions.length) === 1 ? '' : 's'})`; status.className = 'config-save-status ok'; }
+    toast('Terms saved', 'ok');
+    rerenderCard('terms');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// ─── 5 of 7: Credentials ────────────────────────────────────────────────────
+//
+// Array of { name, detail }. Same repeater pattern as T&Cs but with two
+// fields per row.
+
+function renderCredentialsCard() {
+  const cr = Array.isArray(state.config?.credentials) ? state.config.credentials : [];
+  const expanded = configCardOpen('credentials');
+  let summaryInner, isEmpty;
+  if (cr.length === 0) { summaryInner = 'No credentials set yet'; isEmpty = true; }
+  else {
+    const first = previewTrunc(cr[0]?.name || cr[0]?.detail || '', 50);
+    summaryInner = `<span class="preview-count">${cr.length} credential${cr.length === 1 ? '' : 's'}</span><span class="preview-quote">“${esc(first)}”</span>`;
+    isEmpty = false;
+  }
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="credentials">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Credentials</div>
+          <div class="config-card-summary${isEmpty ? ' empty' : ''}">${isEmpty ? esc(summaryInner) : summaryInner}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">Licences, insurance, guarantees, memberships — shown in the "You can rely on" section of every quote.</div>
+        <div id="cfg-cred-list" class="config-rep-list">${cr.map(c => renderCredRow(c)).join('')}</div>
+        <button type="button" class="config-rep-add" id="cfg-cred-add"><i class="ti ti-plus"></i>Add credential</button>
+        <div class="config-actions">
+          <button class="btn primary" data-action="save-credentials"><i class="ti ti-check"></i>Save</button>
+          <span class="config-save-status" data-status="credentials"></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function renderCredRow(c) {
+  return `
+    <div class="config-rep-item" data-rep-type="credential">
+      <div class="config-rep-item-head">
+        <input type="text" class="cfg-cred-name" placeholder="e.g. Fully Licensed &amp; Insured" value="${esc(c?.name || '')}">
+        <button type="button" class="config-rep-del" title="Remove"><i class="ti ti-trash"></i></button>
+      </div>
+      <div class="config-rep-body-pad">
+        <input type="text" class="cfg-cred-detail" placeholder="Optional detail — e.g. Public liability up to $10M" value="${esc(c?.detail || '')}">
+      </div>
+    </div>
+  `;
+}
+
+function wireCredentialsPane(root) {
+  const list = root.querySelector('#cfg-cred-list');
+  const addBtn = root.querySelector('#cfg-cred-add');
+  if (list && addBtn) {
+    addBtn.addEventListener('click', () => {
+      const wrap = document.createElement('div');
+      wrap.innerHTML = renderCredRow({}).trim();
+      const node = wrap.firstElementChild;
+      list.appendChild(node);
+      node.querySelector('.cfg-cred-name')?.focus();
+    });
+    list.addEventListener('click', (e) => {
+      const del = e.target.closest('.config-rep-del');
+      if (!del) return;
+      del.closest('.config-rep-item')?.remove();
+    });
+  }
+  const saveBtn = root.querySelector('[data-action="save-credentials"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveCredentials);
+}
+
+function readCredentialsFromDom() {
+  const list = document.querySelector('#cfg-cred-list');
+  if (!list) return [];
+  const result = [];
+  list.querySelectorAll('.config-rep-item').forEach(item => {
+    const name = (item.querySelector('.cfg-cred-name')?.value || '').trim();
+    const detail = (item.querySelector('.cfg-cred-detail')?.value || '').trim();
+    if (name || detail) result.push({ name, detail });
+  });
+  return result;
+}
+
+async function saveCredentials() {
+  const status = document.querySelector('[data-status="credentials"]');
+  const btn = document.querySelector('[data-action="save-credentials"]');
+  if (!btn) return;
+  const credentials = readCredentialsFromDom();
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/credentials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ credentials }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+    state.config.credentials = credentials;
+    if (status) { status.textContent = `Saved (${data.count ?? credentials.length} row${(data.count ?? credentials.length) === 1 ? '' : 's'})`; status.className = 'config-save-status ok'; }
+    toast('Credentials saved', 'ok');
+    rerenderCard('credentials');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// ─── 6 of 7: Email template ─────────────────────────────────────────────────
+//
+// Textarea + merge-tag pills + preview button. Preview substitutes sample
+// values and renders to innerHTML — same as onboarding.html. Self-XSS only
+// (operator views their own template; no multi-tenant surface).
+
+function renderEmailTemplateCard() {
+  const tpl = state.config?.email_template || '';
+  const expanded = configCardOpen('email-template');
+  const summary = tpl.trim() ? `${tpl.length} char${tpl.length === 1 ? '' : 's'} configured` : 'Using default template';
+  const isEmpty = !tpl.trim();
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="email-template">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Email template</div>
+          <div class="config-card-summary${isEmpty ? ' empty' : ''}">${esc(summary)}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">The HTML email sent to customers with their quote attached. Leave blank to use a sensible default with your logo.</div>
+        <div class="config-merge-fields">
+          <span style="font-size:11px;color:var(--rf-muted);">Insert:</span>
+          <span class="config-merge-tag" data-merge="{client_name}">{client_name}</span>
+          <span class="config-merge-tag" data-merge="{job_address}">{job_address}</span>
+          <span class="config-merge-tag" data-merge="{quote_ref}">{quote_ref}</span>
+          <span class="config-merge-tag" data-merge="{total}">{total}</span>
+        </div>
+        <div class="config-field">
+          <textarea id="cfg-email_template" class="config-email-template-ta" rows="10" placeholder="Leave blank — a default will be generated with your logo and contact details.">${esc(tpl)}</textarea>
+          <div class="config-field-hint">Click a merge tag above to insert it at the cursor.</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
+          <button type="button" class="btn small" id="cfg-email-preview-btn"><i class="ti ti-eye"></i>Preview</button>
+          <span style="font-size:11px;color:var(--rf-muted);">Sample data substituted</span>
+        </div>
+        <div id="cfg-email-preview-panel" hidden>
+          <div class="config-email-preview-label">Preview — sample data</div>
+          <div id="cfg-email-preview-content" class="config-email-preview-box"></div>
+        </div>
+        <div class="config-actions">
+          <button class="btn primary" data-action="save-email-template"><i class="ti ti-check"></i>Save</button>
+          <span class="config-save-status" data-status="email-template"></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function wireEmailTemplatePane(root) {
+  const ta = root.querySelector('#cfg-email_template');
+  if (ta) {
+    root.querySelectorAll('.config-merge-tag').forEach(tag => {
+      tag.addEventListener('click', () => {
+        const field = tag.dataset.merge;
+        const start = ta.selectionStart ?? ta.value.length;
+        const end   = ta.selectionEnd   ?? ta.value.length;
+        ta.value = ta.value.slice(0, start) + field + ta.value.slice(end);
+        ta.selectionStart = ta.selectionEnd = start + field.length;
+        ta.focus();
+      });
+    });
+  }
+  const previewBtn = root.querySelector('#cfg-email-preview-btn');
+  const previewPanel = root.querySelector('#cfg-email-preview-panel');
+  const previewContent = root.querySelector('#cfg-email-preview-content');
+  if (previewBtn && previewPanel && previewContent && ta) {
+    previewBtn.addEventListener('click', () => {
+      const raw = ta.value.trim();
+      if (!raw) {
+        previewContent.textContent = '(no template entered — the default with your logo will be used)';
+        previewPanel.hidden = false;
+        return;
+      }
+      // Same substitution surface as onboarding.html (lines 1252-1270).
+      // innerHTML render of operator-authored content; self-XSS only — see
+      // email_template consumer trace in the checkpoint report.
+      let html = raw;
+      html = html.replace(/\{client_name\}/g, '<mark>Jane Smith</mark>');
+      html = html.replace(/\{job_address\}/g, '<mark>45 Collins St, Melbourne VIC 3000</mark>');
+      html = html.replace(/\{quote_ref\}/g,   '<mark>Q-20260605-1430</mark>');
+      html = html.replace(/\{total\}/g,       '<mark>$8,500</mark>');
+      previewContent.innerHTML = html;
+      previewPanel.hidden = false;
+    });
+    ta.addEventListener('input', () => { previewPanel.hidden = true; });
+  }
+  const saveBtn = root.querySelector('[data-action="save-email-template"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveEmailTemplate);
+}
+
+async function saveEmailTemplate() {
+  const status = document.querySelector('[data-status="email-template"]');
+  const btn = document.querySelector('[data-action="save-email-template"]');
+  if (!btn) return;
+  const email_template = $('cfg-email_template').value;
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/email-template`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email_template }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+    state.config.email_template = email_template;
+    if (status) { status.textContent = `Saved (${data.length ?? email_template.length} chars)`; status.className = 'config-save-status ok'; }
+    toast('Email template saved', 'ok');
+    rerenderCard('email-template');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+// ─── 7 of 7: Branding ───────────────────────────────────────────────────────
+//
+// Preset swatches OR custom hex × 3, with live preview. Presets fetched
+// lazily from GET /settings/branding-presets (proxies pdf worker /presets) on
+// first card expand — single-source so the picker swatches and the rendered
+// PDF can never drift. Save shape mirrors resolveBranding fallthrough:
+//   { preset } → preset mode (hex fields cleared by null)
+//   { primary, accent, background } → custom mode (preset cleared by null)
+//   null → reset to platform default
+
+function renderBrandingCard() {
+  const br = state.config?.branding || {};
+  const expanded = configCardOpen('branding');
+  const summary = brandingSummary(br);
+  const isEmpty = !summary.value;
+  // Decide which mode to show. If preset is set (and PRESETS table loaded
+  // matches), preset mode. If any hex is set, custom mode. Else default to
+  // preset mode (with no selection).
+  const initialMode = br.preset ? 'preset' : ((br.primary || br.accent || br.background) ? 'custom' : 'preset');
+
+  let body;
+  if (state.brandingPresetsLoading) {
+    body = `<div class="config-loading-pane">Loading branding presets…</div>`;
+  } else if (!state.brandingPresets && expanded) {
+    // Will be triggered on first expand via configToggleCard.
+    body = `<div class="config-loading-pane">Loading branding presets…</div>`;
+  } else if (!state.brandingPresets) {
+    body = `<div class="config-loading-pane">Open to load presets</div>`;
+  } else {
+    body = renderBrandingBody(br, initialMode);
+  }
+
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="branding">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Branding</div>
+          <div class="config-card-summary${isEmpty ? ' empty' : ''}">${esc(summary.value || 'Using platform default')}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">${body}</div>
+    </div>
+  `;
+}
+
+function brandingSummary(br) {
+  if (!br || (!br.preset && !br.primary && !br.accent && !br.background)) return { value: '' };
+  if (br.preset) return { value: `Preset: ${br.preset}` };
+  const hexParts = ['primary','accent','background']
+    .filter(k => br[k])
+    .map(k => `${k} ${br[k]}`);
+  return { value: hexParts.length ? `Custom · ${hexParts.join(' · ')}` : '' };
+}
+
+function renderBrandingBody(br, mode) {
+  const presets = state.brandingPresets?.presets || {};
+  const platformDefault = state.brandingPresets?.platform_default || { primary: '#2E86AB', accent: '#1B4F72', background: '#EAF4F8' };
+  const presetCards = Object.entries(presets).map(([name, p]) => `
+    <div class="config-preset-card${br.preset === name && mode === 'preset' ? ' selected' : ''}" data-preset="${esc(name)}">
+      <div class="config-preset-name">${esc(name)}</div>
+      <div class="config-preset-swatch" title="${esc(p.primary)} · ${esc(p.accent)} · ${esc(p.background)}">
+        <span style="background:${esc(p.primary)}"></span>
+        <span style="background:${esc(p.accent)}"></span>
+        <span style="background:${esc(p.background)}"></span>
+      </div>
+    </div>
+  `).join('');
+  // Initial hex values for custom-mode inputs. Fall back to platform default
+  // so colour pickers always have a valid starting point.
+  const hex = {
+    primary:    br.primary    || platformDefault.primary,
+    accent:     br.accent     || platformDefault.accent,
+    background: br.background || platformDefault.background,
+  };
+  return `
+    <div style="font-size:12px;color:var(--rf-muted);margin-bottom:12px;">Choose a preset palette or set custom colours. Applied to PDF quotes via the same fallthrough the renderer uses.</div>
+    <div class="config-branding-modes">
+      <button type="button" class="config-branding-mode-btn${mode === 'preset' ? ' active' : ''}" data-mode="preset">Use a preset</button>
+      <button type="button" class="config-branding-mode-btn${mode === 'custom' ? ' active' : ''}" data-mode="custom">Custom colours</button>
+    </div>
+    <div id="cfg-br-preset-panel"${mode === 'preset' ? '' : ' hidden'}>
+      <div class="config-preset-grid">${presetCards}</div>
+    </div>
+    <div id="cfg-br-custom-panel"${mode === 'custom' ? '' : ' hidden'}>
+      <div class="config-hex-row">
+        ${['primary','accent','background'].map(k => `
+          <div class="config-field">
+            <label for="cfg-br-${k}">${k.charAt(0).toUpperCase() + k.slice(1)}</label>
+            <div class="config-hex-pair">
+              <input type="color" id="cfg-br-${k}-picker" value="${esc(hex[k])}">
+              <input type="text" id="cfg-br-${k}" value="${esc(hex[k])}" placeholder="#RRGGBB" maxlength="7" autocomplete="off">
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="config-branding-preview">
+      <div class="config-branding-preview-label">Live preview</div>
+      <div class="config-branding-preview-bars">
+        <div class="config-branding-preview-bar" id="cfg-br-preview-primary" style="background:${esc(hex.primary)};color:#fff;">Primary</div>
+        <div class="config-branding-preview-bar" id="cfg-br-preview-accent" style="background:${esc(hex.accent)};color:#fff;">Accent</div>
+        <div class="config-branding-preview-bar" id="cfg-br-preview-background" style="background:${esc(hex.background)};color:var(--rf-text);border:0.5px solid var(--rf-divider);">Background</div>
+      </div>
+      <div class="config-branding-preview-sample" id="cfg-br-preview-sample" style="background:${esc(hex.background)};border-left:3px solid ${esc(hex.accent)};color:var(--rf-text);">
+        <strong style="color:${esc(hex.primary)};">Sample quote heading</strong> — body text rendered on the chosen background.
+      </div>
+    </div>
+    <div class="config-actions">
+      <button class="btn primary" data-action="save-branding"><i class="ti ti-check"></i>Save</button>
+      <button class="btn" data-action="reset-branding" style="margin-left:4px;"><i class="ti ti-restore"></i>Reset to default</button>
+      <span class="config-save-status" data-status="branding"></span>
+    </div>
+  `;
+}
+
+function wireBrandingPane(root) {
+  const card = root.querySelector('.config-card[data-pane="branding"]');
+  if (!card) return;
+  // Presets are lazy-loaded by configToggleCard on first expand. Until they
+  // arrive the body shows a loading placeholder and there are no controls to
+  // wire — exit early. rerenderCard('branding') is called when presets land,
+  // which re-enters this function with state.brandingPresets populated.
+  if (!state.brandingPresets) return;
+
+  // Mode toggle
+  card.querySelectorAll('.config-branding-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      card.querySelectorAll('.config-branding-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+      const presetPanel = card.querySelector('#cfg-br-preset-panel');
+      const customPanel = card.querySelector('#cfg-br-custom-panel');
+      if (presetPanel) presetPanel.hidden = mode !== 'preset';
+      if (customPanel) customPanel.hidden = mode !== 'custom';
+      updateBrandingPreview();
+    });
+  });
+
+  // Preset cards
+  card.querySelectorAll('.config-preset-card').forEach(pc => {
+    pc.addEventListener('click', () => {
+      card.querySelectorAll('.config-preset-card').forEach(p => p.classList.toggle('selected', p === pc));
+      updateBrandingPreview();
+    });
+  });
+
+  // Hex inputs — keep colour picker and text in sync.
+  for (const k of ['primary','accent','background']) {
+    const picker = card.querySelector(`#cfg-br-${k}-picker`);
+    const text   = card.querySelector(`#cfg-br-${k}`);
+    if (picker && text) {
+      picker.addEventListener('input', () => { text.value = picker.value.toUpperCase(); updateBrandingPreview(); });
+      text.addEventListener('input', () => {
+        let v = text.value.trim();
+        if (/^[0-9a-f]{6}$/i.test(v)) v = '#' + v;
+        if (/^#[0-9a-f]{6}$/i.test(v)) picker.value = v.toLowerCase();
+        updateBrandingPreview();
+      });
+    }
+  }
+
+  const saveBtn = card.querySelector('[data-action="save-branding"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveBranding);
+  const resetBtn = card.querySelector('[data-action="reset-branding"]');
+  if (resetBtn) resetBtn.addEventListener('click', resetBranding);
+}
+
+function getBrandingMode() {
+  const card = document.querySelector('.config-card[data-pane="branding"]');
+  return card?.querySelector('.config-branding-mode-btn.active')?.dataset.mode || 'preset';
+}
+
+function getBrandingHex(k) {
+  const v = document.querySelector(`#cfg-br-${k}`)?.value?.trim() || '';
+  return /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : null;
+}
+
+function updateBrandingPreview() {
+  const mode = getBrandingMode();
+  const platformDefault = state.brandingPresets?.platform_default || { primary: '#2E86AB', accent: '#1B4F72', background: '#EAF4F8' };
+  let palette = { ...platformDefault };
+  if (mode === 'preset') {
+    const selected = document.querySelector('.config-preset-card.selected')?.dataset.preset;
+    if (selected && state.brandingPresets?.presets?.[selected]) palette = state.brandingPresets.presets[selected];
+  } else {
+    for (const k of ['primary','accent','background']) {
+      const v = getBrandingHex(k);
+      if (v) palette[k] = v;
+    }
+  }
+  const root = document.querySelector('.config-card[data-pane="branding"]');
+  if (!root) return;
+  const pp = root.querySelector('#cfg-br-preview-primary');
+  const pa = root.querySelector('#cfg-br-preview-accent');
+  const pb = root.querySelector('#cfg-br-preview-background');
+  const ps = root.querySelector('#cfg-br-preview-sample');
+  if (pp) pp.style.background = palette.primary;
+  if (pa) pa.style.background = palette.accent;
+  if (pb) pb.style.background = palette.background;
+  if (ps) {
+    ps.style.background = palette.background;
+    ps.style.borderLeftColor = palette.accent;
+    const strong = ps.querySelector('strong');
+    if (strong) strong.style.color = palette.primary;
+  }
+}
+
+async function loadBrandingPresets() {
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/branding-presets`);
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `presets_${res.status}`);
+    state.brandingPresets = {
+      presets: data.presets || {},
+      platform_default: data.platform_default || null,
+      preset_names: data.preset_names || Object.keys(data.presets || {}),
+    };
+  } catch (e) {
+    toast(`Couldn't load branding presets: ${e.message || e}`, 'err');
+    state.brandingPresets = null;
+  }
+}
+
+async function saveBranding() {
+  const status = document.querySelector('[data-status="branding"]');
+  const btn = document.querySelector('[data-action="save-branding"]');
+  if (!btn) return;
+
+  const mode = getBrandingMode();
+  let branding;
+  if (mode === 'preset') {
+    const selected = document.querySelector('.config-preset-card.selected')?.dataset.preset;
+    if (!selected) {
+      if (status) { status.textContent = 'Pick a preset first'; status.className = 'config-save-status err'; }
+      return;
+    }
+    // Preset mode: send preset name, null the custom hex so resolveBranding
+    // doesn't fall through to a stale custom value.
+    branding = { preset: selected, primary: null, accent: null, background: null };
+  } else {
+    const primary    = getBrandingHex('primary');
+    const accent     = getBrandingHex('accent');
+    const background = getBrandingHex('background');
+    if (!primary || !accent || !background) {
+      if (status) { status.textContent = 'All three colours must be valid #RRGGBB hex'; status.className = 'config-save-status err'; }
+      return;
+    }
+    branding = { preset: null, primary, accent, background };
+  }
+
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/branding`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branding }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+    // Mirror what the server stored: nulls drop, values set.
+    const merged = { ...(state.config.branding || {}) };
+    for (const [k, v] of Object.entries(branding)) {
+      if (v === null) delete merged[k];
+      else merged[k] = v;
+    }
+    state.config.branding = Object.keys(merged).length ? merged : null;
+    if (status) { status.textContent = 'Saved'; status.className = 'config-save-status ok'; }
+    toast('Branding saved', 'ok');
+    rerenderCard('branding');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+async function resetBranding() {
+  if (!confirm('Reset branding to the platform default? This clears any preset or custom colours.')) return;
+  const status = document.querySelector('[data-status="branding"]');
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/branding`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ branding: null }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `reset_${res.status}`);
+    state.config.branding = null;
+    if (status) { status.textContent = 'Reset to default'; status.className = 'config-save-status ok'; }
+    toast('Branding reset', 'ok');
+    rerenderCard('branding');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't reset: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Reset failed: ${e.message || e}`, 'err');
   }
 }
 
