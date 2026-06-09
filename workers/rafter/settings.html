@@ -221,8 +221,11 @@
 
   /* Email template merge tags + preview */
   .config-merge-fields { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; margin-bottom: 8px; }
-  .config-merge-tag { background: var(--rf-teal-bg); color: var(--rf-navy); border: 0.5px solid var(--rf-teal-border); border-radius: 4px; padding: 3px 8px; font-size: 11px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; cursor: pointer; transition: filter 0.12s; }
-  .config-merge-tag:hover { filter: brightness(0.95); }
+  .config-merge-label { font-size: 11px; color: var(--rf-muted); font-weight: 500; }
+  .config-merge-tag { background: var(--rf-teal-bg); color: var(--rf-navy); border: 0.5px solid var(--rf-teal-border); border-radius: 4px; padding: 4px 10px; font-size: 11px; font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; cursor: pointer; transition: background 0.12s, color 0.12s, border-color 0.12s, box-shadow 0.12s; display: inline-flex; align-items: center; gap: 4px; user-select: none; box-shadow: 0 1px 0 rgba(15,23,42,0.04); }
+  .config-merge-tag:hover { background: var(--rf-navy); color: #fff; border-color: var(--rf-navy); box-shadow: 0 1px 3px rgba(27,79,114,0.25); }
+  .config-merge-tag i { font-size: 11px; opacity: 0.7; }
+  .config-merge-tag:hover i { opacity: 1; }
   .config-email-template-ta { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 12px; min-height: 160px; }
   .config-email-preview-box { border: 0.5px solid var(--rf-border); border-radius: 6px; padding: 14px; background: #fff; font-size: 13px; min-height: 50px; margin-top: 10px; }
   .config-email-preview-box mark { background: #fffde7; color: inherit; padding: 0 2px; border-radius: 2px; }
@@ -1722,25 +1725,28 @@ async function saveCredentials() {
 function renderEmailTemplateCard() {
   const tpl = state.config?.email_template || '';
   const expanded = configCardOpen('email-template');
-  const summary = tpl.trim() ? `${tpl.length} char${tpl.length === 1 ? '' : 's'} configured` : 'Using default template';
   const isEmpty = !tpl.trim();
+  // Configured templates show no summary subtext — the operator already
+  // knows what they wrote. Empty case keeps the "Using default" notice
+  // because they need to know a default is being substituted on send.
+  const summaryHtml = isEmpty ? '<div class="config-card-summary empty">Using default template</div>' : '';
   return `
     <div class="config-card${expanded ? ' expanded' : ''}" data-pane="email-template">
       <div class="config-card-head" data-action="toggle-config">
         <div class="config-card-titles">
           <div class="config-card-title">Email template</div>
-          <div class="config-card-summary${isEmpty ? ' empty' : ''}">${esc(summary)}</div>
+          ${summaryHtml}
         </div>
         <i class="ti ti-chevron-down config-card-chevron"></i>
       </div>
       <div class="config-card-body">
         <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">The email sent to customers with their quote attached. Press Enter for a new paragraph; use the toolbar for basic formatting. Leave blank to use a default with your logo.</div>
         <div class="config-merge-fields">
-          <span style="font-size:11px;color:var(--rf-muted);">Insert:</span>
-          <span class="config-merge-tag" data-merge="{client_name}">{client_name}</span>
-          <span class="config-merge-tag" data-merge="{job_address}">{job_address}</span>
-          <span class="config-merge-tag" data-merge="{quote_ref}">{quote_ref}</span>
-          <span class="config-merge-tag" data-merge="{total}">{total}</span>
+          <span class="config-merge-label">Click a tag to insert it at the cursor:</span>
+          <button type="button" class="config-merge-tag" data-merge="{client_name}"><i class="ti ti-plus"></i>{client_name}</button>
+          <button type="button" class="config-merge-tag" data-merge="{job_address}"><i class="ti ti-plus"></i>{job_address}</button>
+          <button type="button" class="config-merge-tag" data-merge="{quote_ref}"><i class="ti ti-plus"></i>{quote_ref}</button>
+          <button type="button" class="config-merge-tag" data-merge="{total}"><i class="ti ti-plus"></i>{total}</button>
         </div>
         <div class="config-editor-wrap">
           <div class="config-editor-toolbar" role="toolbar" aria-label="Formatting">
@@ -1754,7 +1760,7 @@ function renderEmailTemplateCard() {
           </div>
           <div id="cfg-email_template" class="config-editor-body" contenteditable="true" data-placeholder="Hi {client_name}, please find attached your quote for {job_address}…"></div>
         </div>
-        <div class="config-field-hint">Click a merge tag above to insert it at the cursor. Press Enter for a new paragraph.</div>
+        <div class="config-field-hint">Press Enter for a new paragraph.</div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
           <button type="button" class="btn small" id="cfg-email-preview-btn"><i class="ti ti-eye"></i>Preview</button>
           <span style="font-size:11px;color:var(--rf-muted);">Sample data substituted</span>
@@ -1955,11 +1961,9 @@ function renderBrandingCard() {
 
 function brandingSummary(br) {
   if (!br || (!br.preset && !br.primary && !br.accent && !br.background)) return { value: '' };
-  if (br.preset) return { value: `Preset: ${br.preset}` };
-  const hexParts = ['primary','accent','background']
-    .filter(k => br[k])
-    .map(k => `${k} ${br[k]}`);
-  return { value: hexParts.length ? `Custom · ${hexParts.join(' · ')}` : '' };
+  if (br.preset) return { value: `Selected: ${br.preset}` };
+  // Custom mode (has hex but no preset key)
+  return { value: 'Selected: Custom colours' };
 }
 
 function renderBrandingBody(br, mode) {
