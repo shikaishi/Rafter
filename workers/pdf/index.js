@@ -16,12 +16,21 @@ const PLATFORM_DEFAULTS = {
   background: "#EAF4F8",
 };
 
+// RFT-105 — 8 palettes, single source. /settings/branding-presets
+// (admin-api) proxies this table via the PDF_WORKER service binding; the
+// onboarding palette picker (RFT-61) and settings branding pane (RFT-102)
+// read it through the same proxy. Never inline-mirror these values.
+// deep-green-sea was previously aliased to PLATFORM_DEFAULTS (teal/blue) —
+// corrected here to the actual green palette.
 const PRESETS = {
-  "deep-green-sea": PLATFORM_DEFAULTS,
-  "slate-copper":   { primary: "#B7410E", accent: "#2F3E46", background: "#F4F1ED" },
-  "ink-amber":      { primary: "#1C1C1E", accent: "#E8A317", background: "#FAF8F4" },
-  "oxblood":        { primary: "#6B0F1A", accent: "#1A1A1A", background: "#F5F0E8" },
-  "terracotta":     { primary: "#C75B39", accent: "#3D405B", background: "#FFF8F0" },
+  "deep-green-sea": { primary: "#0D2E1C", accent: "#84B741", background: "#ECF1E8" },
+  "slate-copper":   { primary: "#2F3E46", accent: "#C15B28", background: "#F3EFEA" },
+  "ink-amber":      { primary: "#1A1A1A", accent: "#E8A317", background: "#F5F2EC" },
+  "oxblood":        { primary: "#6E1423", accent: "#2B2B2B", background: "#F4EEEC" },
+  "harbour-blue":   { primary: "#163A5F", accent: "#4FA3C7", background: "#EBF1F4" },
+  "plum-stone":     { primary: "#4A2C4D", accent: "#B0856B", background: "#F1ECEE" },
+  "teal-rust":      { primary: "#15605A", accent: "#C66B3D", background: "#EDF2F0" },
+  "graphite":       { primary: "#33373B", accent: "#8A9499", background: "#F0F1F2" },
 };
 
 function resolveBranding(branding) {
