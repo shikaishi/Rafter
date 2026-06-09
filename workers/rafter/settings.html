@@ -151,6 +151,38 @@
   .error-card { padding: 16px 18px; }
   .error-card .err-title { color: var(--rf-danger); font-weight: 600; margin-bottom: 4px; }
   .error-card .err-msg { font-size: 13px; color: var(--rf-muted); }
+
+  /* RFT-102 Phase 3 — Business Configuration zone (Zone 2) */
+  .config-card { border: 0.5px solid var(--rf-border); border-radius: 10px; margin-top: 10px; overflow: hidden; }
+  .config-card-head { display: flex; align-items: center; gap: 10px; padding: 12px 14px; background: var(--rf-row-bg); cursor: pointer; user-select: none; border-bottom: 0.5px solid transparent; transition: border-color 0.15s; }
+  .config-card.expanded .config-card-head { border-bottom-color: var(--rf-divider); }
+  .config-card-titles { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .config-card-title { font-size: 13px; font-weight: 600; color: var(--rf-navy); }
+  .config-card-summary { font-size: 12px; color: var(--rf-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .config-card-summary.empty { font-style: italic; }
+  /* Array-pane summary preview must read unambiguously as a preview, not as
+     content. Italic + muted + ellipsis, prefixed with the count. */
+  .config-card-summary .preview-quote { font-style: italic; opacity: 0.75; }
+  .config-card-summary .preview-count { font-style: normal; font-weight: 500; color: var(--rf-navy); opacity: 0.85; margin-right: 6px; }
+  .config-card-chevron { color: var(--rf-muted); font-size: 16px; transition: transform 0.15s; }
+  .config-card.expanded .config-card-chevron { transform: rotate(180deg); }
+  .config-card-body { display: none; padding: 14px; }
+  .config-card.expanded .config-card-body { display: block; }
+  .config-field { margin-bottom: 12px; }
+  .config-field:last-child { margin-bottom: 0; }
+  .config-field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 12px; }
+  @media (max-width: 560px) { .config-field-row { grid-template-columns: 1fr; } }
+  .config-field label { display: block; font-size: 12px; font-weight: 500; color: var(--rf-navy); margin-bottom: 4px; }
+  .config-field input { width: 100%; padding: 8px 10px; font-size: 13px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; color: var(--rf-text); background: #fff; transition: border-color 0.15s, box-shadow 0.15s; }
+  .config-field input:focus { outline: none; border-color: var(--rf-ocean); box-shadow: 0 0 0 2px rgba(46,134,171,0.18); }
+  .config-field input.invalid { border-color: var(--rf-danger); }
+  .config-field-hint { font-size: 11px; color: var(--rf-muted); margin-top: 4px; min-height: 14px; }
+  .config-field-hint.ok { color: var(--rf-success); }
+  .config-field-hint.err { color: var(--rf-danger); }
+  .config-actions { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 0.5px dashed var(--rf-divider); margin-top: 4px; }
+  .config-save-status { font-size: 11px; color: var(--rf-muted); }
+  .config-save-status.ok { color: var(--rf-success); }
+  .config-save-status.err { color: var(--rf-danger); }
 </style>
 </head>
 <body>
@@ -187,6 +219,7 @@
 
   <!-- Sections + photos pane -->
   <div id="mainPane" style="display:none;">
+    <!-- Zone 1 — Quote Builder ops (existing Phase 2) -->
     <div class="card">
       <div class="pane">
         <div class="pane-header">
@@ -205,6 +238,19 @@
           <span class="sec-instruction">Expand to edit photos · Collapse all to reorder sections</span>
         </div>
         <div id="sectionsList"></div>
+      </div>
+    </div>
+
+    <!-- Zone 2 — Business Configuration (RFT-102 Phase 3) -->
+    <div class="card">
+      <div class="pane">
+        <div class="pane-header">
+          <h2><i class="ti ti-adjustments" style="vertical-align:middle;margin-right:4px;"></i>Business Configuration</h2>
+        </div>
+        <div style="font-size:12px;color:var(--rf-muted);line-height:1.5;margin-bottom:8px;">
+          Settings that appear on your quotes — business identity, payment terms, branding.
+        </div>
+        <div id="configCards"></div>
       </div>
     </div>
   </div>
@@ -232,6 +278,11 @@ const state = {
   // per-photo drag inside an open section.
   expanded: new Set(),
   dragSectionUuid: null, // section being dragged in section-reorder mode
+  // RFT-102 Phase 3: per-pane config slices, populated from /settings/state.
+  // Each pane reads/writes its own slice; never mutate during edit (only on
+  // successful save). configExpanded tracks which Zone 2 cards are open.
+  config: null,
+  configExpanded: new Set(),
 };
 
 function $(id) { return document.getElementById(id); }
@@ -335,7 +386,12 @@ async function loadState() {
     state.company_name = data.company_name;
     state.sections = data.sections || [];
     state.photos = data.photos || [];
+    // RFT-102 Phase 3: capture config slices for the Business Configuration zone.
+    state.config = data.config || {};
     render();
+    // Zone 2 renders separately from render(), so a Zone 1 re-render (drag,
+    // photo ops) never clobbers unsaved input in an expanded config card.
+    renderConfigCards();
   } catch (e) {
     showError('Network error loading settings. Please refresh.');
   }
@@ -799,6 +855,249 @@ function wireSectionDrag(root) {
 }
 function cleanSectionDragOver() {
   document.querySelectorAll('.section-card.drag-over').forEach(el => el.classList.remove('drag-over'));
+}
+
+// ─── RFT-102 Phase 3: Zone 2 — Business Configuration ───────────────────────
+//
+// One config card per pane. Collapsed by default; the head shows a one-line
+// summary of the current value(s). Per-card save: each card writes via its
+// own /settings/config/<pane> endpoint. A failed save on one card never
+// blocks another.
+//
+// Hard checkpoint: only the first pane (business-details) is wired below.
+// The other six panes ship after sign-off.
+
+// Generic helpers reused across all panes.
+
+function configCardOpen(pane) { return state.configExpanded.has(pane); }
+function configToggleCard(pane) {
+  if (state.configExpanded.has(pane)) state.configExpanded.delete(pane);
+  else state.configExpanded.add(pane);
+  renderConfigCards();
+}
+
+// Compact display value for scalar pane summaries. Omits empty fields and
+// joins the rest with " · ". When the whole row is empty, returns null so the
+// caller can render the muted "Not set" placeholder.
+function compactSummary(values) {
+  const parts = values.map(v => (v || '').trim()).filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+// Truncate a long string for the summary preview. Keeps the boundary at a
+// word break when possible; always ends with "…". Used only for array-pane
+// previews so the preview reads unambiguously as a preview, never as content.
+function previewTrunc(s, max = 60) {
+  const t = String(s || '').replace(/\s+/g, ' ').trim();
+  if (!t) return '';
+  if (t.length <= max) return t;
+  const cut = t.slice(0, max);
+  const lastSpace = cut.lastIndexOf(' ');
+  return (lastSpace > 30 ? cut.slice(0, lastSpace) : cut) + '…';
+}
+
+// Render the Business Configuration cards. Only business-details is wired
+// at the checkpoint; the other six panes will mount here after sign-off.
+function renderConfigCards() {
+  const root = $('configCards');
+  if (!root) return;
+  if (!state.config) { root.innerHTML = ''; return; }
+
+  root.innerHTML = renderBusinessDetailsCard();
+
+  // Wire toggle on the card head (delegated to the head element only — body
+  // clicks should NOT collapse the card).
+  root.querySelectorAll('[data-action="toggle-config"]').forEach(head => {
+    head.addEventListener('click', () => {
+      const pane = head.closest('.config-card')?.dataset.pane;
+      if (pane) configToggleCard(pane);
+    });
+  });
+
+  // Wire the business-details pane (the only pane built at this checkpoint).
+  wireBusinessDetailsPane(root);
+}
+
+// ─── 1 of 7: Business details ───────────────────────────────────────────────
+//
+// Six scalar fields: company_name, phone, business_address, abn,
+// business_email, operator_email. ABN live-validator lifted from
+// onboarding.html — same /onboarding/abn-lookup endpoint (admin-gated; we
+// have a Clerk JWT here so the lookup runs fully).
+
+function renderBusinessDetailsCard() {
+  const c = state.config || {};
+  const expanded = configCardOpen('business-details');
+  const summary = compactSummary([c.company_name, c.phone, c.business_email]);
+  const summaryHtml = summary ? esc(summary) : 'Not set yet';
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="business-details">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Business details</div>
+          <div class="config-card-summary${summary ? '' : ' empty'}">${summaryHtml}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div class="config-field">
+          <label for="cfg-company_name">Company name</label>
+          <input type="text" id="cfg-company_name" value="${esc(c.company_name || '')}" autocomplete="organization">
+        </div>
+        <div class="config-field-row">
+          <div class="config-field">
+            <label for="cfg-abn">ABN</label>
+            <input type="text" id="cfg-abn" value="${esc(c.abn || '')}" placeholder="12 345 678 901" maxlength="14" autocomplete="off" inputmode="numeric">
+            <div id="cfg-abn-hint" class="config-field-hint"></div>
+          </div>
+          <div class="config-field">
+            <label for="cfg-phone">Phone</label>
+            <input type="tel" id="cfg-phone" value="${esc(c.phone || '')}" placeholder="0412 345 678 or 03 9000 0000" autocomplete="tel">
+          </div>
+        </div>
+        <div class="config-field">
+          <label for="cfg-business_address">Business address</label>
+          <input type="text" id="cfg-business_address" value="${esc(c.business_address || '')}" placeholder="e.g. 123 Main St, Melbourne VIC 3000" autocomplete="street-address">
+        </div>
+        <div class="config-field-row">
+          <div class="config-field">
+            <label for="cfg-business_email">Business email</label>
+            <input type="email" id="cfg-business_email" value="${esc(c.business_email || '')}" placeholder="info@yourcompany.com.au" autocomplete="email">
+            <div class="config-field-hint">Shown on PDF quotes</div>
+          </div>
+          <div class="config-field">
+            <label for="cfg-operator_email">Operator email</label>
+            <input type="email" id="cfg-operator_email" value="${esc(c.operator_email || '')}" placeholder="admin@yourcompany.com.au" autocomplete="off">
+            <div class="config-field-hint">Internal — receives quote notifications</div>
+          </div>
+        </div>
+        <div class="config-actions">
+          <button class="btn primary" data-action="save-business-details"><i class="ti ti-check"></i>Save</button>
+          <span class="config-save-status" data-status="business-details"></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function wireBusinessDetailsPane(root) {
+  initAbnValidationFor('cfg-abn', 'cfg-abn-hint');
+  const saveBtn = root.querySelector('[data-action="save-business-details"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveBusinessDetails);
+}
+
+async function saveBusinessDetails() {
+  const status = document.querySelector('[data-status="business-details"]');
+  const btn = document.querySelector('[data-action="save-business-details"]');
+  if (!btn) return;
+
+  // Collect current field values. ABN normalises to digits-only — same
+  // contract as onboarding.html so KV stores a canonical form.
+  const body = {
+    company_name:     $('cfg-company_name').value.trim(),
+    phone:            $('cfg-phone').value.trim(),
+    business_address: $('cfg-business_address').value.trim(),
+    abn:              $('cfg-abn').value.replace(/\D/g, ''),
+    business_email:   $('cfg-business_email').value.trim(),
+    operator_email:   $('cfg-operator_email').value.trim(),
+  };
+
+  if (!body.company_name) {
+    if (status) { status.textContent = 'Company name is required'; status.className = 'config-save-status err'; }
+    return;
+  }
+
+  btn.disabled = true;
+  const originalLabel = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/business-details`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+
+    // Optimistic: local state mirrors the saved values. Topbar reflects the
+    // possibly-changed company name without a full reload.
+    Object.assign(state.config, body);
+    state.company_name = body.company_name;
+    $('topbarCompany').textContent = body.company_name || state.slug || '—';
+
+    if (status) { status.textContent = 'Saved'; status.className = 'config-save-status ok'; }
+    toast('Business details saved', 'ok');
+    // Re-render so the collapsed summary line reflects the new values when
+    // the user closes the card. Keep the card expanded for now (less jarring
+    // than auto-collapsing after a save).
+    renderConfigCards();
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = originalLabel;
+  }
+}
+
+// ─── ABN live validation (lifted from onboarding.html lines 992-1130) ───────
+//
+// Format-as-you-type, checksum on blur, live ABR lookup via the existing
+// /onboarding/abn-lookup endpoint. Parameterised by input id + hint id so
+// future panes can reuse the same helper.
+
+function formatAbn(raw) {
+  const d = String(raw || '').replace(/\D/g, '').slice(0, 11);
+  if (d.length < 3) return d;
+  if (d.length < 6) return `${d.slice(0,2)} ${d.slice(2)}`;
+  if (d.length < 9) return `${d.slice(0,2)} ${d.slice(2,5)} ${d.slice(5)}`;
+  return `${d.slice(0,2)} ${d.slice(2,5)} ${d.slice(5,8)} ${d.slice(8)}`;
+}
+
+function validateAbnChecksum(digits) {
+  if (!/^\d{11}$/.test(digits)) return false;
+  const weights = [10, 1, 3, 5, 7, 9, 11, 13, 15, 17, 19];
+  const d = digits.split('').map(Number);
+  d[0] -= 1;
+  const sum = d.reduce((acc, v, i) => acc + v * weights[i], 0);
+  return sum % 89 === 0;
+}
+
+function initAbnValidationFor(inputId, hintId) {
+  const input = document.getElementById(inputId);
+  const hint  = document.getElementById(hintId);
+  if (!input || !hint) return;
+  // Format on first load (KV stores digits-only; display formats with spaces).
+  input.value = formatAbn(input.value);
+
+  const clear = () => { hint.textContent = ''; hint.className = 'config-field-hint'; input.classList.remove('invalid'); };
+  const err = (msg) => { hint.textContent = msg; hint.className = 'config-field-hint err'; input.classList.add('invalid'); };
+  const ok  = (msg) => { hint.textContent = msg; hint.className = 'config-field-hint ok'; input.classList.remove('invalid'); };
+
+  input.addEventListener('input', () => {
+    const digits = input.value.replace(/\D/g, '').slice(0, 11);
+    input.value = formatAbn(digits);
+    clear();
+  });
+  input.addEventListener('blur', async () => {
+    const digits = input.value.replace(/\D/g, '');
+    if (!digits) return clear();
+    if (digits.length !== 11) return err('ABN must be 11 digits');
+    if (!validateAbnChecksum(digits)) return err('Invalid ABN — please check and re-enter');
+    hint.textContent = 'Checking…'; hint.className = 'config-field-hint';
+    try {
+      const res = await authedFetch(`${ADMIN_API}/onboarding/abn-lookup?abn=${digits}`);
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.ok) { ok('✓ Valid ABN'); return; } // checksum passes; lookup unavailable
+      if (data.mode === 'checksum_only') return ok('✓ Valid ABN');
+      if (!data.valid) return err(`ABN ${data.entityStatus ?? 'not found'}${data.reason ? ': ' + data.reason : ''}`);
+      ok(`✓ Active${data.entityName ? ' — ' + data.entityName : ''}`);
+    } catch (e) {
+      ok('✓ Valid ABN'); // lookup failed; checksum still passed
+    }
+  });
 }
 
 async function uploadFiles(files) {

@@ -87,6 +87,15 @@ export default {
     let response;
     if (request.method === "GET" && url.pathname === "/health") {
       response = json({ ok: true });
+    } else if (request.method === "GET" && url.pathname === "/presets") {
+      // RFT-102: single-source the branding presets. admin-api proxies this
+      // via the PDF_WORKER service binding so the settings palette picker
+      // and the rendered PDF can never drift.
+      response = json({
+        platform_default: PLATFORM_DEFAULTS,
+        presets: PRESETS,
+        preset_names: Object.keys(PRESETS),
+      });
     } else if (request.method === "POST" && url.pathname === "/generate") {
       response = await handleGenerate(request, env, url);
     } else {

@@ -450,6 +450,22 @@ async function handleSettings(request, env, url, jwtPayload) {
   if (method === 'POST' && path === '/settings/sections/reorder')          return handleSettingsSectionReorder(uuid, request, env);
   if (method === 'POST' && path === '/settings/sections/sync')             return handleSettingsSectionsSync(uuid, env);
 
+  // RFT-102 Phase 3: per-pane config endpoints. Each uses mutateClientRecord
+  // and owns ONE slice. Nested-object slices (bank_details, payment_thresholds,
+  // branding) deep-merge so a partial save never nulls adjacent keys.
+  if (method === 'POST' && path === '/settings/config/business-details')   return handleSettingsConfigBusinessDetails(uuid, request, env);
+  if (method === 'POST' && path === '/settings/config/bank-details')       return handleSettingsConfigBankDetails(uuid, request, env);
+  if (method === 'POST' && path === '/settings/config/payment-thresholds') return handleSettingsConfigPaymentThresholds(uuid, request, env);
+  if (method === 'POST' && path === '/settings/config/terms')              return handleSettingsConfigTerms(uuid, request, env);
+  if (method === 'POST' && path === '/settings/config/credentials')        return handleSettingsConfigCredentials(uuid, request, env);
+  if (method === 'POST' && path === '/settings/config/email-template')     return handleSettingsConfigEmailTemplate(uuid, request, env);
+  if (method === 'POST' && path === '/settings/config/branding')           return handleSettingsConfigBranding(uuid, request, env);
+  // RFT-102 Phase 3: branding-presets read proxies the pdf worker's PRESETS
+  // table via the PDF_WORKER service binding. Single-source — never inline
+  // the palette list into settings.html (swatch-vs-PDF drift is the worst
+  // branding failure mode).
+  if (method === 'GET'  && path === '/settings/branding-presets')          return handleSettingsBrandingPresets(env);
+
   return json({ ok: false, error: 'Not Found', path }, 404);
 }
 
@@ -505,6 +521,24 @@ async function handleSettingsState(uuid, env) {
     slug: record.slug || '',
     sections,
     photos,
+    // RFT-102 Phase 3: per-pane config slices for the seven Business
+    // Configuration cards. Returned together so settings.html can populate
+    // every pane from a single round-trip. company_name is duplicated at the
+    // top level (existing Phase 2 reader) and inside config (Phase 3 pane).
+    config: {
+      company_name:         record.company_name || '',
+      phone:                record.phone || '',
+      business_address:     record.business_address || '',
+      abn:                  record.abn || '',
+      business_email:       record.business_email || '',
+      operator_email:       record.operator_email || '',
+      bank_details:         (record.bank_details && typeof record.bank_details === 'object') ? record.bank_details : {},
+      payment_thresholds:   (record.payment_thresholds && typeof record.payment_thresholds === 'object') ? record.payment_thresholds : {},
+      credentials:          Array.isArray(record.credentials) ? record.credentials : [],
+      terms_and_conditions: Array.isArray(record.terms_and_conditions) ? record.terms_and_conditions : [],
+      email_template:       record.email_template || '',
+      branding:             record.branding ?? null,
+    },
   });
 }
 
@@ -1175,6 +1209,328 @@ async function handleSettingsSectionsSync(uuid, env) {
     unchanged_count: unchanged.length,
     failed,
   });
+}
+
+// ── RFT-102 Phase 3 — per-pane config endpoints ──────────────────────────────
+//
+// Pattern (every pane):
+//   1. parseBody → 400 invalid_json on malformed
+//   2. rejectForbiddenConfigKeys → 400 if body carries slug / OAuth / clerk_org
+//      / Phase-2-owned keys. Never trust a client-supplied tenant identity.
+//   3. validate the pane's own slice (per-handler)
+//   4. mutateClientRecord(uuid, env, mutator) — atomic read-modify-write
+//   5. 200 { ok, fields } on success; 404 client_not_found if KV miss
+//
+// Why dedicated endpoints and not /onboarding/provision: provision is
+// shallow-merge and header-taxed (requires slug + company_name + webhook_env
+// in every call). Per-pane endpoints carry no header tax (uuid resolved from
+// JWT org) and deep-merge nested objects, so a partial save of bank_details
+// or branding never nulls adjacent keys.
+
+// Keys a settings/config/* endpoint must NEVER accept from the client.
+// slug / webhook_env / webhook_url / OAuth tokens / clerk_org_id / gate flag
+// are admin-or-provisioning-only. templates / photo_order are owned by the
+// Phase 2 sections endpoints. uuid / logo_url are derived server-side.
+const FORBIDDEN_CONFIG_KEYS = new Set([
+  'slug', 'webhook_env', 'webhook_url',
+  'access_token', 'refresh_token', 'expires_at', 'sm8_uuid',
+  'clerk_org_id', 'gate_enforced',
+  'uuid', 'logo_url',
+  'templates', 'photo_order',
+  'staff_uuid',
+]);
+
+function rejectForbiddenConfigKeys(body) {
+  if (!body || typeof body !== 'object') return null;
+  const present = Object.keys(body).filter(k => FORBIDDEN_CONFIG_KEYS.has(k));
+  if (present.length) {
+    return json({
+      ok: false, error: 'forbidden_keys', keys: present,
+      detail: 'These keys are not editable via /settings/config — use the appropriate admin or provisioning surface.',
+    }, 400);
+  }
+  return null;
+}
+
+// Pull only string values for the named keys out of body. Trim whitespace,
+// reject non-string with a per-field error. Returns { fields, errors } where
+// fields = { key: trimmed } for every key explicitly present in body.
+function pickStringFields(body, keys, opts = {}) {
+  const fields = {};
+  const errors = [];
+  const maxLen = opts.maxLen ?? 2000;
+  for (const k of keys) {
+    if (body[k] === undefined) continue;
+    const v = body[k];
+    if (v === null) { fields[k] = ''; continue; } // explicit clear
+    if (typeof v !== 'string') { errors.push(`${k}_not_string`); continue; }
+    if (v.length > maxLen) { errors.push(`${k}_too_long`); continue; }
+    fields[k] = v.trim();
+  }
+  return { fields, errors };
+}
+
+// 1 of 7 — business details (6 scalar fields). Empty-string clears OK; the
+// onboarding form enforces company_name required, but here we allow rename
+// without re-providing it (omit the key → leave existing value). To clear,
+// caller sends '' or null. company_name reset to '' would put the record in
+// an inconsistent state per the provision invariant, so we reject empty
+// company_name explicitly.
+async function handleSettingsConfigBusinessDetails(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  const SCALAR_KEYS = ['company_name', 'phone', 'business_address', 'abn', 'business_email', 'operator_email'];
+  const { fields, errors } = pickStringFields(body, SCALAR_KEYS, { maxLen: 500 });
+  if (errors.length) return json({ ok: false, error: 'invalid_fields', errors }, 400);
+
+  if (fields.company_name !== undefined && fields.company_name === '') {
+    return json({ ok: false, error: 'company_name_required', detail: 'company_name cannot be empty.' }, 400);
+  }
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    Object.assign(record, fields);
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, fields: Object.keys(fields) });
+}
+
+// 2 of 7 — bank details. Shape: { name, bsb, account }. Deep-merge: only
+// keys present in body override; absent keys preserve existing. Send null to
+// explicitly clear a sub-key.
+async function handleSettingsConfigBankDetails(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  const bd = body.bank_details;
+  if (bd === undefined) return json({ ok: false, error: 'missing_bank_details' }, 400);
+  if (bd === null || typeof bd !== 'object' || Array.isArray(bd)) {
+    return json({ ok: false, error: 'bank_details_must_be_object' }, 400);
+  }
+  const { fields, errors } = pickStringFields(bd, ['name', 'bsb', 'account'], { maxLen: 100 });
+  if (errors.length) return json({ ok: false, error: 'invalid_bank_details', errors }, 400);
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    const existing = (record.bank_details && typeof record.bank_details === 'object') ? record.bank_details : {};
+    record.bank_details = { ...existing, ...fields };
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, fields: Object.keys(fields) });
+}
+
+// 3 of 7 — payment thresholds. Shape: { tier_key: "50/50" | [50,50] }. Deep-
+// merge per tier; tiers not present in body are preserved. Arrays normalise
+// to slash-strings the same way provisionClient does (KV stores strings;
+// index.html parseSplit() relies on "/" delimiter).
+async function handleSettingsConfigPaymentThresholds(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  const pt = body.payment_thresholds;
+  if (pt === undefined) return json({ ok: false, error: 'missing_payment_thresholds' }, 400);
+  if (pt === null || typeof pt !== 'object' || Array.isArray(pt)) {
+    return json({ ok: false, error: 'payment_thresholds_must_be_object' }, 400);
+  }
+
+  const normalised = {};
+  const errors = [];
+  const VALID_TIER_RE = /^[a-z0-9_]+$/i;
+  for (const [tier, value] of Object.entries(pt)) {
+    if (!VALID_TIER_RE.test(tier)) { errors.push(`invalid_tier_key:${tier}`); continue; }
+    let str;
+    if (Array.isArray(value)) str = value.join('/');
+    else if (typeof value === 'string') str = value;
+    else { errors.push(`tier_${tier}_not_string_or_array`); continue; }
+    if (str.length > 100) { errors.push(`tier_${tier}_too_long`); continue; }
+    // Loose format check — digits / commas / slashes / whitespace only. Sum-
+    // to-100 enforcement stays client-side (already in onboarding.html);
+    // server keeps the floor permissive so a partial-update can leave a tier
+    // temporarily wrong without 500ing.
+    if (!/^[\d,\s/]+$/.test(str)) { errors.push(`tier_${tier}_bad_format`); continue; }
+    normalised[tier] = str.replace(/\s+/g, '').split(',').map(s => s.trim()).filter(Boolean).join('/');
+  }
+  if (errors.length) return json({ ok: false, error: 'invalid_payment_thresholds', errors }, 400);
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    const existing = (record.payment_thresholds && typeof record.payment_thresholds === 'object') ? record.payment_thresholds : {};
+    record.payment_thresholds = { ...existing, ...normalised };
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, tiers: Object.keys(normalised) });
+}
+
+// 4 of 7 — terms_and_conditions. Array of strings (each a clause). Whole
+// array replaces on save (the pane owns the full list — there's no
+// per-item identity, so partial-merge has no meaning).
+async function handleSettingsConfigTerms(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  const tc = body.terms_and_conditions;
+  if (!Array.isArray(tc)) return json({ ok: false, error: 'terms_must_be_array' }, 400);
+  if (tc.length > 200) return json({ ok: false, error: 'too_many_clauses', max: 200 }, 400);
+
+  const cleaned = [];
+  for (const [i, item] of tc.entries()) {
+    if (typeof item !== 'string') return json({ ok: false, error: `clause_${i}_not_string` }, 400);
+    if (item.length > 5000) return json({ ok: false, error: `clause_${i}_too_long`, max: 5000 }, 400);
+    cleaned.push(item);
+  }
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    record.terms_and_conditions = cleaned;
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, count: cleaned.length });
+}
+
+// 5 of 7 — credentials. Array of { name, detail } objects. Whole-array
+// replace (same reasoning as terms — no per-item identity yet).
+async function handleSettingsConfigCredentials(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  const cr = body.credentials;
+  if (!Array.isArray(cr)) return json({ ok: false, error: 'credentials_must_be_array' }, 400);
+  if (cr.length > 50) return json({ ok: false, error: 'too_many_credentials', max: 50 }, 400);
+
+  const cleaned = [];
+  for (const [i, item] of cr.entries()) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      return json({ ok: false, error: `credential_${i}_must_be_object` }, 400);
+    }
+    const name = typeof item.name === 'string' ? item.name.trim() : '';
+    const detail = typeof item.detail === 'string' ? item.detail.trim() : '';
+    if (!name && !detail) continue; // drop fully-empty rows
+    if (name.length > 200 || detail.length > 1000) {
+      return json({ ok: false, error: `credential_${i}_too_long` }, 400);
+    }
+    cleaned.push({ name, detail });
+  }
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    record.credentials = cleaned;
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, count: cleaned.length });
+}
+
+// 6 of 7 — email_template. Single HTML string. Whole-field replace.
+async function handleSettingsConfigEmailTemplate(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  const tpl = body.email_template;
+  if (tpl === undefined) return json({ ok: false, error: 'missing_email_template' }, 400);
+  if (tpl !== null && typeof tpl !== 'string') return json({ ok: false, error: 'email_template_not_string' }, 400);
+  const value = tpl == null ? '' : tpl;
+  if (value.length > 50000) return json({ ok: false, error: 'email_template_too_long', max: 50000 }, 400);
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    record.email_template = value;
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, length: value.length });
+}
+
+// 7 of 7 — branding. Shape mirrors workers/pdf/index.js:27-35 resolveBranding:
+//   { primary, accent, background, preset, heading_font, body_font }
+// heading_font / body_font are reserved (ignored in v1 — Playfair/Mulish fixed).
+// Hex strings validated against /^#[0-9a-f]{6}$/i; preset must be a known
+// PRESETS key. Deep-merge per sub-key; null clears, undefined preserves.
+const BRANDING_HEX_KEYS = new Set(['primary', 'accent', 'background']);
+const BRANDING_OTHER_KEYS = new Set(['preset', 'heading_font', 'body_font']);
+const BRANDING_ALL_KEYS = new Set([...BRANDING_HEX_KEYS, ...BRANDING_OTHER_KEYS]);
+const HEX_COLOUR_RE = /^#[0-9a-f]{6}$/i;
+
+async function handleSettingsConfigBranding(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  const br = body.branding;
+  if (br === undefined) return json({ ok: false, error: 'missing_branding' }, 400);
+  if (br === null) {
+    // Explicit clear — reset to platform default fallthrough
+    const ok = await mutateClientRecord(uuid, env, (record) => { record.branding = null; });
+    if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+    return json({ ok: true, branding: null });
+  }
+  if (typeof br !== 'object' || Array.isArray(br)) {
+    return json({ ok: false, error: 'branding_must_be_object_or_null' }, 400);
+  }
+
+  // Resolve known preset names from the pdf worker so the validator and the
+  // renderer never disagree on what counts as a valid preset.
+  let validPresets;
+  try {
+    if (!env.PDF_WORKER) throw new Error('pdf_worker_binding_missing');
+    const res = await env.PDF_WORKER.fetch('https://internal/presets');
+    if (!res.ok) throw new Error(`pdf_presets_${res.status}`);
+    const data = await res.json();
+    validPresets = new Set(Array.isArray(data.preset_names) ? data.preset_names : Object.keys(data.presets || {}));
+  } catch (e) {
+    return json({ ok: false, error: 'preset_validation_unavailable', detail: e.message }, 502);
+  }
+
+  const updates = {};
+  const errors = [];
+  for (const [k, v] of Object.entries(br)) {
+    if (!BRANDING_ALL_KEYS.has(k)) { errors.push(`unknown_branding_key:${k}`); continue; }
+    if (v === null) { updates[k] = null; continue; }
+    if (typeof v !== 'string') { errors.push(`${k}_not_string`); continue; }
+    if (BRANDING_HEX_KEYS.has(k) && !HEX_COLOUR_RE.test(v)) { errors.push(`${k}_not_hex_colour`); continue; }
+    if (k === 'preset' && !validPresets.has(v)) { errors.push(`unknown_preset:${v}`); continue; }
+    if (v.length > 100) { errors.push(`${k}_too_long`); continue; }
+    updates[k] = v;
+  }
+  if (errors.length) return json({ ok: false, error: 'invalid_branding', errors }, 400);
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    const existing = (record.branding && typeof record.branding === 'object') ? record.branding : {};
+    // Apply updates: null clears, value sets. Drop null entries from the
+    // final object so resolveBranding's `b.primary || preset.primary` chain
+    // falls through cleanly.
+    const merged = { ...existing };
+    for (const [k, v] of Object.entries(updates)) {
+      if (v === null) delete merged[k];
+      else merged[k] = v;
+    }
+    record.branding = Object.keys(merged).length ? merged : null;
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, keys: Object.keys(updates) });
+}
+
+// GET /settings/branding-presets — proxies the pdf worker's PRESETS table
+// via the existing PDF_WORKER service binding (admin-api/wrangler.toml:23-25,
+// constraint #11). NEVER inline-mirror the preset list in settings.html —
+// swatch-vs-rendered-PDF drift is the worst branding failure mode.
+async function handleSettingsBrandingPresets(env) {
+  if (!env.PDF_WORKER) {
+    return json({ ok: false, error: 'pdf_worker_binding_missing' }, 500);
+  }
+  try {
+    const res = await env.PDF_WORKER.fetch('https://internal/presets');
+    if (!res.ok) return json({ ok: false, error: `pdf_presets_${res.status}` }, 502);
+    const data = await res.json();
+    return json({ ok: true, ...data });
+  } catch (e) {
+    return json({ ok: false, error: 'pdf_presets_fetch_failed', detail: e.message }, 502);
+  }
 }
 
 // Clone a SM8 jobtemplate to a job, GET the job to read its prose, push
