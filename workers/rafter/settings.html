@@ -228,6 +228,21 @@
   .config-email-preview-box mark { background: #fffde7; color: inherit; padding: 0 2px; border-radius: 2px; }
   .config-email-preview-label { font-size: 11px; color: var(--rf-muted); margin-bottom: 4px; text-transform: uppercase; letter-spacing: 0.04em; }
 
+  /* Email template — minimal toolbar + contenteditable editor (RFT-102) */
+  .config-editor-wrap { border: 0.5px solid var(--rf-border); border-radius: 6px; overflow: hidden; background: #fff; }
+  .config-editor-toolbar { display: flex; flex-wrap: wrap; gap: 2px; align-items: center; padding: 6px 8px; background: var(--rf-row-bg); border-bottom: 0.5px solid var(--rf-divider); }
+  .config-editor-btn { background: transparent; border: 0; padding: 5px 7px; border-radius: 4px; color: var(--rf-navy); cursor: pointer; display: inline-flex; align-items: center; gap: 4px; font-family: inherit; font-size: 12px; font-weight: 600; line-height: 1; }
+  .config-editor-btn:hover { background: rgba(27,79,114,0.08); }
+  .config-editor-btn i { font-size: 16px; }
+  .config-editor-sep { width: 1px; height: 18px; background: var(--rf-divider); margin: 0 4px; }
+  .config-editor-body { min-height: 160px; padding: 12px 14px; font-size: 14px; line-height: 1.5; color: var(--rf-text); background: #fff; outline: none; overflow-y: auto; max-height: 400px; }
+  .config-editor-body:empty::before { content: attr(data-placeholder); color: var(--rf-muted); font-style: italic; pointer-events: none; }
+  .config-editor-body p { margin: 0 0 0.8em; }
+  .config-editor-body p:last-child { margin-bottom: 0; }
+  .config-editor-body ul, .config-editor-body ol { margin: 0 0 0.8em 1.4em; padding: 0; }
+  .config-editor-body a { color: var(--rf-ocean); }
+  .config-editor-body img { max-width: 100%; height: auto; }
+
   /* Branding pane — preset swatches + custom hex + live preview */
   .config-branding-modes { display: flex; gap: 6px; margin-bottom: 12px; }
   .config-branding-mode-btn { padding: 6px 12px; font-size: 12px; font-weight: 500; border: 0.5px solid var(--rf-border); background: #fff; color: var(--rf-navy); border-radius: 6px; cursor: pointer; font-family: inherit; }
@@ -1686,9 +1701,23 @@ async function saveCredentials() {
 
 // ─── 6 of 7: Email template ─────────────────────────────────────────────────
 //
-// Textarea + merge-tag pills + preview button. Preview substitutes sample
-// values and renders to innerHTML — same as onboarding.html. Self-XSS only
-// (operator views their own template; no multi-tenant surface).
+// Minimal contenteditable editor + toolbar. Replaces the raw-HTML textarea
+// (RFT-102 follow-up). Toolbar: Bold, Italic, Bulleted list, Numbered list,
+// Link. Merge-tag pills reuse the existing wiring via execCommand insertText
+// so {client_name} round-trips as literal text (no entity encoding, no span
+// wrapping — see RFT-102 checkpoint report).
+//
+// Headline fix: Enter inserts <p>…</p> paragraph breaks (defaultParagraph-
+// Separator = 'p'), so plain-text typing renders with paragraph breaks in
+// the customer's inbox instead of collapsing to a single line.
+//
+// Bundle add: 0 KB. contenteditable + execCommand are native browser APIs.
+// execCommand is MDN-flagged deprecated but universally supported with no
+// announced removal — pragmatic choice for this minimal scope. The full
+// trade-off discussion is in the RFT-102 ticket comments.
+//
+// Self-XSS only (operator views/sends their own template; admin-gated, per-
+// org-JWT scoped — no multi-tenant browser surface for email_template).
 
 function renderEmailTemplateCard() {
   const tpl = state.config?.email_template || '';
@@ -1705,7 +1734,7 @@ function renderEmailTemplateCard() {
         <i class="ti ti-chevron-down config-card-chevron"></i>
       </div>
       <div class="config-card-body">
-        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">The HTML email sent to customers with their quote attached. Leave blank to use a sensible default with your logo.</div>
+        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">The email sent to customers with their quote attached. Press Enter for a new paragraph; use the toolbar for basic formatting. Leave blank to use a default with your logo.</div>
         <div class="config-merge-fields">
           <span style="font-size:11px;color:var(--rf-muted);">Insert:</span>
           <span class="config-merge-tag" data-merge="{client_name}">{client_name}</span>
@@ -1713,10 +1742,19 @@ function renderEmailTemplateCard() {
           <span class="config-merge-tag" data-merge="{quote_ref}">{quote_ref}</span>
           <span class="config-merge-tag" data-merge="{total}">{total}</span>
         </div>
-        <div class="config-field">
-          <textarea id="cfg-email_template" class="config-email-template-ta" rows="10" placeholder="Leave blank — a default will be generated with your logo and contact details.">${esc(tpl)}</textarea>
-          <div class="config-field-hint">Click a merge tag above to insert it at the cursor.</div>
+        <div class="config-editor-wrap">
+          <div class="config-editor-toolbar" role="toolbar" aria-label="Formatting">
+            <button type="button" class="config-editor-btn" data-cmd="bold" title="Bold (Ctrl+B)"><i class="ti ti-bold"></i></button>
+            <button type="button" class="config-editor-btn" data-cmd="italic" title="Italic (Ctrl+I)"><i class="ti ti-italic"></i></button>
+            <span class="config-editor-sep"></span>
+            <button type="button" class="config-editor-btn" data-cmd="insertUnorderedList" title="Bulleted list"><i class="ti ti-list"></i></button>
+            <button type="button" class="config-editor-btn" data-cmd="insertOrderedList" title="Numbered list"><i class="ti ti-list-numbers"></i></button>
+            <span class="config-editor-sep"></span>
+            <button type="button" class="config-editor-btn" data-cmd="link" title="Insert/edit link"><i class="ti ti-link"></i></button>
+          </div>
+          <div id="cfg-email_template" class="config-editor-body" contenteditable="true" data-placeholder="Hi {client_name}, please find attached your quote for {job_address}…"></div>
         </div>
+        <div class="config-field-hint">Click a merge tag above to insert it at the cursor. Press Enter for a new paragraph.</div>
         <div style="display:flex;gap:8px;align-items:center;margin-top:8px;">
           <button type="button" class="btn small" id="cfg-email-preview-btn"><i class="ti ti-eye"></i>Preview</button>
           <span style="font-size:11px;color:var(--rf-muted);">Sample data substituted</span>
@@ -1735,33 +1773,82 @@ function renderEmailTemplateCard() {
 }
 
 function wireEmailTemplatePane(root) {
-  const ta = root.querySelector('#cfg-email_template');
-  if (ta) {
-    root.querySelectorAll('.config-merge-tag').forEach(tag => {
-      tag.addEventListener('click', () => {
-        const field = tag.dataset.merge;
-        const start = ta.selectionStart ?? ta.value.length;
-        const end   = ta.selectionEnd   ?? ta.value.length;
-        ta.value = ta.value.slice(0, start) + field + ta.value.slice(end);
-        ta.selectionStart = ta.selectionEnd = start + field.length;
-        ta.focus();
-      });
+  const editor = root.querySelector('#cfg-email_template');
+  if (!editor) return;
+
+  // Mount the stored template programmatically (not via the renderer's
+  // template literal) so a stray </div> in operator-authored HTML can't
+  // break the surrounding markup. innerHTML assignment goes through the
+  // browser's HTML parser → serialiser, preserving content modulo
+  // cosmetic normalisation (the Andy-shape round-trip guarantee).
+  editor.innerHTML = state.config?.email_template || '';
+
+  // Enter → <p> separator. Document-wide setting; calling on each wire pass
+  // is idempotent and cheap. Fixes the Step 1(b) plain-text collapse bug.
+  try { document.execCommand('defaultParagraphSeparator', false, 'p'); } catch { /* old browsers */ }
+
+  // Toolbar buttons (Bold, Italic, Lists, Link). Mousedown/preventDefault so
+  // the editor selection isn't lost when the button takes focus.
+  root.querySelectorAll('.config-editor-btn').forEach(btn => {
+    btn.addEventListener('mousedown', e => e.preventDefault());
+    btn.addEventListener('click', () => {
+      editor.focus();
+      const cmd = btn.dataset.cmd;
+      if (cmd === 'link') {
+        // Editing an existing link prefills the URL; new link prompts blank.
+        const sel = window.getSelection();
+        let currentUrl = '';
+        if (sel && sel.rangeCount) {
+          const node = sel.anchorNode?.nodeType === 3 ? sel.anchorNode.parentElement : sel.anchorNode;
+          const a = node?.closest?.('a');
+          if (a) currentUrl = a.getAttribute('href') || '';
+        }
+        const url = prompt('Link URL (leave blank to remove):', currentUrl);
+        if (url === null) return; // cancelled
+        if (url === '') { try { document.execCommand('unlink'); } catch {} return; }
+        try { document.execCommand('createLink', false, url); } catch {}
+        return;
+      }
+      try { document.execCommand(cmd); } catch {}
     });
-  }
+  });
+
+  // Merge-tag pills — insertText is the safe primitive: inserts a text node,
+  // never wraps in a span, never entity-encodes { or } (HTML spec — { } are
+  // not special characters). Preserves the literal merge tag for the
+  // server-side regex substitution downstream.
+  root.querySelectorAll('.config-merge-tag').forEach(tag => {
+    tag.addEventListener('mousedown', e => e.preventDefault());
+    tag.addEventListener('click', () => {
+      editor.focus();
+      try { document.execCommand('insertText', false, tag.dataset.merge); } catch {
+        // Fallback for browsers that don't expose insertText via execCommand:
+        // create a text node manually at the selection.
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) {
+          const range = sel.getRangeAt(0);
+          range.deleteContents();
+          range.insertNode(document.createTextNode(tag.dataset.merge));
+          range.collapse(false);
+        }
+      }
+    });
+  });
+
+  // Live preview — innerHTML round-trips operator-authored content with
+  // sample data substituted. Identical substitution surface to the prior
+  // textarea preview + to /render-email server-side (materials-sync 320-325).
   const previewBtn = root.querySelector('#cfg-email-preview-btn');
   const previewPanel = root.querySelector('#cfg-email-preview-panel');
   const previewContent = root.querySelector('#cfg-email-preview-content');
-  if (previewBtn && previewPanel && previewContent && ta) {
+  if (previewBtn && previewPanel && previewContent) {
     previewBtn.addEventListener('click', () => {
-      const raw = ta.value.trim();
+      const raw = serialiseEditor(editor).trim();
       if (!raw) {
         previewContent.textContent = '(no template entered — the default with your logo will be used)';
         previewPanel.hidden = false;
         return;
       }
-      // Same substitution surface as onboarding.html (lines 1252-1270).
-      // innerHTML render of operator-authored content; self-XSS only — see
-      // email_template consumer trace in the checkpoint report.
       let html = raw;
       html = html.replace(/\{client_name\}/g, '<mark>Jane Smith</mark>');
       html = html.replace(/\{job_address\}/g, '<mark>45 Collins St, Melbourne VIC 3000</mark>');
@@ -1770,17 +1857,31 @@ function wireEmailTemplatePane(root) {
       previewContent.innerHTML = html;
       previewPanel.hidden = false;
     });
-    ta.addEventListener('input', () => { previewPanel.hidden = true; });
+    editor.addEventListener('input', () => { previewPanel.hidden = true; });
   }
+
   const saveBtn = root.querySelector('[data-action="save-email-template"]');
   if (saveBtn) saveBtn.addEventListener('click', saveEmailTemplate);
+}
+
+// Read the editor's HTML and normalise the two known browser artefacts:
+//   - Chrome inserts a placeholder <br> in an otherwise-empty contenteditable
+//     so an empty editor reports innerHTML === '<br>'. Treat as empty.
+//   - Trailing whitespace from typing.
+// Everything else passes through untouched — that's the round-trip guarantee
+// that makes the Andy-shape migration safe.
+function serialiseEditor(editor) {
+  const html = (editor.innerHTML || '').trim();
+  if (html === '<br>' || html === '<br/>' || html === '<br />') return '';
+  return html;
 }
 
 async function saveEmailTemplate() {
   const status = document.querySelector('[data-status="email-template"]');
   const btn = document.querySelector('[data-action="save-email-template"]');
   if (!btn) return;
-  const email_template = $('cfg-email_template').value;
+  const editor = $('cfg-email_template');
+  const email_template = serialiseEditor(editor);
   btn.disabled = true;
   const orig = btn.innerHTML;
   btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
