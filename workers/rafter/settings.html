@@ -321,6 +321,12 @@
         <div id="configCards"></div>
       </div>
     </div>
+
+    <!-- Footer — bottom-right Back to Quote Builder. Mirrors the topbar link
+         so a long-scroll operator doesn't have to scroll back to leave. -->
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;">
+      <a href="/" id="backLinkBottom" class="btn small" style="text-decoration:none;"><i class="ti ti-arrow-left"></i><span>Back to Quote Builder</span></a>
+    </div>
   </div>
 
 </div>
@@ -474,7 +480,9 @@ function render() {
   $('loadingState').style.display = 'none';
   $('mainPane').style.display = '';
   $('topbarCompany').textContent = state.company_name || state.slug || '—';
-  $('backLink').href = state.slug ? `/${encodeURIComponent(state.slug)}` : '/';
+  const backHref = state.slug ? `/${encodeURIComponent(state.slug)}` : '/';
+  $('backLink').href = backHref;
+  $('backLinkBottom').href = backHref;
 
   const photoMap = new Map(state.photos.map(c => [c.name, c.photos]));
   const sectionsList = $('sectionsList');
