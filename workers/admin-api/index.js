@@ -1659,7 +1659,17 @@ async function handleSettingsTeamInviteSend(uuid, request, env, jwtPayload) {
   // sent the invitation. Pull from membership data we already have.
   const adminEmail = await lookupInviterEmail(env, orgId, inviterUserId).catch(() => '');
 
-  const redirectUrl = `https://rafter.deepgreensea.au/accept-invite.html?slug=${encodeURIComponent(slug)}`;
+  // RFT-87 scope (b) FIX 1 (2026-06-11): encode the target org_id in the
+  // redirect_url. The frontend SignUp resource does NOT expose organizationId
+  // post-ticket-accept (verified against clerk/javascript SignUp.ts — no org
+  // field), and the User resource has no "last accepted invitation" or
+  // "current organization" field either. Sorting organizationMemberships by
+  // createdAt and picking the freshest is correct for the sign_up case
+  // (single membership) but unsafe for the sign_in case where an existing
+  // user with multiple org memberships accepts a fresh ticket. Server-side
+  // is the only place that authoritatively knows which org this ticket is
+  // for at invite-create time — encode it here, read it on the accept page.
+  const redirectUrl = `https://rafter.deepgreensea.au/accept-invite.html?slug=${encodeURIComponent(slug)}&org=${encodeURIComponent(orgId)}`;
 
   // Create the Clerk invitation with notify=false (suppresses Clerk's email,
   // returns the ticket URL on the response so we can send it ourselves).

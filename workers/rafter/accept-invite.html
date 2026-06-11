@@ -104,6 +104,15 @@
   const TICKET = params.get('__clerk_ticket') || '';
   const STATUS = params.get('__clerk_status') || ''; // 'sign_up' | 'sign_in' | ''
   const SLUG = params.get('slug') || '';
+  // RFT-87 scope (b) FIX 1 (2026-06-11): target org_id encoded in the URL
+  // by admin-api at invite-create time. Authoritative — used directly for
+  // the Path B seam resolution. Frontend SignUp/User do not expose the
+  // accepted invitation's organizationId post-finalize (verified against
+  // clerk/javascript source 2026-06-11), so this is the only safe source
+  // for a multi-org sign_in case. The org param is validated to a strict
+  // Clerk-org-id shape before use.
+  const TICKET_ORG_RAW = params.get('org') || '';
+  const TICKET_ORG = /^org_[A-Za-z0-9]{1,64}$/.test(TICKET_ORG_RAW) ? TICKET_ORG_RAW : '';
 
   function setStatus(msg) {
     const el = document.getElementById('status');
@@ -156,19 +165,66 @@
     card.appendChild(secondary);
   }
 
-  // Pick the "just-joined" org for the seam handler. The freshly-accepted
-  // ticket adds a membership; we use it to resolve choose-organization. If
-  // a user happens to be in multiple orgs, the latest-created one is the
-  // one the ticket just produced.
+  // Pick the target org for the Path B seam handler.
+  //
+  // Primary source: TICKET_ORG, the org_id encoded in the redirect_url by
+  // admin-api at invite-create time. Authoritative because admin-api
+  // authenticated the admin's JWT and read org_id from it before issuing
+  // the invite. Defends against the sign_in case where an existing user
+  // with multiple memberships accepts a fresh ticket — the freshest
+  // membership by createdAt could be from an unrelated org.
+  //
+  // Fallback: organizationMemberships sorted by createdAt desc. Used only
+  // if TICKET_ORG is missing (e.g. legacy invite URLs from before this fix,
+  // or a hand-crafted URL). Logged as a warning so an unexpected fallback
+  // is visible in the console for post-deploy review.
+  //
+  // Verification (the membership must exist): even with TICKET_ORG, we
+  // confirm the org appears in organizationMemberships. If it doesn't,
+  // the ticket consume didn't put the user in the org we expected —
+  // surface an error rather than calling setActive on a non-member org
+  // (Clerk would reject anyway, but the error is clearer this way).
   function pickJustJoinedOrgId(user) {
     const memberships = user?.organizationMemberships ?? [];
     if (memberships.length === 0) return null;
-    if (memberships.length === 1) return memberships[0].organization.id;
-    // Sort by createdAt desc — Clerk's SDK returns Date objects.
+
+    if (TICKET_ORG) {
+      const match = memberships.find(m => m.organization.id === TICKET_ORG);
+      if (match) {
+        console.log('[accept-invite] org resolved from ticket URL param', {
+          source: 'url_org',
+          org_id: TICKET_ORG,
+          membership_count: memberships.length,
+        });
+        return TICKET_ORG;
+      }
+      console.warn('[accept-invite] TICKET_ORG present but no matching membership', {
+        ticket_org: TICKET_ORG,
+        memberships: memberships.map(m => m.organization.id),
+      });
+      return null; // Refuse to fall back when the URL was explicit but mismatched.
+    }
+
+    // No TICKET_ORG — legacy/hand-crafted URL. Fall back to createdAt desc
+    // with a warning. Safe for the sign_up case (single membership) but
+    // documented as a sharp edge for sign_in.
+    if (memberships.length === 1) {
+      console.log('[accept-invite] org resolved from sole membership', {
+        source: 'sole_membership',
+        org_id: memberships[0].organization.id,
+      });
+      return memberships[0].organization.id;
+    }
     const sorted = [...memberships].sort((a, b) => {
       const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
       const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
       return tb - ta;
+    });
+    console.warn('[accept-invite] FALLBACK org resolution from createdAt-desc', {
+      source: 'created_at_desc_fallback',
+      reason: 'TICKET_ORG missing — legacy invite URL or hand-crafted',
+      picked_org_id: sorted[0].organization.id,
+      membership_count: memberships.length,
     });
     return sorted[0].organization.id;
   }
@@ -311,14 +367,18 @@
         });
 
         if (initialTask === 'choose-organization') {
-          // Resolve by picking the freshly-joined org. This is the seam:
-          // without this, the session stays pending and createPasskey
-          // is undocumented territory.
+          // Resolve by picking the target org. This is the seam: without
+          // this, the session stays pending and createPasskey is
+          // undocumented territory.
           const orgId = pickJustJoinedOrgId(Clerk.user);
           if (!orgId) {
+            const memberships = Clerk.user?.organizationMemberships ?? [];
+            const detail = memberships.length === 0
+              ? 'organizationMemberships empty after ticket accept'
+              : `TICKET_ORG=${TICKET_ORG || '(missing)'} no match in memberships=[${memberships.map(m => m.organization.id).join(',')}]`;
             showError('No organisation to join',
-              'The invitation didn\'t produce an organisation membership. Ask your admin to send a fresh invitation.',
-              'organizationMemberships empty');
+              'The invitation didn\'t produce a usable organisation membership. Ask your admin to send a fresh invitation.',
+              detail);
             return;
           }
           setStatus('Connecting to your business…');
