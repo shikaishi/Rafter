@@ -111,14 +111,31 @@ async function requireClerkJWT(request, env) {
   }
 }
 
-// RFT-70 Option C — Clerk org-role extraction. Handles both Clerk JWT formats:
-// v1 (legacy, flat `org_role` claim) and v2 (compact `o.rol` object, default
-// since 2025-04-14). Returns the role string (e.g. "org:admin", "org:member")
-// or null if no org context. Clerk's @clerk/backend verifyToken passes the
-// payload through unmodified, so we have to handle both shapes ourselves.
+// RFT-107 — Clerk session-token org-claim extraction. @clerk/backend@1.34.0's
+// verifyToken does NOT normalise v1↔v2 claim shapes (verified against
+// clerk/javascript packages/backend/src/tokens/verify.ts — returns raw decoded
+// payload). Two token formats in the wild:
+//   v1 (legacy):  flat top-level `org_id` / `org_role` / `org_slug`. Role value
+//                 carries the `org:` prefix (e.g. "org:admin", "org:member").
+//   v2 (current): nested `o: { id, rol, slg }`, plus `v: 2`. Role value is the
+//                 short form WITHOUT the `org:` prefix (e.g. "admin", "member").
+//                 Prod (2026-06-11) emits v2; test instance was still emitting
+//                 v1 until the API version bumped — hence the prod-only bug.
+//
+// extractOrgId  — v2-first, v1 fallback. Returns the org id string or undefined.
+// extractOrgRole — v2-first with `org:` prefix re-applied so every comparison
+//                  site (settingsAdminGate, the SM8 connect/disconnect gates,
+//                  index.html state.orgRole check) still works against the
+//                  unchanged 'org:admin' / 'org:member' string compare.
+function extractOrgId(jwtPayload) {
+  if (typeof jwtPayload?.o?.id === 'string') return jwtPayload.o.id;
+  if (typeof jwtPayload?.org_id === 'string') return jwtPayload.org_id;
+  return undefined;
+}
+
 function extractOrgRole(jwtPayload) {
+  if (typeof jwtPayload?.o?.rol === 'string') return `org:${jwtPayload.o.rol}`;
   if (typeof jwtPayload?.org_role === 'string') return jwtPayload.org_role;
-  if (typeof jwtPayload?.o?.rol === 'string') return jwtPayload.o.rol;
   return null;
 }
 
@@ -262,7 +279,7 @@ async function handleOnboarding(request, env, url, jwtPayload) {
     const body = await parseBody(request);
     if (!body) return json({ ok: false, error: 'Invalid JSON body' }, 400);
     // Scope to JWT org — browser cannot provision outside its own org (REQ-On-28)
-    body.clerk_org_id = jwtPayload.org_id ?? null;
+    body.clerk_org_id = extractOrgId(jwtPayload) ?? null;
     return handleProvision(body, env);
   }
 
@@ -366,7 +383,7 @@ async function handleForm(request, env, url, jwtPayload) {
 // The cross-tenant gate: even with a valid JWT, an org-A user cannot access
 // org-B data. This is the RFT-86 fix at the auth layer.
 async function handleVerifyTenant(request, env, jwtPayload) {
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
 
   let body;
@@ -439,7 +456,7 @@ async function handleSettings(request, env, url, jwtPayload) {
   if (gateErr) return gateErr;
 
   // Tenant uuid is always resolved from the JWT's org — never from input.
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
   const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
   if (!uuid) return json({ ok: false, error: 'org_not_provisioned' }, 404);
@@ -1557,7 +1574,7 @@ async function handleSettingsBrandingPresets(env) {
 //
 // All three are admin-gated by settingsAdminGate at the dispatcher. The org
 // scoping (clerk_org → uuid) is already done by handleSettings before we get
-// here — `uuid` and `jwtPayload.org_id` are both trusted.
+// here — `uuid` and `extractOrgId(jwtPayload)` are both trusted.
 //
 // Why notify=false: the user must land on a custom-flow page served from
 // rafter.deepgreensea.au so the resulting passkey's RP ID = rafter.deepgreensea.au.
@@ -1566,7 +1583,7 @@ async function handleSettingsBrandingPresets(env) {
 // sender, and our email points directly at the `redirect_url` we configured.
 
 async function handleSettingsTeam(uuid, env, jwtPayload) {
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
   if (!env.CLERK_SECRET_KEY) return json({ ok: false, error: 'clerk_secret_key_missing' }, 500);
 
@@ -1625,7 +1642,7 @@ async function handleSettingsTeam(uuid, env, jwtPayload) {
 }
 
 async function handleSettingsTeamInviteSend(uuid, request, env, jwtPayload) {
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   const inviterUserId = jwtPayload.sub || null;
   if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
   if (!inviterUserId) return json({ ok: false, error: 'no_user_in_jwt' }, 401);
@@ -1731,7 +1748,7 @@ async function handleSettingsTeamInviteSend(uuid, request, env, jwtPayload) {
 }
 
 async function handleSettingsTeamInviteRevoke(uuid, request, env, jwtPayload) {
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   const requesterUserId = jwtPayload.sub || null;
   if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
   if (!requesterUserId) return json({ ok: false, error: 'no_user_in_jwt' }, 401);
@@ -1938,7 +1955,7 @@ async function listR2KeysUnder(env, prefix) {
 // ── SM8 OAuth callback (RFT-69 Path 2 — removes Make from the auth path) ────
 
 async function handleSm8Callback(request, env, jwtPayload) {
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   if (!orgId) return json({ ok: false, error: 'No org_id in JWT' }, 401);
 
   // RFT-70 Option C D1 — connect is admin-only. A member completing OAuth
@@ -2084,7 +2101,7 @@ async function handleSm8Callback(request, env, jwtPayload) {
 // UI surface deferred to RFT-63 (tenant config). This endpoint is the JSON
 // stub the UI will call.
 async function handleSm8Disconnect(request, env, jwtPayload) {
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   if (!orgId) return json({ ok: false, error: 'No org_id in JWT' }, 401);
 
   // D1 — same gate as connect. Member can't disconnect; that's the whole point.
@@ -2140,7 +2157,7 @@ async function handleSm8Disconnect(request, env, jwtPayload) {
 // ── Photo upload ─────────────────────────────────────────────────────────────
 
 async function handleOnboardingPhotos(request, env, jwtPayload) {
-  const orgId = jwtPayload.org_id;
+  const orgId = extractOrgId(jwtPayload);
   if (!orgId) return json({ ok: false, error: 'No org_id in JWT' }, 401);
 
   const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
@@ -2822,7 +2839,7 @@ async function runSmoketest(uuid, { destructive }, env) {
 // Resolves org → uuid → KV, refreshes SM8 token via materials-sync,
 // then fetches vendor.json + jobtemplate.json from SM8. Returns structured prefill data.
 async function handleSm8Prefill(jwtPayload, env) {
-  const orgId = jwtPayload.org_id ?? null;
+  const orgId = extractOrgId(jwtPayload) ?? null;
   if (!orgId) return json({ ok: false, error: 'No org_id in JWT — organisation context required' }, 400);
 
   const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
