@@ -25,6 +25,8 @@
 >
 > **Version 2.3 — Updated 2026-06-09 (RFT-102 + RFT-105 closure).** Settings surface gained a second zone, "Business Configuration", below the Phase-2 Sections & Photos zone — seven config panes per tenant (business details, bank details, payment thresholds, T&Cs, credentials, email template, branding). 8 endpoints added under `/settings/config/*` + `/settings/branding-presets` on admin-api, all admin-gated, all using the **FORBIDDEN_CONFIG_KEYS → allowlist-pick → slice-only mutator** pattern (D13). `mutateClientRecord(uuid, env, fn)` is the underlying primitive — nested objects deep-merge, partial saves never null adjacent keys. Per-card render isolation in settings.html via `rerenderCard(pane)` + `PANE_RENDERERS`/`PANE_WIRERS` maps — toggling/saving one card never blows away unsaved DOM state in others. Email-template pane uses a contenteditable editor with minimal toolbar (Bold · Italic · Lists · Link · merge-tag pills); zero bundle add; `defaultParagraphSeparator='p'` fixes the Step 1(b) plain-text-collapse bug. Branding palette is now 8 presets (RFT-105) served from `rafter-pdf` `GET /presets` via the `PDF_WORKER` service binding (D14) — single source, never inline-mirrored. Bottom-right Back-to-Quote-Builder button on `/settings`.
 >
+> **Version 2.4 — Updated 2026-06-11 (RFT-87 scope b + RFT-94 + RFT-107 prod cutover).** Prod Clerk instance live (`pk_live_`, custom Frontend API at `clerk.deepgreensea.au`, Account Portal at `accounts.deepgreensea.au`, Pro plan). Passkey-on-invite enrolment flow deployed end-to-end and validated with first real prod admin. Cold-start path: `/sign-up` → hosted sign-up → create-org → webhook provisions KV stub → `/onboarding.html` (assumes session) → SM8 OAuth → `/callback.html` (first-device passkey enrol on the correct rafter.deepgreensea.au origin). admin-api now uses `extractOrgId` / `extractOrgRole` helpers because prod emits v2 session tokens (`o.id`, `o.rol` nested; role short-form without `org:` prefix) and `@clerk/backend@1.34.0` returns raw claims with no normalisation — bare `jwtPayload.org_id` reads 401 on prod (RFT-107 root cause). RFT-94: pdf worker now tenant-prefix-checks every photo R2 key before reading, rejecting cross-tenant keys with 400 `invalid_photo_keys`. Two known gaps documented (see **Prod auth state** section): `/settings` + `/onboarding.html` no-session fallback still bounces to hosted UI (wrong RP ID for a rafter.deepgreensea.au-scoped passkey); team-pane role badge may mislabel v2 admins as "Member".
+>
 > **Companion doc: `TRADIE.md` (repo root)** — target-user persona and design/appraisal lens. Consult for any user-facing product decision.
 >
 > **Chat↔Code channel:** RFT-53 Linear thread is the bidirectional handoff channel between Claude Chat and Claude Code. Read state via `mcp__linear__list_comments` with `issueId: "RFT-53"` (result overflows — extract body via `node -e` from the saved file, NOT python3 which hits the Windows Store alias). Linear docs/documents don't resolve reliably via MCP — use issue comments for state.
@@ -129,6 +131,85 @@ build command is `exit 0`.
 | D1 database | `rafter-quotes` — quote payload persistence for edit/versioning (RFT-32). ID: TBD on creation (RFT-36). Durable retention — NOT on the `rafter-events` 90-day prune. |
 
 Operational notes (KV tooling, W2W service bindings, KV key format, KV records table, KV record contents) → [docs/workers-reference.md](docs/workers-reference.md).
+
+---
+
+## Prod auth state — cutover 2026-06-11
+
+The prod Clerk instance is live. RFT-87 scope (b) passkey-on-invite enrolment is deployed and validated with the first real prod admin (SM8 OAuth → callback.html → first-device passkey enrolled on `rafter.deepgreensea.au`). RFT-94 (cross-tenant photo embed) and RFT-107 (v2 token claim shape) shipped in the same bundle.
+
+### Instance config
+
+| Field | Value |
+|---|---|
+| Plan | Pro |
+| Publishable key (all 6 rafter pages) | `pk_live_Y2xlcmsuZGVlcGdyZWVuc2VhLmF1JA` (base64 decode: `clerk.deepgreensea.au$`) |
+| Frontend API CDN host (script src) | `https://clerk.deepgreensea.au/npm/@clerk/clerk-js@6.14.0/dist/clerk.browser.js` — pinned across `index.html`, `callback.html`, `onboarding.html`, `sign-up.html`, `settings.html`, `accept-invite.html` |
+| Account Portal (hosted UI) | `accounts.deepgreensea.au` — used for sign-up + create-org + no-session fallback only |
+| Membership model | Org-as-unit-of-auth. **Personal Accounts: OFF (Membership required).** The `choose-organization` task fires post-ticket; `accept-invite.html` Path B seam handler covers it (`Clerk.setActive({ organization })`). |
+| Sign-up collection | **Name + Password collection: DISABLED.** Zero-field ticket accept succeeds (RFT-87 V1). |
+| Passkeys | Enabled. **RP ID is root `deepgreensea.au` with allowed subdomain `rafter.deepgreensea.au`.** A passkey enrolled on rafter.deepgreensea.au works on subdomains of the same root; will NOT surface on sibling `accounts.deepgreensea.au` (Account Portal). |
+| Webhook | `organization.created` only — `https://rafter-admin-api.will-8e8.workers.dev/webhooks/clerk`. No other event types subscribed. |
+
+### admin-api prod worker secrets (set 2026-06-11)
+
+| Secret | Source | Purpose |
+|---|---|---|
+| `CLERK_SECRET_KEY` | `sk_live_…` from Clerk dashboard → API Keys | Backend API calls (org invitations, memberships listing, metadata patch) |
+| `CLERK_JWT_KEY` | Prod JWKS PEM from Clerk dashboard | Networkless `verifyToken` — every JWT-gated endpoint |
+| `CLERK_WEBHOOK_SECRET` | Svix signing secret from the prod webhook subscription | `/webhooks/clerk` signature verification |
+| `CLERK_AUTHORIZED_PARTY` | `https://rafter.deepgreensea.au` | Passed to `verifyToken` as the only allowed `azp`. Defence-in-depth against sibling-subdomain session-cookie misuse. |
+
+**Rotate these together** if the Clerk instance is ever swapped — partial rotation can brick admin-api silently (e.g. new JWT key + old webhook secret = no new orgs provision, no obvious error).
+
+### Token version — admin-api MUST use the helpers
+
+Prod emits **v2** session tokens (Clerk API version 2025-11-10):
+
+```
+"o": { "id": "org_…", "rol": "admin"|"member", "slg": "…" }, "v": 2
+```
+
+There is NO top-level `org_id` / `org_role` / `org_slug` claim. The role value is the SHORT form (`"admin"`, `"member"`) without the `"org:"` prefix that v1 used.
+
+`@clerk/backend@1.34.0` (pinned in `workers/admin-api/package.json`) returns raw decoded claims — verified against [clerk/javascript verify.ts](https://github.com/clerk/javascript/blob/main/packages/backend/src/tokens/verify.ts). No normalisation. Bare `jwtPayload.org_id` reads return `undefined` on prod and 401 every request (RFT-107).
+
+**Every new org-scoped endpoint MUST use:**
+
+```js
+extractOrgId(jwtPayload)   // v2-first (o.id), v1 fallback (org_id), undefined if neither
+extractOrgRole(jwtPayload) // v2-first with `org:` prefix re-applied → 'org:admin'/'org:member',
+                           // v1 fallback (org_role as-is), null if neither
+```
+
+Defined in `workers/admin-api/index.js` near the `requireClerkJWT` block. The role helper's `org:` re-prefix means every `=== 'org:admin'` comparison site (settingsAdminGate, SM8 connect/disconnect gates, index.html `state.orgRole` check) keeps working unchanged. **Never read `jwtPayload.org_id` / `jwtPayload.org_role` directly outside the helpers.**
+
+### New-tenant cold-start flow (supported entry path)
+
+```
+/sign-up                                  rafter.deepgreensea.au
+  → clerk.redirectToSignUp                accounts.deepgreensea.au (hosted; identity only, NO passkey)
+  → clerk.redirectToCreateOrganization    accounts.deepgreensea.au (hosted; webhook → KV stub)
+  → afterCreateOrganizationUrl: /onboarding.html
+/onboarding.html                          rafter.deepgreensea.au
+  → form submit → admin-api /onboarding/provision
+  → "Connect ServiceM8" → SM8 OAuth
+/callback.html                            rafter.deepgreensea.au
+  → admin-api /onboarding/sm8-callback
+  → FIRST-DEVICE PASSKEY ENROL (correct origin = rafter.deepgreensea.au)
+/<slug>                                   rafter.deepgreensea.au
+  → silent passkey re-auth on return visits (index.html Surface-4 same-origin authenticateWithPasskey)
+```
+
+**Admins MUST enter via `/sign-up`.** Hitting `/onboarding.html` cold (no session) falls through to `clerk.redirectToSignIn` (hosted UI). That works for first-time identity establishment but is also the wrong-origin trap for return-visit passkey auth on that page (see KNOWN GAPS). The hosted UI portion ONLY creates the Clerk identity + session — no passkey is enrolled there. First passkey enrol happens on `/callback.html` after SM8 OAuth completes, on the correct origin.
+
+For migrated tenants (Andy): the KV record predates the Clerk-org binding. Onboarded via admin-api Path 2 / RFT-69/70 Option C with manual admin assignment. Not the canonical cold-start path — preserved by Andy's explicit `gate_enforced: false` until RFT-101 clears.
+
+### KNOWN GAPS — flagged 2026-06-11, not fixed today
+
+1. **Return-visit admin sign-in on `/settings` + `/onboarding.html` bounces to hosted UI.** Both pages still call `Clerk.redirectToSignIn` on no-session, which lands on `accounts.deepgreensea.au` (Account Portal). A passkey enrolled on `rafter.deepgreensea.au` has RP ID `rafter.deepgreensea.au` and will NOT surface on the sibling subdomain — the hosted UI offers Google/email only. Only `index.html` got the Surface-4 same-origin `Clerk.client.signIn.authenticateWithPasskey({ flow: 'discoverable' })` treatment. **Workaround today:** if an admin's session expires mid-day, they re-establish via `/<slug>` (passkey works there), then navigate to `/settings`. Proper fix: replicate the Surface-4 pattern on settings.html and onboarding.html's no-session branches.
+
+2. **Team-pane role badge may mislabel v2 admins as "Member".** `workers/rafter/settings.html` line ~2493 reads `m.role` from the Clerk Backend API `/v1/organizations/{org_id}/memberships` response and compares `=== 'org:admin'`. On v2 instances the Backend API likely returns the short form (`"admin"`), so the badge falls through to "Member" for actual admins. RFT-107 explicitly scoped this out (token-claim normalisation vs Backend API response normalisation are separate concerns). Needs verification against a real prod `/memberships` response before patching — the actual response shape is the source of truth, not the v2 token shape.
 
 ---
 
