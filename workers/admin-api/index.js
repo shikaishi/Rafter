@@ -313,12 +313,18 @@ async function handleOnboarding(request, env, url, jwtPayload) {
 // tenant's uuid (replaces the retired /resolve-slug function) plus the
 // gate_enforced flag from the client KV record.
 //
-// Default: missing flag = ungated (false). Safe for tenants that exist
-// today without a Clerk user (e.g. Andy on his current production setup).
-// NOTE for follow-up: once the passkey/invite flow lands (scope b), the
-// default semantics should flip — new tenants closed-by-default with the
-// flag explicitly set by the provisioning flow. Until then, missing=ungated
-// keeps the rollout safe.
+// RFT-87 scope (b) flip (2026-06-11): default is now GATED. Missing
+// gate_enforced field is treated as `true` — new tenants are
+// closed-by-default. Only an explicit `gate_enforced: false` keeps the
+// pre-RFT-87 unauthenticated handler path open. This locks new tenants
+// behind the passkey-on-invite flow from the moment they're provisioned.
+// Andy (`gate_enforced: false` explicit) is unaffected: explicit false
+// still returns false on this endpoint.
+//
+// Verification:
+//   * explicit false (Andy)        → !== false === false → ungated ✓
+//   * explicit true (BVT, Dev)     → !== false === true  → gated   ✓
+//   * undefined (new tenant)       → !== false === true  → gated   ✓ NEW
 async function handleTenantMode(slug, env) {
   if (!/^[a-z0-9-]+$/i.test(slug)) {
     return json({ ok: false, error: 'invalid_slug' }, 400);
@@ -334,7 +340,7 @@ async function handleTenantMode(slug, env) {
   let config;
   try { config = JSON.parse(raw); }
   catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
-  const gate_enforced = config.gate_enforced === true;
+  const gate_enforced = config.gate_enforced !== false;
   return json({ ok: true, slug, uuid, gate_enforced });
 }
 

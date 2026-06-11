@@ -142,8 +142,9 @@ async function requireFormJWT(request, env, targetUuid) {
   }
 
   // RFT-87 commit 7 — per-tenant gate flag. Read the tenant's `gate_enforced`
-  // flag from KV. If false or missing, this is a noop: handler runs as it did
-  // pre-RFT-87 (no JWT required). Only flag=true requires Clerk JWT verification.
+  // flag from KV. RFT-87 scope (b) flip (2026-06-11): default is now GATED —
+  // only an explicit `gate_enforced: false` bypasses the JWT requirement.
+  // Andy (explicit false) unchanged; new tenants closed by default.
   // pdf only ever receives target_uuid (from payload.client_uuid) — no slug
   // resolution path here.
   const raw = await env.RAFTER_CLIENTS.get(`client:${targetUuid}`).catch(() => null);
@@ -153,7 +154,7 @@ async function requireFormJWT(request, env, targetUuid) {
   let tenantConfig;
   try { tenantConfig = JSON.parse(raw); }
   catch { return { error: json({ error: "client_record_corrupt" }, 500) }; }
-  if (tenantConfig.gate_enforced !== true) {
+  if (tenantConfig.gate_enforced === false) {
     return { ok: true, uuid: targetUuid, role: "ungated" };
   }
 

@@ -1089,12 +1089,13 @@ async function requireFormJWT(request, env, { target_uuid, target_slug }) {
     return { ok: true, uuid: resolved, role: "internal" };
   }
 
-  // RFT-87 commit 7 — per-tenant gate flag. Resolve target uuid (from input
-  // or via slug), read the tenant's `gate_enforced` flag. If false or missing,
-  // this is a noop: handler runs as it did pre-RFT-87 (no JWT required, same
-  // exposure as today for the existing prod tenant). Only flag=true requires
-  // the full Clerk JWT verification chain. This is the per-tenant rollout
-  // primitive — flip BVT/Trial → gated, Andy stays default-missing = ungated.
+  // RFT-87 commit 7 — per-tenant gate flag. RFT-87 scope (b) flip (2026-06-11):
+  // default is now GATED. Only an explicit `gate_enforced: false` keeps the
+  // pre-RFT-87 unauthenticated handler open. Andy (`gate_enforced: false`
+  // explicit) is unchanged. The `!tenantConfig` branch (no client record at
+  // the resolved uuid — a data anomaly) preserves its prior behaviour rather
+  // than fail-closed during the flag flip; the right fix for !tenantConfig
+  // is a 404 client_not_found, but that's a separate cleanup.
   let targetUuid = target_uuid;
   if (!targetUuid && target_slug) {
     targetUuid = await env.RAFTER_CLIENTS.get(`slug:${target_slug}`).catch(() => null);
@@ -1103,7 +1104,7 @@ async function requireFormJWT(request, env, { target_uuid, target_slug }) {
   if (!targetUuid) return { error: json({ error: "missing_target" }, { status: 400 }) };
 
   const tenantConfig = await readClient(env, targetUuid);
-  if (!tenantConfig || tenantConfig.gate_enforced !== true) {
+  if (!tenantConfig || tenantConfig.gate_enforced === false) {
     return { ok: true, uuid: targetUuid, role: "ungated" };
   }
 
