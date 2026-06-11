@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rafter — Set up this device</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=DM+Mono:wght@400;500&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --ink: #0F1117; --ink-soft: #52585F; --ink-faint: #9AA0A6;
+    --canvas: #F7F5F0; --white: #FFFFFF;
+    --green: #1D9E75; --green-light: #E1F5EE;
+    --border: #E2DDD6; --red: #E53935; --red-light: #FEF2F2;
+    --navy: #1B4F72;
+  }
+  html, body { min-height: 100vh; background: var(--canvas); font-family: 'DM Sans', sans-serif; color: var(--ink); -webkit-font-smoothing: antialiased; }
+  .page { min-height: 100vh; display: flex; flex-direction: column; }
+  header { padding: 24px 40px; display: flex; align-items: center; gap: 10px; border-bottom: 1px solid var(--border); background: rgba(247,245,240,0.8); }
+  .logo-name { font-family: 'Instrument Serif', serif; font-size: 18px; color: var(--ink); letter-spacing: -0.02em; }
+  .logo-sep { color: var(--border); margin: 0 4px; }
+  .logo-sub { font-size: 13px; color: var(--ink-soft); font-family: 'DM Mono', monospace; }
+  main { flex: 1; display: flex; align-items: center; justify-content: center; padding: 60px 24px; }
+  .card { background: var(--white); border: 1px solid var(--border); border-radius: 20px; padding: 56px 52px; max-width: 480px; width: 100%; text-align: center; box-shadow: 0 4px 32px rgba(15,17,23,0.06); animation: rise 0.5s cubic-bezier(0.22,1,0.36,1) both; }
+  @keyframes rise { from { opacity:0; transform:translateY(16px); } to { opacity:1; transform:translateY(0); } }
+  .spinner { width: 44px; height: 44px; border: 3px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; margin: 0 auto 24px; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .check { width: 64px; height: 64px; background: var(--green-light); border-radius: 50%; display: flex; align-items: center; justify-content: center; margin: 0 auto 24px; }
+  h1 { font-family: 'Instrument Serif', serif; font-size: 30px; font-weight: 400; letter-spacing: -0.02em; margin-bottom: 12px; }
+  p { font-size: 15px; color: var(--ink-soft); line-height: 1.7; }
+  .status { font-family: 'DM Mono', monospace; font-size: 12px; color: var(--ink-faint); margin-top: 16px; }
+  .error-box { background: var(--red-light); border: 1px solid #FCA5A5; border-radius: 12px; padding: 20px; margin-top: 20px; text-align: left; }
+  .error-title { font-weight: 500; color: var(--red); margin-bottom: 8px; }
+  .error-msg { font-size: 13px; color: #7F1D1D; line-height: 1.5; }
+  .error-detail { font-size: 11px; color: #B91C1C; font-family: 'DM Mono', monospace; word-break: break-all; margin-top: 8px; }
+  .secondary-action { margin-top: 24px; }
+  .secondary-action a { color: var(--navy); font-size: 13px; text-decoration: underline; }
+  footer { padding: 20px 40px; border-top: 1px solid var(--border); display: flex; justify-content: space-between; }
+  .footer-brand { font-family: 'DM Mono', monospace; font-size: 11px; color: var(--ink-faint); letter-spacing: 0.06em; }
+</style>
+</head>
+<body>
+<div class="page">
+  <header>
+    <img src="https://rafter-materials-sync.will-8e8.workers.dev/brand/rafter-logo.png" alt="Rafter" style="height:32px;width:auto;">
+    <span class="logo-name">Rafter</span>
+    <span class="logo-sep">·</span>
+    <span class="logo-sub">Set up this device</span>
+  </header>
+
+  <main>
+    <div class="card" id="card">
+      <div class="spinner" id="spinner"></div>
+      <h1 id="title">Setting up your sign-in…</h1>
+      <p id="message">One moment — verifying your invitation.</p>
+      <div class="status" id="status">Reading invitation</div>
+    </div>
+  </main>
+
+  <footer>
+    <span class="footer-brand">DEEP GREEN SEA · RAFTER</span>
+    <span style="font-size:11px;color:var(--ink-faint)">Custom-flow · Same origin · Passkey-bound</span>
+  </footer>
+</div>
+
+<!-- RFT-87 scope (b): pinned to 6.14.0. Auth surface; @latest can silently
+     shift the chaining API contract. Origin trap mitigation — this script
+     loads from a *.clerk.accounts.dev CDN host but executes in the
+     rafter.deepgreensea.au document, which is what the WebAuthn RP ID is
+     bound to. The script host is irrelevant; the document origin is what
+     matters for passkey scoping. -->
+<script
+  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@6.14.0/dist/clerk.browser.js"
+  crossorigin="anonymous"
+></script>
+<script>
+  // ─── RFT-87 scope (b): ticket-accept + passkey-enrol custom flow ──────────
+  //
+  // Single-page execution of the verified API contract:
+  //   1. Read __clerk_ticket from URL (Clerk appends it to redirect_url).
+  //   2. signUp.create({ strategy: 'ticket', ticket }) — Name+Password
+  //      collection MUST be disabled on the Clerk instance for the zero-field
+  //      accept to succeed (V1 verified in RFT-87 build-readiness).
+  //   3. signUp.finalize({ navigate }) — modern wrapper; handles session
+  //      activation + routes session.currentTask. NOT setActive / setActiveSignUp
+  //      (stale aliases).
+  //   4. Path B seam: in the navigate callback, if session.currentTask?.key
+  //      === 'choose-organization', resolve it ourselves by calling
+  //      clerk.setActive({ organization }) for the just-joined org.
+  //   5. Gate user.createPasskey() on Clerk.session?.status === 'active'.
+  //      isSignedIn is not enough — pending sessions report signed-in but
+  //      tasks uncleared; createPasskey against a pending session is
+  //      undocumented per Clerk docs (verified 2026-06-11).
+  //   6. After enrol, redirect to /?slug=... so the user lands on the
+  //      operator form they were invited into.
+  //
+  // Datapoint to capture: did Clerk auto-resolve choose-organization for a
+  // single-org ticket, or did it fire as a currentTask? Captured to console
+  // for post-deploy reading (see Surface 2 checkpoint).
+
+  const params = new URLSearchParams(window.location.search);
+  const TICKET = params.get('__clerk_ticket') || '';
+  const STATUS = params.get('__clerk_status') || ''; // 'sign_up' | 'sign_in' | ''
+  const SLUG = params.get('slug') || '';
+
+  function setStatus(msg) {
+    const el = document.getElementById('status');
+    if (el) el.textContent = msg;
+  }
+  function setTitle(t) { document.getElementById('title').textContent = t; }
+  function setMessage(m) { document.getElementById('message').textContent = m; }
+
+  function showComplete(extraMsg) {
+    document.getElementById('spinner').style.display = 'none';
+    const check = document.createElement('div');
+    check.className = 'check';
+    check.innerHTML = '<svg viewBox="0 0 32 32" fill="none" width="32" height="32"><path d="M6 16L13 23L26 10" stroke="#1D9E75" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+    const card = document.getElementById('card');
+    const title = document.getElementById('title');
+    card.insertBefore(check, title);
+    setTitle('You\'re in');
+    setMessage(extraMsg || 'Opening the Quote Builder…');
+    setStatus('');
+  }
+
+  function showError(headline, body, detail) {
+    document.getElementById('spinner').style.display = 'none';
+    setTitle(headline);
+    document.getElementById('message').style.display = 'none';
+    document.getElementById('status').style.display = 'none';
+    const card = document.getElementById('card');
+    const box = document.createElement('div');
+    box.className = 'error-box';
+    const titleEl = document.createElement('div');
+    titleEl.className = 'error-title';
+    titleEl.textContent = 'What to do';
+    const bodyEl = document.createElement('div');
+    bodyEl.className = 'error-msg';
+    bodyEl.textContent = body;
+    box.appendChild(titleEl);
+    box.appendChild(bodyEl);
+    if (detail) {
+      const detailEl = document.createElement('div');
+      detailEl.className = 'error-detail';
+      detailEl.textContent = detail;
+      box.appendChild(detailEl);
+    }
+    card.appendChild(box);
+    const secondary = document.createElement('div');
+    secondary.className = 'secondary-action';
+    secondary.innerHTML = SLUG
+      ? `<a href="/?slug=${encodeURIComponent(SLUG)}">Back to Quote Builder</a>`
+      : `<a href="/">Back to Rafter</a>`;
+    card.appendChild(secondary);
+  }
+
+  // Pick the "just-joined" org for the seam handler. The freshly-accepted
+  // ticket adds a membership; we use it to resolve choose-organization. If
+  // a user happens to be in multiple orgs, the latest-created one is the
+  // one the ticket just produced.
+  function pickJustJoinedOrgId(user) {
+    const memberships = user?.organizationMemberships ?? [];
+    if (memberships.length === 0) return null;
+    if (memberships.length === 1) return memberships[0].organization.id;
+    // Sort by createdAt desc — Clerk's SDK returns Date objects.
+    const sorted = [...memberships].sort((a, b) => {
+      const ta = a.createdAt instanceof Date ? a.createdAt.getTime() : new Date(a.createdAt).getTime();
+      const tb = b.createdAt instanceof Date ? b.createdAt.getTime() : new Date(b.createdAt).getTime();
+      return tb - ta;
+    });
+    return sorted[0].organization.id;
+  }
+
+  async function enrolPasskeyIfPossible() {
+    // Active-status gate per the verified chaining contract. createPasskey
+    // against a pending session is undocumented; refuse explicitly.
+    if (Clerk.session?.status !== 'active') {
+      console.warn('[accept-invite] session status not active; skipping passkey enrol', { status: Clerk.session?.status });
+      return 'session_not_active';
+    }
+    // Already has a passkey (e.g. user clicked an extra invite link on a
+    // device already enrolled). Skip — the existing passkey works on this
+    // origin already.
+    const existing = Clerk.user?.passkeys || [];
+    if (existing.length > 0) {
+      console.log('[accept-invite] passkey already enrolled on this account', { count: existing.length });
+      return 'already_enrolled';
+    }
+    setStatus('Setting up Face ID / fingerprint…');
+    try {
+      await Clerk.user.createPasskey();
+      console.log('[accept-invite] passkey enrolled', { origin: window.location.origin });
+      return 'enrolled';
+    } catch (err) {
+      // User cancelled biometric, or browser blocked. Not fatal — session
+      // is active; they'll just sign in via discoverable passkey or fresh
+      // invite next time.
+      console.warn('[accept-invite] passkey enrol skipped', { error: err?.message || String(err) });
+      return 'cancelled';
+    }
+  }
+
+  function redirectToForm() {
+    const target = SLUG ? `/?slug=${encodeURIComponent(SLUG)}` : '/';
+    setTimeout(() => { window.location.replace(target); }, 900);
+  }
+
+  async function run() {
+    if (!TICKET) {
+      showError('Invitation link is missing details',
+        'This page expects an invitation ticket in the URL. Use the link from the email your admin sent — opening this page directly won\'t work.',
+        'Missing __clerk_ticket query parameter');
+      return;
+    }
+
+    if (!window.Clerk) {
+      showError('Sign-in library failed to load',
+        'Refresh the page. If it keeps happening, the network may be blocking the sign-in script.',
+        'window.Clerk undefined');
+      return;
+    }
+
+    try {
+      setStatus('Loading sign-in…');
+      await Promise.race([
+        Clerk.load(),
+        new Promise((_, reject) => setTimeout(() => reject(new Error('clerk.load() timed out after 10s')), 10000)),
+      ]);
+    } catch (err) {
+      showError('Sign-in took too long', 'Refresh and try again. Check your connection.', err?.message || String(err));
+      return;
+    }
+
+    // Already signed in? signUp.create({strategy:'ticket'}) is documented to
+    // silently fail when a session is active (Clerk issue #8044). Sign out
+    // first so the ticket consume runs cleanly. This is safe — invitee
+    // sessions are scoped per-device and won't lose anything important.
+    if (Clerk.user) {
+      try {
+        console.log('[accept-invite] existing session detected; signing out before ticket consume', { user_id: Clerk.user.id });
+        await Clerk.signOut();
+      } catch (err) {
+        console.warn('[accept-invite] signOut before ticket consume failed', { error: err?.message || String(err) });
+      }
+    }
+
+    // Branch on __clerk_status — if Clerk says the user already exists ("sign_in"),
+    // run signIn.create({strategy:'ticket'}). Otherwise (default), run signUp.
+    const isSignIn = STATUS === 'sign_in';
+
+    try {
+      setStatus(isSignIn ? 'Signing you in…' : 'Verifying invitation…');
+
+      if (isSignIn) {
+        const signIn = Clerk.client.signIn;
+        await signIn.create({ strategy: 'ticket', ticket: TICKET });
+
+        // signIn.create completes synchronously when ticket is valid; if
+        // not status=complete, surface as failure.
+        if (signIn.status !== 'complete') {
+          showError("Couldn't verify the invitation",
+            'The link may have already been used or revoked. Ask your admin to send a fresh invitation.',
+            `signIn.status=${signIn.status}`);
+          return;
+        }
+        await Clerk.setActive({ session: signIn.createdSessionId });
+        await runSeamAndEnrol();
+      } else {
+        const signUp = Clerk.client.signUp;
+        // No firstName/lastName/password — instance has Name+Password
+        // collection disabled, so a zero-field ticket accept succeeds.
+        await signUp.create({ strategy: 'ticket', ticket: TICKET });
+
+        if (signUp.status !== 'complete') {
+          showError("Couldn't verify the invitation",
+            'The link may have already been used or revoked. Ask your admin to send a fresh invitation.',
+            `signUp.status=${signUp.status}`);
+          return;
+        }
+
+        // signUp.finalize is the modern wrapper. It activates the created
+        // session and runs the navigate callback with {session, decorateUrl}.
+        // We do NOT navigate from the callback — we run the seam handler
+        // and passkey enrol after finalize returns, so all logic is linear.
+        let observedTask = null;
+        await signUp.finalize({
+          navigate: ({ session }) => {
+            observedTask = session?.currentTask?.key ?? null;
+            console.log('[accept-invite] finalize navigate', {
+              session_status: session?.status,
+              currentTask: observedTask,
+            });
+            // Suppress Clerk's default navigation — we drive it ourselves
+            // post-seam-resolution.
+            return undefined;
+          },
+        });
+
+        // ── Path B seam handler ──────────────────────────────────────────
+        // Datapoint: did Clerk auto-resolve choose-organization for a
+        // single-org ticket, or did it fire? Log for post-deploy reading.
+        const initialTask = Clerk.session?.currentTask?.key ?? null;
+        const memberships = Clerk.user?.organizationMemberships ?? [];
+        console.log('[accept-invite] post-finalize state', {
+          session_status: Clerk.session?.status,
+          currentTask: initialTask,
+          membership_count: memberships.length,
+          auto_resolved_choose_org: initialTask !== 'choose-organization',
+        });
+
+        if (initialTask === 'choose-organization') {
+          // Resolve by picking the freshly-joined org. This is the seam:
+          // without this, the session stays pending and createPasskey
+          // is undocumented territory.
+          const orgId = pickJustJoinedOrgId(Clerk.user);
+          if (!orgId) {
+            showError('No organisation to join',
+              'The invitation didn\'t produce an organisation membership. Ask your admin to send a fresh invitation.',
+              'organizationMemberships empty');
+            return;
+          }
+          setStatus('Connecting to your business…');
+          await Clerk.setActive({ organization: orgId });
+          // After setActive, the currentTask should be cleared.
+          const followupTask = Clerk.session?.currentTask?.key ?? null;
+          console.log('[accept-invite] after setActive', {
+            session_status: Clerk.session?.status,
+            currentTask: followupTask,
+          });
+          if (followupTask) {
+            showError('Sign-in needs another step',
+              `Your account has an extra requirement (${followupTask}) we can't handle automatically. Ask your admin to help.`,
+              `currentTask=${followupTask}`);
+            return;
+          }
+        }
+
+        await runSeamAndEnrol();
+      }
+    } catch (err) {
+      const msg = err?.errors?.[0]?.message || err?.message || String(err);
+      console.error('[accept-invite] flow error', err);
+      showError("Couldn't complete sign-in",
+        'The invitation may have expired or been used. Ask your admin to send a fresh one.',
+        msg);
+    }
+  }
+
+  async function runSeamAndEnrol() {
+    const result = await enrolPasskeyIfPossible();
+    let extra;
+    if (result === 'enrolled') {
+      extra = "Face ID / fingerprint set up. You'll be signed in automatically next time.";
+    } else if (result === 'already_enrolled') {
+      extra = "You're signed in. Opening the Quote Builder…";
+    } else if (result === 'cancelled') {
+      extra = "You're signed in — passkey was skipped. You can set one up later from your account.";
+    } else {
+      extra = "You're signed in. Opening the Quote Builder…";
+    }
+    showComplete(extra);
+    redirectToForm();
+  }
+
+  run();
+</script>
+</body>
+</html>
