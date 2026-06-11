@@ -231,9 +231,36 @@ async function handleGenerate(request, env, url) {
     return json({ error: "invalid_webhook_url" }, 500);
   }
 
+  // RFT-94 — tenant-scope every photo key against payload.client_uuid before
+  // any R2 read. requireFormJWT above (line 220-221) confirms the JWT's org
+  // owns client_uuid, but it does NOT enforce that R2 keys in the payload
+  // share the same prefix — an authed tenant-A user could otherwise pass
+  // tenant-B keys in payload.form_sections[*].photos[*] and embed B's photos
+  // into A's PDF (cross-tenant egress under valid auth). Applies to BOTH
+  // preview and submit modes — this gate runs before the mode branch below.
+  //
+  // Prefix shape mirrors materials-sync/index.js:10
+  //   const PHOTO_PREFIX = (uuid) => `clients/${uuid}/photos/`;
+  // and the gate at materials-sync/index.js:538
+  //   if (!key.startsWith(PHOTO_PREFIX(uuid))) return forbidden;
+  //
+  // Option B per the ticket — reject 400 fail-loud, don't silently skip:
+  // the form has no legitimate reason to reference cross-tenant keys, so a
+  // mismatch is a bug or an attack, never a graceful-degradation case.
+  const photoKeys = collectPhotoKeys(payload);
+  const expectedPhotoPrefix = `clients/${client_uuid}/photos/`;
+  const invalidPhotoKeys = photoKeys.filter(k => !k.startsWith(expectedPhotoPrefix));
+  if (invalidPhotoKeys.length > 0) {
+    return json({
+      error: "invalid_photo_keys",
+      detail: `${invalidPhotoKeys.length} key(s) outside tenant prefix ${expectedPhotoPrefix}`,
+      samples: invalidPhotoKeys.slice(0, 3),
+    }, 400);
+  }
+
   const [logoDataUrl, photoMap] = await Promise.all([
     fetchLogo(env, client_uuid),
-    fetchPhotos(env, collectPhotoKeys(payload)),
+    fetchPhotos(env, photoKeys),
   ]);
 
   const html = buildHtml({ payload, client, logoDataUrl, photoMap });
