@@ -61,9 +61,11 @@
   </footer>
 </div>
 
+<!-- RFT-87 scope (b): pinned to 6.14.0. Was @latest — moving target on an
+     auth surface that owns first-device passkey enrol. -->
 <script
   data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
-  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@6.14.0/dist/clerk.browser.js"
   crossorigin="anonymous"
 ></script>
 <script>
@@ -169,24 +171,47 @@
         throw new Error('Token exchange failed: ' + detail);
       }
 
-      // RFT-87 scope (a): setup-device passkey enrolment — ride the Clerk
+      // RFT-87 scope (a) — setup-device passkey enrolment — ride the Clerk
       // session already established for SM8 OAuth. Origin = this page
       // (rafter.deepgreensea.au) so the resulting passkey's RP ID is
       // rafter.deepgreensea.au — the correct origin for the operator form.
       //
+      // RFT-87 scope (b) hardening (2026-06-11):
+      //   * Active-status gate added — refuse to call createPasskey unless
+      //     Clerk.session?.status === 'active'. isSignedIn is not sufficient;
+      //     pending sessions report signed-in but tasks uncleared, and
+      //     createPasskey against a pending session is undocumented per
+      //     Clerk docs.
+      //   * currentTask sanity log — the admin who lands here just signed up
+      //     and created their org seconds ago, so choose-organization should
+      //     never fire here. If it does, surface it for deploy-time debugging
+      //     rather than silently calling createPasskey.
+      //
       // Non-blocking: if enrolment fails (user cancels biometric, browser
-      // lacks WebAuthn, already has a passkey, anything else), setup still
-      // succeeds. The endpoint JWT gate is the hard auth boundary; passkey
-      // makes subsequent loads silent-auth on this device.
+      // lacks WebAuthn, already has a passkey, session not active, anything
+      // else), setup still succeeds. The endpoint JWT gate is the hard auth
+      // boundary; the passkey is just silent re-auth on this device.
       let passkeyResult = 'skipped';
       try {
-        const existing = Clerk.user.passkeys || [];
-        if (existing.length === 0) {
-          setStatus('Setting up passkey for this device…');
-          await Clerk.user.createPasskey();
-          passkeyResult = 'enrolled';
+        const sessionStatus = Clerk.session?.status;
+        const currentTask = Clerk.session?.currentTask?.key ?? null;
+        if (currentTask) {
+          // Unexpected here — admin's session should be fully active after
+          // OAuth. Log + skip enrol; the SM8 connection still succeeded.
+          console.warn('[callback] unexpected currentTask after OAuth — skipping passkey enrol', { currentTask, sessionStatus });
+          passkeyResult = 'session_pending';
+        } else if (sessionStatus !== 'active') {
+          console.warn('[callback] session not active — skipping passkey enrol', { sessionStatus });
+          passkeyResult = 'session_not_active';
         } else {
-          passkeyResult = 'already_enrolled';
+          const existing = Clerk.user.passkeys || [];
+          if (existing.length === 0) {
+            setStatus('Setting up passkey for this device…');
+            await Clerk.user.createPasskey();
+            passkeyResult = 'enrolled';
+          } else {
+            passkeyResult = 'already_enrolled';
+          }
         }
       } catch (err) {
         // Most commonly: user cancelled biometric, or browser blocked the
