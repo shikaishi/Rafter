@@ -466,6 +466,15 @@ async function handleSettings(request, env, url, jwtPayload) {
   // branding failure mode).
   if (method === 'GET'  && path === '/settings/branding-presets')          return handleSettingsBrandingPresets(env);
 
+  // RFT-87 scope (b) — Team access pane. Lists members + pending invites +
+  // SM8 staff roster in one round-trip. Sends invites via Clerk Backend API
+  // with notify=false so the email lands from a Rafter-owned origin/sender
+  // and points at a same-origin ticket-accept page (passkey RP ID = our
+  // domain). Revoke is admin-initiated cleanup of a pending invite.
+  if (method === 'GET'  && path === '/settings/team')                      return handleSettingsTeam(uuid, env, jwtPayload);
+  if (method === 'POST' && path === '/settings/team/invites')              return handleSettingsTeamInviteSend(uuid, request, env, jwtPayload);
+  if (method === 'POST' && path === '/settings/team/invites/revoke')       return handleSettingsTeamInviteRevoke(uuid, request, env, jwtPayload);
+
   return json({ ok: false, error: 'Not Found', path }, 404);
 }
 
@@ -1531,6 +1540,337 @@ async function handleSettingsBrandingPresets(env) {
   } catch (e) {
     return json({ ok: false, error: 'pdf_presets_fetch_failed', detail: e.message }, 502);
   }
+}
+
+// ── Team access pane (RFT-87 scope b) ────────────────────────────────────────
+//
+// Three endpoints back the Team Access pane on /settings:
+//   GET  /settings/team                  → members + pending invites + SM8 staff roster
+//   POST /settings/team/invites          → create invite, suppress Clerk email, send our own
+//   POST /settings/team/invites/revoke   → revoke a pending invite
+//
+// All three are admin-gated by settingsAdminGate at the dispatcher. The org
+// scoping (clerk_org → uuid) is already done by handleSettings before we get
+// here — `uuid` and `jwtPayload.org_id` are both trusted.
+//
+// Why notify=false: the user must land on a custom-flow page served from
+// rafter.deepgreensea.au so the resulting passkey's RP ID = rafter.deepgreensea.au.
+// Clerk's default invite email sends users through a *.clerk.accounts.dev page
+// first — wrong origin for the passkey. Setting notify=false makes us the
+// sender, and our email points directly at the `redirect_url` we configured.
+
+async function handleSettingsTeam(uuid, env, jwtPayload) {
+  const orgId = jwtPayload.org_id;
+  if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+  if (!env.CLERK_SECRET_KEY) return json({ ok: false, error: 'clerk_secret_key_missing' }, 500);
+
+  // Members + pending invites from Clerk Backend API. Staff roster from
+  // materials-sync (SM8 source of truth). All three in parallel.
+  const [membersRes, invitesRes, staffRes] = await Promise.all([
+    clerkBackendFetch(env, `/v1/organizations/${orgId}/memberships?limit=100`),
+    clerkBackendFetch(env, `/v1/organizations/${orgId}/invitations?status=pending&limit=100`),
+    syncFetch(env, `/sm8-staff?uuid=${uuid}`),
+  ]);
+
+  if (!membersRes.ok) return json({ ok: false, error: `clerk_memberships_${membersRes.status}` }, 502);
+  if (!invitesRes.ok) return json({ ok: false, error: `clerk_invitations_${invitesRes.status}` }, 502);
+
+  const membersBody = await membersRes.json();
+  const invitesBody = await invitesRes.json();
+
+  const members = (membersBody.data || []).map(m => ({
+    id: m.id,
+    user_id: m.public_user_data?.user_id || null,
+    email: m.public_user_data?.identifier || '',
+    first_name: m.public_user_data?.first_name || '',
+    last_name: m.public_user_data?.last_name || '',
+    role: m.role || '',
+    created_at: m.created_at || null,
+  }));
+
+  const pending_invites = (invitesBody.data || []).map(i => ({
+    id: i.id,
+    email: i.email_address || '',
+    role: i.role || '',
+    created_at: i.created_at || null,
+    // Staff attribution carried via public_metadata; surfaced so the UI can
+    // show "Andy (Tradesperson)" next to a pending invite even before accept.
+    staff_uuid: i.public_metadata?.staff_uuid || null,
+    first: i.public_metadata?.first || '',
+    last: i.public_metadata?.last || '',
+  }));
+
+  // Staff roster: empty array if SM8 not connected (no OAuth) or call failed.
+  // Graceful — pane still shows members + pending invites, just no picker.
+  let staff = [];
+  let staff_error = null;
+  if (staffRes.ok) {
+    try {
+      const body = await staffRes.json();
+      staff = Array.isArray(body.staff) ? body.staff : [];
+    } catch {
+      staff_error = 'sm8_staff_invalid_json';
+    }
+  } else {
+    staff_error = `sm8_staff_${staffRes.status}`;
+  }
+
+  return json({ ok: true, members, pending_invites, staff, staff_error });
+}
+
+async function handleSettingsTeamInviteSend(uuid, request, env, jwtPayload) {
+  const orgId = jwtPayload.org_id;
+  const inviterUserId = jwtPayload.sub || null;
+  if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+  if (!inviterUserId) return json({ ok: false, error: 'no_user_in_jwt' }, 401);
+  if (!env.CLERK_SECRET_KEY) return json({ ok: false, error: 'clerk_secret_key_missing' }, 500);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+
+  const email = typeof body?.email === 'string' ? body.email.trim().toLowerCase() : '';
+  const staff_uuid = typeof body?.staff_uuid === 'string' ? body.staff_uuid.trim() : '';
+  const first = typeof body?.first === 'string' ? body.first.trim().slice(0, 80) : '';
+  const last = typeof body?.last === 'string' ? body.last.trim().slice(0, 80) : '';
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    return json({ ok: false, error: 'invalid_email' }, 400);
+  }
+
+  // Slug needed for the redirect_url so accept-invite.html knows which tenant
+  // to land on after enrolment. Pull from the tenant record — we already
+  // resolved uuid from the JWT org, so this is the trusted slug for the org.
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return json({ ok: false, error: 'client_not_found' }, 404);
+  let record;
+  try { record = JSON.parse(raw); }
+  catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
+  const slug = record.slug || '';
+  if (!slug) return json({ ok: false, error: 'tenant_slug_missing' }, 400);
+  const companyName = record.company_name || 'Rafter';
+
+  // Admin inviter email — used in the email body so the recipient sees who
+  // sent the invitation. Pull from membership data we already have.
+  const adminEmail = await lookupInviterEmail(env, orgId, inviterUserId).catch(() => '');
+
+  const redirectUrl = `https://rafter.deepgreensea.au/accept-invite.html?slug=${encodeURIComponent(slug)}`;
+
+  // Create the Clerk invitation with notify=false (suppresses Clerk's email,
+  // returns the ticket URL on the response so we can send it ourselves).
+  const inviteRes = await clerkBackendFetch(env, `/v1/organizations/${orgId}/invitations`, {
+    method: 'POST',
+    body: JSON.stringify({
+      email_address: email,
+      role: 'org:member', // Passkey-on-invite default — no admin power for invitees
+      redirect_url: redirectUrl,
+      inviter_user_id: inviterUserId,
+      notify: false,
+      public_metadata: { staff_uuid: staff_uuid || null, first, last },
+    }),
+  });
+
+  if (!inviteRes.ok) {
+    let detail = '';
+    try { detail = await inviteRes.text(); } catch {}
+    return json({ ok: false, error: 'clerk_invite_failed', status: inviteRes.status, detail: detail.slice(0, 500) }, 502);
+  }
+
+  const inviteBody = await inviteRes.json();
+  const inviteUrl = inviteBody.url || null;
+  const inviteId = inviteBody.id || null;
+  if (!inviteUrl) {
+    return json({ ok: false, error: 'invite_url_missing', invitation_id: inviteId }, 502);
+  }
+
+  // Send the Rafter-owned invite email. If the send fails, the invitation
+  // still exists in Clerk — admin can re-send manually using the returned
+  // invitation_id. Return partial success so the UI can surface the URL.
+  let email_sent = false;
+  let email_error = null;
+  try {
+    await sendInviteEmail(env, {
+      toEmail: email,
+      toName: [first, last].filter(Boolean).join(' '),
+      inviteUrl,
+      companyName,
+      adminEmail,
+    });
+    email_sent = true;
+  } catch (e) {
+    email_error = e.message || 'email_send_failed';
+    console.error(JSON.stringify({ event: 'invite_email_send_failed', uuid, invitation_id: inviteId, error: email_error }));
+  }
+
+  return json({
+    ok: true,
+    invitation_id: inviteId,
+    email,
+    email_sent,
+    email_error,
+    // Returned even on success so an admin can copy the URL into a different
+    // channel (SMS, in-person etc.) if needed. Future: don't return when
+    // we add a Rafter-owned SMS path.
+    invite_url: inviteUrl,
+  });
+}
+
+async function handleSettingsTeamInviteRevoke(uuid, request, env, jwtPayload) {
+  const orgId = jwtPayload.org_id;
+  const requesterUserId = jwtPayload.sub || null;
+  if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+  if (!requesterUserId) return json({ ok: false, error: 'no_user_in_jwt' }, 401);
+  if (!env.CLERK_SECRET_KEY) return json({ ok: false, error: 'clerk_secret_key_missing' }, 500);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+
+  const invitation_id = typeof body?.invitation_id === 'string' ? body.invitation_id.trim() : '';
+  if (!invitation_id || !/^[a-z0-9_-]+$/i.test(invitation_id)) {
+    return json({ ok: false, error: 'invalid_invitation_id' }, 400);
+  }
+
+  const res = await clerkBackendFetch(env, `/v1/organizations/${orgId}/invitations/${invitation_id}/revoke`, {
+    method: 'POST',
+    body: JSON.stringify({ requesting_user_id: requesterUserId }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch {}
+    return json({ ok: false, error: 'clerk_revoke_failed', status: res.status, detail: detail.slice(0, 500) }, 502);
+  }
+  return json({ ok: true, invitation_id });
+}
+
+// Look up the inviter's email from the organization memberships. Used to
+// populate "invited by ..." in the recipient's email. Best-effort — empty
+// string fallback so a missing membership doesn't block the invite.
+async function lookupInviterEmail(env, orgId, userId) {
+  const res = await clerkBackendFetch(env, `/v1/organizations/${orgId}/memberships?limit=100`);
+  if (!res.ok) return '';
+  const body = await res.json().catch(() => ({}));
+  const match = (body.data || []).find(m => m.public_user_data?.user_id === userId);
+  return match?.public_user_data?.identifier || '';
+}
+
+// Thin Clerk Backend API wrapper. Centralises the secret-key auth header so
+// callers only think about path + body. CLERK_SECRET_KEY is set as a worker
+// secret — never logged, never sent to the browser.
+function clerkBackendFetch(env, path, init = {}) {
+  return fetch(`https://api.clerk.com${path}`, {
+    method: init.method || 'GET',
+    headers: {
+      'Authorization': `Bearer ${env.CLERK_SECRET_KEY}`,
+      ...(init.body ? { 'Content-Type': 'application/json' } : {}),
+      ...(init.headers || {}),
+    },
+    body: init.body,
+  });
+}
+
+// Rafter-owned invite email send. Uses Cloudflare Email Sending via the
+// SEND_EMAIL binding (admin-api/wrangler.toml). From-address is read from
+// the INVITE_FROM_ADDRESS env var (defaults to invites@deepgreensea.au).
+// The from-domain MUST be verified in Cloudflare Email Routing for the
+// destination's DKIM check to pass — see prod-instance checklist.
+async function sendInviteEmail(env, { toEmail, toName, inviteUrl, companyName, adminEmail }) {
+  if (!env.SEND_EMAIL) throw new Error('send_email_binding_missing');
+  const fromAddr = env.INVITE_FROM_ADDRESS || 'invites@deepgreensea.au';
+  const fromName = `${companyName} via Rafter`;
+  const subject = `${companyName} — set up your sign-in`;
+  const html = renderInviteHtml({ companyName, inviteUrl, adminEmail, recipientName: toName });
+  const text = renderInviteText({ companyName, inviteUrl, adminEmail, recipientName: toName });
+  const raw = buildMimeMessage({ fromName, fromAddr, toEmail, subject, html, text });
+
+  const { EmailMessage } = await import('cloudflare:email');
+  const message = new EmailMessage(fromAddr, toEmail, raw);
+  await env.SEND_EMAIL.send(message);
+}
+
+function renderInviteHtml({ companyName, inviteUrl, adminEmail, recipientName }) {
+  const safeName = (recipientName || '').replace(/[<>&"]/g, '');
+  const greeting = safeName ? `Hi ${safeName},` : 'Hi,';
+  const adminLine = adminEmail
+    ? `This invitation was sent by ${adminEmail.replace(/[<>&"]/g, '')}. If you weren't expecting it, you can ignore this email.`
+    : "If you weren't expecting this invitation, you can ignore this email.";
+  return `<!DOCTYPE html><html><body style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Helvetica,Arial,sans-serif;color:#1C1C1C;line-height:1.5;margin:0;padding:24px;background:#F7F9FC;">
+<div style="max-width:540px;margin:0 auto;">
+  <div style="background:#1B4F72;color:#fff;padding:18px 24px;border-radius:10px 10px 0 0;font-size:16px;font-weight:600;">${companyName.replace(/[<>&"]/g, '')}</div>
+  <div style="background:#fff;border:1px solid #D4D0C8;border-top:0;padding:24px;border-radius:0 0 10px 10px;">
+    <p style="margin:0 0 12px;">${greeting}</p>
+    <p style="margin:0 0 12px;">${companyName.replace(/[<>&"]/g, '')} uses Rafter to send quotes from the field. You've been invited to set up your sign-in.</p>
+    <p style="margin:0 0 12px;">Tap the button below on the device you'll use for quoting. You'll set up a passkey (Face ID, fingerprint or device PIN) and be signed in for next time.</p>
+    <p style="margin:24px 0;"><a href="${inviteUrl}" style="background:#1B4F72;color:#fff;padding:12px 24px;border-radius:8px;text-decoration:none;font-weight:600;display:inline-block;">Set up this device</a></p>
+    <p style="font-size:12px;color:#6B7280;margin:0 0 12px;">If the button doesn't work, paste this link into your browser:<br><span style="word-break:break-all;">${inviteUrl}</span></p>
+    <p style="font-size:12px;color:#6B7280;margin:24px 0 0;">${adminLine}</p>
+  </div>
+  <p style="font-size:11px;color:#9AA0A6;text-align:center;margin-top:16px;">Rafter · Built by Deep Green Sea</p>
+</div>
+</body></html>`;
+}
+
+function renderInviteText({ companyName, inviteUrl, adminEmail, recipientName }) {
+  const greeting = recipientName ? `Hi ${recipientName},` : 'Hi,';
+  const adminLine = adminEmail
+    ? `This invitation was sent by ${adminEmail}. If you weren't expecting it, you can ignore this email.`
+    : "If you weren't expecting this invitation, you can ignore this email.";
+  return [
+    companyName,
+    '',
+    greeting,
+    '',
+    `${companyName} uses Rafter to send quotes from the field. You've been invited to set up your sign-in.`,
+    '',
+    "Tap this link on the device you'll use for quoting. You'll set up a passkey (Face ID, fingerprint or device PIN) and be signed in for next time.",
+    '',
+    inviteUrl,
+    '',
+    adminLine,
+    '',
+    'Rafter — Built by Deep Green Sea',
+  ].join('\r\n');
+}
+
+// Hand-rolled multipart/alternative MIME message. No npm dep — Workers can
+// build the raw string directly. Boundary string is fresh per call. CRLF
+// line endings are required by RFC 5322; Cloudflare Email Sending rejects
+// LF-only messages.
+function buildMimeMessage({ fromName, fromAddr, toEmail, subject, html, text }) {
+  const boundary = `rfBoundary${Math.random().toString(36).slice(2)}${Date.now().toString(36)}`;
+  const fromHeader = fromName ? `${mimeEncodeWord(fromName)} <${fromAddr}>` : fromAddr;
+  const lines = [
+    `From: ${fromHeader}`,
+    `To: ${toEmail}`,
+    `Subject: ${mimeEncodeWord(subject)}`,
+    'MIME-Version: 1.0',
+    `Content-Type: multipart/alternative; boundary="${boundary}"`,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/plain; charset="utf-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    text,
+    '',
+    `--${boundary}`,
+    'Content-Type: text/html; charset="utf-8"',
+    'Content-Transfer-Encoding: 7bit',
+    '',
+    html,
+    '',
+    `--${boundary}--`,
+    '',
+  ];
+  return lines.join('\r\n');
+}
+
+// RFC 2047 encoded-word for non-ASCII subject/from-name. Conservative: only
+// encode if there are non-ASCII chars. Base64 over UTF-8.
+function mimeEncodeWord(s) {
+  if (/^[\x20-\x7e]*$/.test(s)) return s;
+  const bytes = new TextEncoder().encode(s);
+  let bin = '';
+  for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+  return `=?UTF-8?B?${btoa(bin)}?=`;
 }
 
 // Clone a SM8 jobtemplate to a job, GET the job to read its prose, push

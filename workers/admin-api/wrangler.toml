@@ -23,3 +23,11 @@ service = "rafter-materials-sync"
 [[services]]
 binding = "PDF_WORKER"
 service = "rafter-pdf"
+
+# RFT-87 scope (b) — Rafter-owned invite email send. Uses Cloudflare Email
+# Sending. Requires the from-domain (deepgreensea.au by default) to be verified
+# in Cloudflare Email Routing + a routing rule to receive bounces. Sender
+# address is configured via env var INVITE_FROM_ADDRESS (default
+# "invites@deepgreensea.au"). See prod-instance checklist on RFT-87.
+[[send_email]]
+name = "SEND_EMAIL"

@@ -7,10 +7,12 @@
 <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
 <!-- RFT-63: Clerk JS — settings is admin-only, JWT required before anything else.
-     Same instance + pattern as the form and onboarding pages. -->
+     RFT-87 scope (b): pinned to 6.14.0. Stale @latest on auth surfaces can
+     silently shift the chaining API contract under us; other pages are
+     flagged for a follow-up pin sweep. -->
 <script
   data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
-  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
+  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@6.14.0/dist/clerk.browser.js"
   crossorigin="anonymous"
 ></script>
 <style>
@@ -269,6 +271,32 @@
   .config-branding-preview-sample { padding: 12px; border-radius: 6px; font-size: 13px; }
 
   .config-loading-pane { padding: 14px; text-align: center; color: var(--rf-muted); font-size: 12px; font-style: italic; }
+
+  /* RFT-87 scope (b) — Team Access (Zone 3) */
+  .team-section { border: 0.5px solid var(--rf-border); border-radius: 8px; margin-bottom: 12px; background: var(--rf-row-bg); overflow: hidden; }
+  .team-section-head { padding: 10px 14px; font-size: 12px; font-weight: 600; color: var(--rf-navy); text-transform: uppercase; letter-spacing: 0.04em; background: #fff; border-bottom: 0.5px solid var(--rf-divider); display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+  .team-section-body { padding: 8px 0; }
+  .team-row { display: flex; align-items: center; gap: 10px; padding: 8px 14px; }
+  .team-row + .team-row { border-top: 0.5px solid var(--rf-divider); }
+  .team-row-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; }
+  .team-row-name { font-size: 13px; font-weight: 500; color: var(--rf-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .team-row-meta { font-size: 11px; color: var(--rf-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .team-row-badge { font-size: 9px; padding: 2px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  .team-row-badge.admin { background: #DCFCE7; color: #166534; }
+  .team-row-badge.member { background: #DBEAFE; color: #1E40AF; }
+  .team-row-badge.pending { background: #FEF3C7; color: #92400E; }
+  .team-empty { padding: 12px 14px; font-size: 12px; color: var(--rf-muted); font-style: italic; }
+  .team-invite-form { padding: 12px 14px; background: #fff; border: 0.5px solid var(--rf-border); border-radius: 8px; }
+  .team-invite-form-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  @media (max-width: 560px) { .team-invite-form-grid { grid-template-columns: 1fr; } }
+  .team-invite-form select, .team-invite-form input { width: 100%; padding: 8px 10px; font-size: 13px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; background: #fff; color: var(--rf-text); }
+  .team-invite-form select:focus, .team-invite-form input:focus { outline: none; border-color: var(--rf-ocean); box-shadow: 0 0 0 2px rgba(46,134,171,0.18); }
+  .team-invite-actions { display: flex; align-items: center; gap: 10px; padding-top: 10px; border-top: 0.5px dashed var(--rf-divider); margin-top: 10px; }
+  .team-invite-status { font-size: 11px; color: var(--rf-muted); flex: 1; min-width: 0; }
+  .team-invite-status.ok { color: var(--rf-success); }
+  .team-invite-status.err { color: var(--rf-danger); }
+  .team-invite-status .copy-url { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; word-break: break-all; display: block; margin-top: 4px; color: var(--rf-muted); }
+  .team-staff-warn { padding: 10px 14px; background: #FEF3C7; border: 0.5px solid #FDE68A; border-radius: 6px; font-size: 12px; color: #92400E; margin-bottom: 10px; }
 </style>
 </head>
 <body>
@@ -337,6 +365,25 @@
           Settings that appear on your quotes — business identity, payment terms, branding.
         </div>
         <div id="configCards"></div>
+      </div>
+    </div>
+
+    <!-- Zone 3 — Team Access (RFT-87 scope b). Invite SM8 staff onto Rafter
+         devices via passkey-on-invite. Admin-only pane. Lists members +
+         pending invites + roster picker; sends the invite email itself
+         (Rafter-owned send so the link lands on rafter.deepgreensea.au and
+         the resulting passkey binds to our origin). -->
+    <div class="card">
+      <div class="pane">
+        <div class="pane-header">
+          <h2><i class="ti ti-users" style="vertical-align:middle;margin-right:4px;"></i>Team access</h2>
+        </div>
+        <div style="font-size:12px;color:var(--rf-muted);line-height:1.5;margin-bottom:12px;">
+          Invite SM8 staff to use the Quote Builder on their own device. They tap the email link, set up Face ID / fingerprint, and they're signed in for next time — no password to remember.
+        </div>
+        <div id="teamPane">
+          <div class="loading-card" style="padding:16px;">Loading team…</div>
+        </div>
       </div>
     </div>
 
@@ -488,6 +535,9 @@ async function loadState() {
     // Zone 2 renders separately from render(), so a Zone 1 re-render (drag,
     // photo ops) never clobbers unsaved input in an expanded config card.
     renderConfigCards();
+    // RFT-87 scope (b) — Team Access (Zone 3). Independent load so a slow
+    // Clerk Backend API call never delays Zone 1/2 paint.
+    loadTeam();
   } catch (e) {
     showError('Network error loading settings. Please refresh.');
   }
@@ -2395,6 +2445,232 @@ function showSyncReport(data) {
   document.body.appendChild(backdrop);
   backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
   backdrop.querySelector('#syncReportClose').addEventListener('click', () => backdrop.remove());
+}
+
+// ─── RFT-87 scope (b): Team Access (Zone 3) ─────────────────────────────────
+//
+// Independent fetch + render — never blocks Zone 1/2 paint, never re-renders
+// on Zone 1/2 mutations. State held locally (state.team) so revoke/invite
+// actions can rerender in-place without re-fetching the staff roster.
+async function loadTeam() {
+  const pane = $('teamPane');
+  if (!pane) return;
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/team`);
+    if (!res.ok) {
+      pane.innerHTML = `<div class="team-empty">Couldn't load team data (HTTP ${res.status}). Refresh to retry.</div>`;
+      return;
+    }
+    const data = await res.json();
+    state.team = {
+      members: data.members || [],
+      pending: data.pending_invites || [],
+      staff: data.staff || [],
+      staff_error: data.staff_error || null,
+    };
+    renderTeam();
+  } catch (e) {
+    pane.innerHTML = `<div class="team-empty">Network error loading team. Refresh to retry.</div>`;
+  }
+}
+
+function renderTeam() {
+  const pane = $('teamPane');
+  if (!pane || !state.team) return;
+  const { members, pending, staff, staff_error } = state.team;
+
+  // SM8 staff already either a member or pending-invited — hide from picker.
+  const takenEmails = new Set([
+    ...members.map(m => (m.email || '').toLowerCase()),
+    ...pending.map(p => (p.email || '').toLowerCase()),
+  ]);
+  const inviteableStaff = staff.filter(s => s.email && !takenEmails.has(s.email.toLowerCase()));
+
+  const membersHtml = members.length === 0
+    ? `<div class="team-empty">No members yet.</div>`
+    : members.map(m => {
+        const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || '—';
+        const roleLabel = m.role === 'org:admin' ? 'Admin' : 'Member';
+        const badgeClass = m.role === 'org:admin' ? 'admin' : 'member';
+        return `<div class="team-row">
+          <div class="team-row-main">
+            <div class="team-row-name">${esc(name)}</div>
+            <div class="team-row-meta">${esc(m.email || '')}</div>
+          </div>
+          <span class="team-row-badge ${badgeClass}">${roleLabel}</span>
+        </div>`;
+      }).join('');
+
+  const pendingHtml = pending.length === 0
+    ? `<div class="team-empty">No pending invitations.</div>`
+    : pending.map(p => {
+        const name = [p.first, p.last].filter(Boolean).join(' ') || p.email;
+        return `<div class="team-row">
+          <div class="team-row-main">
+            <div class="team-row-name">${esc(name)}</div>
+            <div class="team-row-meta">${esc(p.email)}</div>
+          </div>
+          <span class="team-row-badge pending">Pending</span>
+          <button class="btn small danger" data-action="revoke" data-invite-id="${esc(p.id)}"><i class="ti ti-x"></i>Revoke</button>
+        </div>`;
+      }).join('');
+
+  // Staff picker — only show staff with an email Clerk can deliver to.
+  // Staff without an email shown disabled with a hint (encourages adding
+  // it in SM8 first). If SM8 isn't connected, full warning banner instead.
+  let inviteFormHtml = '';
+  if (staff_error) {
+    inviteFormHtml = `<div class="team-staff-warn">
+      Couldn't load your SM8 staff roster (${esc(staff_error)}). Connect ServiceM8 to invite staff by name.
+    </div>`;
+  } else if (inviteableStaff.length === 0 && staff.length === 0) {
+    inviteFormHtml = `<div class="team-staff-warn">
+      No active staff in ServiceM8. Add staff in ServiceM8 first, then refresh this page.
+    </div>`;
+  } else if (inviteableStaff.length === 0) {
+    inviteFormHtml = `<div class="team-empty">All active SM8 staff already have access or a pending invite.</div>`;
+  } else {
+    const options = inviteableStaff.map(s => {
+      const name = [s.first, s.last].filter(Boolean).join(' ') || s.email;
+      const typeLabel = s.type ? ` · ${s.type}` : '';
+      return `<option value="${esc(s.uuid)}" data-email="${esc(s.email)}" data-first="${esc(s.first)}" data-last="${esc(s.last)}">${esc(name)}${esc(typeLabel)} — ${esc(s.email)}</option>`;
+    }).join('');
+    inviteFormHtml = `<div class="team-invite-form">
+      <div class="team-invite-form-grid">
+        <div>
+          <label style="display:block;font-size:11px;color:var(--rf-muted);margin-bottom:4px;">Staff member</label>
+          <select id="inviteStaffPicker">
+            <option value="">— pick from SM8 roster —</option>
+            ${options}
+          </select>
+        </div>
+        <div>
+          <label style="display:block;font-size:11px;color:var(--rf-muted);margin-bottom:4px;">Email (auto-filled)</label>
+          <input id="inviteEmail" type="email" placeholder="—" readonly style="background:#f7f9fc;">
+        </div>
+      </div>
+      <div class="team-invite-actions">
+        <button class="btn primary" id="inviteSendBtn" disabled><i class="ti ti-send"></i>Send invitation</button>
+        <div class="team-invite-status" id="inviteStatus"></div>
+      </div>
+    </div>`;
+  }
+
+  pane.innerHTML = `
+    <div class="team-section">
+      <div class="team-section-head">Active members</div>
+      <div class="team-section-body">${membersHtml}</div>
+    </div>
+    <div class="team-section">
+      <div class="team-section-head">Pending invitations</div>
+      <div class="team-section-body">${pendingHtml}</div>
+    </div>
+    <div class="team-section">
+      <div class="team-section-head">Invite a device</div>
+      <div class="team-section-body" style="padding:12px 14px;">
+        ${inviteFormHtml}
+      </div>
+    </div>
+  `;
+  wireTeamPane();
+}
+
+function wireTeamPane() {
+  // Revoke buttons (pending invites).
+  document.querySelectorAll('#teamPane [data-action="revoke"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const inviteId = btn.dataset.inviteId;
+      if (!inviteId) return;
+      if (!confirm('Revoke this pending invitation? The link will stop working immediately.')) return;
+      btn.disabled = true;
+      try {
+        const res = await authedFetch(`${ADMIN_API}/settings/team/invites/revoke`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invitation_id: inviteId }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          toast(`Revoke failed: ${body.error || res.status}`, 'err');
+          btn.disabled = false;
+          return;
+        }
+        toast('Invitation revoked');
+        loadTeam();
+      } catch (e) {
+        toast('Network error', 'err');
+        btn.disabled = false;
+      }
+    });
+  });
+
+  // Staff picker → auto-fill email.
+  const picker = $('inviteStaffPicker');
+  const emailInput = $('inviteEmail');
+  const sendBtn = $('inviteSendBtn');
+  const statusEl = $('inviteStatus');
+  if (picker && emailInput && sendBtn) {
+    picker.addEventListener('change', () => {
+      const opt = picker.selectedOptions[0];
+      if (opt && opt.value) {
+        emailInput.value = opt.dataset.email || '';
+        sendBtn.disabled = !opt.dataset.email;
+        if (statusEl) statusEl.textContent = '';
+      } else {
+        emailInput.value = '';
+        sendBtn.disabled = true;
+      }
+    });
+
+    sendBtn.addEventListener('click', async () => {
+      const opt = picker.selectedOptions[0];
+      if (!opt || !opt.value) return;
+      sendBtn.disabled = true;
+      if (statusEl) {
+        statusEl.className = 'team-invite-status';
+        statusEl.textContent = 'Sending invitation…';
+      }
+      try {
+        const res = await authedFetch(`${ADMIN_API}/settings/team/invites`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            email: opt.dataset.email,
+            staff_uuid: opt.value,
+            first: opt.dataset.first || '',
+            last: opt.dataset.last || '',
+          }),
+        });
+        const body = await res.json().catch(() => ({}));
+        if (!res.ok) {
+          if (statusEl) {
+            statusEl.className = 'team-invite-status err';
+            statusEl.textContent = `Couldn't send: ${body.error || res.status}`;
+          }
+          sendBtn.disabled = false;
+          return;
+        }
+        // Success — re-load team to show the new pending invite, surface
+        // the URL if email send failed so admin can copy it manually.
+        if (statusEl) {
+          if (body.email_sent) {
+            statusEl.className = 'team-invite-status ok';
+            statusEl.textContent = `Invitation sent to ${body.email}.`;
+          } else {
+            statusEl.className = 'team-invite-status err';
+            statusEl.innerHTML = `Invitation created but email send failed (${esc(body.email_error || 'unknown')}). Copy this link and send it manually:<span class="copy-url">${esc(body.invite_url)}</span>`;
+          }
+        }
+        loadTeam();
+      } catch (e) {
+        if (statusEl) {
+          statusEl.className = 'team-invite-status err';
+          statusEl.textContent = 'Network error sending invitation.';
+        }
+        sendBtn.disabled = false;
+      }
+    });
+  }
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
