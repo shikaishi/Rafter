@@ -1790,16 +1790,27 @@ function renderHeader() {
 
 // ===== SECTION 1 =====
 const sm8SearchDebounced = debounce(sm8Search, 400);
+// RFT-118 pattern: role-aware actionable hint. Admins (and ungated tenants
+// where state.orgRole is null) get the reconnect path; members get the
+// "ask your admin" path. Used in both the latched-false branch and the
+// 401/412 fresh-failure branch so the operator never sees a contradictory
+// state across searches.
+function sm8SearchUnavailableHint() {
+  const isMember = state.orgRole === 'org:member';
+  return isMember
+    ? "ServiceM8 search unavailable — ask your admin."
+    : "ServiceM8 search unavailable — reconnect in Settings → ServiceM8 connection.";
+}
 async function sm8Search(q) {
   const dd = $("clientDropdown");
-  if (!state.sm8SearchAvailable) { dd.style.display = "none"; $("clientHint").textContent = "ServiceM8 search unavailable — token expired"; return; }
+  if (!state.sm8SearchAvailable) { dd.style.display = "none"; $("clientHint").textContent = sm8SearchUnavailableHint(); return; }
   if (!q || q.length < 3) { dd.style.display = "none"; $("clientHint").textContent = ""; return; }
   try {
     const r = await authedFetch(`${API}/sm8-search?uuid=${state.clientUuid}&q=${encodeURIComponent(q)}`);
     if (r.status === 401 || r.status === 412) {
       state.sm8SearchAvailable = false;
       dd.style.display = "none";
-      $("clientHint").textContent = "ServiceM8 search unavailable — re-authorise via /setup";
+      $("clientHint").textContent = sm8SearchUnavailableHint();
       return;
     }
     if (!r.ok) throw new Error("sm8_" + r.status);
