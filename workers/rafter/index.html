@@ -132,22 +132,14 @@
   .btn:disabled { opacity: 0.6; cursor: not-allowed; filter: none; }
   @keyframes rfSpin { to { transform: rotate(360deg); } }
   .btn-spinner { display: inline-block; animation: rfSpin 0.8s linear infinite; transform-origin: 50% 50%; }
-  .mat-btn {
-    display: inline-flex; align-items: center; gap: 8px;
-    background: var(--rf-navy);
-    color: #fff;
-    border: none;
-    border-radius: 8px;
-    padding: 8px 12px;
-    box-shadow: var(--shadow-navy-btn);
-    cursor: pointer;
-    font-size: 12px;
-    font-family: inherit;
+  /* RFT-120 — single stale-only safety line on the operator surface.
+     Sync health UI lives in Settings → ServiceM8 connection (RFT-118). */
+  .stale-materials {
+    background: rgba(255,176,32,0.12); border: 1px solid rgba(255,176,32,0.4);
+    border-radius: 8px; padding: 10px 14px; margin: 0 0 16px 0;
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8a5a00;
   }
-  .mat-btn .sep { width: 1px; background: rgba(255,255,255,0.35); align-self: stretch; }
-  .mat-btn .ts { opacity: 0.85; font-size: 11px; }
-  .mat-btn[disabled] { opacity: 0.7; cursor: progress; }
-  .mat-btn.err { background: var(--rf-danger); box-shadow: 0 2px 8px rgba(229,115,115,0.35); }
+  .stale-materials i { font-size: 16px; }
 
   /* ===== FIND QUOTE BUTTON + FINDER VIEW (RFT-38) ===== */
   .find-btn {
@@ -897,12 +889,6 @@
         <i class="ti ti-search"></i>
         <span>Find quote</span>
       </button>
-      <button class="mat-btn" id="matBtn" type="button">
-        <i class="ti ti-refresh"></i>
-        <span>Materials</span>
-        <span class="sep"></span>
-        <span class="ts" id="matTs">checking…</span>
-      </button>
       <a href="/help" id="helpLink" class="help-link" target="_blank" rel="noopener" aria-label="Help" title="Help">
         <i class="ti ti-help-circle"></i><span>Help</span>
       </a>
@@ -919,6 +905,15 @@
   <div id="amendBanner" class="amend-banner" style="display:none;">
     <i class="ti ti-history"></i>
     <span>You are amending <strong id="amendOfRef">—</strong>. Re-sending creates a new version on the same ServiceM8 job.</span>
+  </div>
+
+  <!-- RFT-120 — stale-materials banner. Shown only when the materials load
+       fails on form boot (token expired, sync never ran, etc.). Operator
+       has no manual refresh; sync health lives in Settings → ServiceM8
+       connection (RFT-118 admin surface). -->
+  <div id="staleMaterialsBanner" class="stale-materials" style="display:none;">
+    <i class="ti ti-alert-triangle"></i>
+    <span>Prices may be out of date — ask your admin.</span>
   </div>
 
   <!-- SECTION 1 — CLIENT & JOB DETAILS -->
@@ -1184,7 +1179,6 @@ const state = {
   sections: [],        // { id, name, text, textOriginal, price, lineItems[], photos[], collapsed, photoPanelOpen, photoCat }
   notes: "",
   chipsExpanded: false,
-  lastSync: null,
   // RFT-32 edit-quote: when non-null, the operator is amending a prior
   // submission. doSubmit branches to amend op against the same SM8 job.
   amendOf: null,        // parent quote_ref
@@ -1710,15 +1704,28 @@ async function loadClient() {
 async function loadMaterials() {
   try {
     const r = await authedFetch(`${API}/materials/${state.clientUuid}`);
-    if (r.status === 404) { state.materialsAvailable = false; return; }
+    if (r.status === 404) { state.materialsAvailable = false; showStaleMaterialsBanner(); return; }
     if (!r.ok) throw new Error(`materials_${r.status}`);
     const data = await r.json();
     state.materials = Array.isArray(data.materials) ? data.materials : [];
     state.materialsAvailable = true;
-    state.lastSync = new Date().toISOString();
+    hideStaleMaterialsBanner();
   } catch (e) {
     state.materialsAvailable = false;
+    showStaleMaterialsBanner();
   }
+}
+// RFT-120: persistent banner shown when materials aren't loadable. Replaces
+// the operator-facing Materials pill + refresh button + transient toast.
+// Sync health surface lives in Settings → ServiceM8 connection (RFT-118)
+// — admins act there, operators ask their admin.
+function showStaleMaterialsBanner() {
+  const el = document.getElementById('staleMaterialsBanner');
+  if (el) el.style.display = '';
+}
+function hideStaleMaterialsBanner() {
+  const el = document.getElementById('staleMaterialsBanner');
+  if (el) el.style.display = 'none';
 }
 async function loadPhotos() {
   try {
@@ -1746,16 +1753,6 @@ function renderHeader() {
   if (logoEl) logoEl.src = logoUrl;
   const faviconEl = $("favicon");
   if (faviconEl) { faviconEl.href = logoUrl; faviconEl.type = "image/png"; }
-  updateMatBtn();
-}
-function updateMatBtn(state2) {
-  const btn = $("matBtn");
-  const ts = $("matTs");
-  btn.classList.remove("err");
-  if (state2 === "loading") { btn.disabled = true; ts.textContent = "syncing…"; return; }
-  btn.disabled = false;
-  if (!state.materialsAvailable) { btn.classList.add("err"); ts.textContent = "needs refresh"; return; }
-  ts.textContent = `synced ${fmtAgo(state.lastSync)}`;
 }
 
 // ===== SECTION 1 =====
@@ -2076,7 +2073,7 @@ function renderLineItems(s) {
   const searchRow = el(`<div class="li-search">
     ${state.materialsAvailable
       ? `<input class="input" type="text" placeholder="Search materials…" data-role="mat-search" autocomplete="off">`
-      : `<div class="li-empty">Materials catalogue unavailable — refresh via the Materials button or enter custom line items.</div>`}
+      : `<div class="li-empty">Materials catalogue unavailable — enter custom line items.</div>`}
     <div class="dropdown" data-role="mat-dropdown" style="display:none;"></div>
   </div>`);
   wrap.appendChild(searchRow);
@@ -2493,40 +2490,6 @@ function submitWithEmail() {
   doSubmit(true);
 }
 
-async function refreshMaterials() {
-  updateMatBtn("loading");
-  const btn = document.getElementById('matBtn');
-  const span = btn.querySelector('span');
-  if (span) span.textContent = 'Syncing…';
-  try {
-    const r = await authedFetch(`${API}/refresh-materials?uuid=${encodeURIComponent(state.clientUuid)}`);
-    const data = await r.json().catch(() => ({}));
-    if (!r.ok) {
-      state.materialsAvailable = false;
-      updateMatBtn();
-      // RFT-118: role-aware reconnect message. Admins (and ungated tenants
-      // where state.orgRole is null) get the actionable path; members get the
-      // "ask your admin" path since they'd 403 at the callback anyway.
-      const isMember = state.orgRole === 'org:member';
-      const expiredMsg = isMember
-        ? "ServiceM8 needs reconnecting — ask your admin to fix it."
-        : "ServiceM8 needs reconnecting — open Settings → ServiceM8 connection.";
-      toast(data.error === "token_expired" ? expiredMsg : "Materials refresh failed", "err");
-      return;
-    }
-    await loadMaterials();
-    state.lastSync = new Date().toISOString();
-    updateMatBtn();
-    toast(`Materials synced — ${data.count || state.materials.length} items`, "ok");
-  } catch (e) {
-    state.materialsAvailable = false;
-    updateMatBtn();
-    toast("Materials refresh failed", "err");
-  } finally {
-    if (span) span.textContent = 'Materials';
-  }
-}
-
 // ===== EVENTS =====
 function bindEvents() {
   $("clientName").addEventListener("input", (e) => {
@@ -2560,7 +2523,6 @@ function bindEvents() {
   $("previewBtn").addEventListener("click", previewPdf);
   $("submitJobBtn").addEventListener("click", submitJobOnly);
   $("submitEmailBtn").addEventListener("click", submitWithEmail);
-  $("matBtn").addEventListener("click", refreshMaterials);
   $("amendJobBtn").addEventListener("click", amendJobOnly);
   $("amendEmailBtn").addEventListener("click", amendWithEmail);
   $("findBtn").addEventListener("click", () => {
