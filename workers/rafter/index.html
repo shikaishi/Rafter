@@ -1387,6 +1387,15 @@ async function boot() {
   // RFT-103: fresh quote — pill stays hidden. Internal quote_ref still
   // populated for the rafter-quotes row id + SM8 join key; just not displayed.
 
+  // RFT-112: pass slug to /help so the help page's back link can land
+  // the operator on their own Quote Builder (matches Settings pattern —
+  // settings.html builds the same /{slug} href from state.slug).
+  {
+    const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
+    const helpLink = document.getElementById('helpLink');
+    if (helpLink && slug) helpLink.href = `/help?from=${encodeURIComponent(slug)}`;
+  }
+
   // RFT-87 commit 7: tenant-mode lookup is FIRST. Public, unauth, fast.
   // The flag it returns decides whether to demand a Clerk session at all.
   // Default missing flag = ungated (status-quo behaviour preserved for any

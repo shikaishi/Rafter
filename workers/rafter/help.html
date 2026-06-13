@@ -171,7 +171,7 @@
       
       <h1>Rafter Help</h1>
     </div>
-    <a href="/">&#8592; Back to Rafter</a>
+    <a href="/">&#8592; Back to Quote Builder</a>
   </div>
 
   <!-- Tab toggle -->
@@ -410,6 +410,18 @@ function switchTab(tab) {
 }
 // Deep-link support: /help#admin opens the admin tab.
 if (window.location.hash === '#admin') switchTab('admin');
+
+// RFT-112: slug-aware back link. index.html passes the tenant slug via
+// ?from=… so the operator lands on their own Quote Builder. Falls back
+// to "/" if absent (matches the existing static href).
+(function () {
+  const from = new URLSearchParams(window.location.search).get('from');
+  const backLink = document.querySelector('.help-header a');
+  if (backLink) {
+    backLink.href = from ? '/' + encodeURIComponent(from) : '/';
+    backLink.textContent = '← Back to Quote Builder';
+  }
+})();
 </script>
 </body>
 </html>
