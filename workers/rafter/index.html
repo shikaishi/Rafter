@@ -169,6 +169,17 @@
   }
   .settings-cog:hover { background: var(--rf-row-bg); color: var(--rf-navy); }
   .settings-cog i { font-size: 18px; }
+  /* Help link — visible to everyone, opens the static help page in a new tab. */
+  .help-link {
+    display: inline-flex; align-items: center; gap: 5px;
+    padding: 0 12px; height: 36px;
+    color: var(--rf-muted); border: 1px solid var(--rf-divider);
+    border-radius: 8px; text-decoration: none;
+    font-size: 12px; margin-right: 8px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .help-link:hover { background: var(--rf-row-bg); color: var(--rf-navy); }
+  .help-link i { font-size: 16px; }
   .finder-view { max-width: 1120px; margin: 0 auto; padding: 28px 16px 24px; }
   .finder-header {
     display: flex; align-items: center; justify-content: space-between;
@@ -892,6 +903,9 @@
         <span class="sep"></span>
         <span class="ts" id="matTs">checking…</span>
       </button>
+      <a href="/help" id="helpLink" class="help-link" target="_blank" rel="noopener" aria-label="Help" title="Help">
+        <i class="ti ti-help-circle"></i><span>Help</span>
+      </a>
       <!-- RFT-63: settings cog. Hidden by default; shown when verifyGatedTenant
            confirms the user is org:admin. Non-admins (including ungated tenants)
            never see it — the settings page is admin-only at the backend anyway. -->

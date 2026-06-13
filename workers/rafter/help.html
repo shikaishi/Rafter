@@ -1,0 +1,386 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Rafter — Help</title>
+<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/tabler-icons.min.css">
+<style>
+  :root {
+    --rf-navy: #1B4F72;
+    --rf-ocean: #2E86AB;
+    --rf-teal-bg: #EAF4F8;
+    --rf-teal-border: #A8D5E2;
+    --rf-outer: #1B3A52;
+    --rf-card: #FFFFFF;
+    --rf-row-bg: #F7F9FC;
+    --rf-border: #D4D0C8;
+    --rf-divider: #E8E4DC;
+    --rf-text: #1C1C1C;
+    --rf-muted: #6B6860;
+    --rf-green: #0D2E1C;
+    --rf-lime: #84B741;
+    --rf-danger-bg: #FFCDD2;
+    --rf-danger: #E57373;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--rf-outer); color: var(--rf-text); margin: 0; padding: 0; line-height: 1.55; }
+  .page { max-width: 760px; margin: 0 auto; padding: 16px; }
+  .card { background: var(--rf-card); border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; }
+  header.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+  .topbar-title { display: flex; align-items: center; gap: 10px; }
+  .topbar-title i { font-size: 20px; color: var(--rf-navy); }
+  .topbar-title h1 { font-size: 16px; font-weight: 600; color: var(--rf-navy); margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
+  .topbar-title .sub { font-size: 11px; color: var(--rf-muted); margin-top: 2px; display: block; }
+  .back-link { display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px; background: var(--rf-row-bg); border: 0.5px solid var(--rf-border); border-radius: 6px; text-decoration: none; color: var(--rf-text); font-size: 13px; }
+  .back-link:hover { background: var(--rf-teal-bg); border-color: var(--rf-teal-border); }
+  .back-link i { font-size: 16px; }
+
+  .tabs { display: flex; gap: 4px; padding: 6px; background: var(--rf-row-bg); border-radius: 10px; margin-bottom: 12px; }
+  .tab { flex: 1; background: transparent; border: none; padding: 12px 16px; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: 500; color: var(--rf-muted); font-family: inherit; }
+  .tab.active { background: var(--rf-card); color: var(--rf-navy); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
+  .tab:hover:not(.active) { color: var(--rf-text); }
+
+  .tab-content { display: none; }
+  .tab-content.active { display: block; }
+
+  .help-section { margin-bottom: 28px; }
+  .help-section h2 { font-size: 18px; font-weight: 600; color: var(--rf-navy); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 0.5px solid var(--rf-divider); }
+  .help-section h3 { font-size: 15px; font-weight: 600; color: var(--rf-text); margin: 18px 0 6px; }
+  .help-section p { margin: 8px 0; font-size: 15px; }
+  .help-section ol, .help-section ul { margin: 8px 0; padding-left: 22px; }
+  .help-section li { margin: 6px 0; font-size: 15px; }
+  .help-section strong { color: var(--rf-navy); }
+  .help-intro { font-size: 16px; color: var(--rf-muted); margin: 0 0 18px; }
+
+  .tip { background: var(--rf-teal-bg); border-left: 3px solid var(--rf-ocean); padding: 12px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 14px; }
+  .tip strong { color: var(--rf-navy); }
+  .warn { background: #FFF7E6; border-left: 3px solid #D97706; padding: 12px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 14px; }
+
+  .qna { margin: 12px 0; padding: 14px 16px; background: var(--rf-row-bg); border-radius: 8px; }
+  .qna-q { font-weight: 600; color: var(--rf-navy); margin-bottom: 4px; font-size: 14px; }
+  .qna-a { font-size: 14px; color: var(--rf-text); }
+
+  /* Support form */
+  .support-card { background: var(--rf-card); border-radius: 12px; padding: 24px; margin-top: 12px; }
+  .support-card h2 { font-size: 18px; font-weight: 600; color: var(--rf-navy); margin: 0 0 8px; }
+  .support-intro { font-size: 14px; color: var(--rf-muted); margin: 0 0 16px; }
+  .support-stub-banner { background: #FEF3C7; border: 0.5px solid #FDE68A; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #92400E; margin-bottom: 14px; }
+  .support-field { margin-bottom: 12px; }
+  .support-field label { display: block; font-size: 12px; color: var(--rf-muted); margin-bottom: 4px; font-weight: 500; }
+  .support-field input, .support-field textarea { width: 100%; padding: 10px 12px; font-size: 14px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; background: var(--rf-card); color: var(--rf-text); }
+  .support-field textarea { min-height: 100px; resize: vertical; }
+  .support-field input:focus, .support-field textarea:focus { outline: none; border-color: var(--rf-ocean); box-shadow: 0 0 0 2px rgba(46,134,171,0.18); }
+  .support-radios { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
+  .support-radios label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .support-radios input { margin: 0; }
+  .support-submit { padding: 12px 20px; background: var(--rf-navy); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
+  .support-submit:hover { background: var(--rf-ocean); }
+
+  footer.outro { text-align: center; padding: 20px 0; color: var(--rf-muted); font-size: 12px; }
+
+  @media (max-width: 560px) {
+    .page { padding: 8px; }
+    .card, .support-card { padding: 16px; }
+    header.topbar { flex-direction: column; align-items: flex-start; }
+    .tab { font-size: 14px; padding: 10px 12px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+
+  <div class="card">
+    <header class="topbar">
+      <div class="topbar-title">
+        <i class="ti ti-help-circle-filled"></i>
+        <div>
+          <h1>Rafter Help</h1>
+          <span class="sub">How to use the Quote Builder + settings</span>
+        </div>
+      </div>
+      <a href="/" class="back-link"><i class="ti ti-arrow-left"></i><span>Back to Rafter</span></a>
+    </header>
+  </div>
+
+  <div class="card">
+    <div class="tabs">
+      <button class="tab active" data-tab="operator" type="button">For operators</button>
+      <button class="tab" data-tab="admin" type="button">For admins</button>
+    </div>
+
+    <!-- ─── OPERATOR TAB ──────────────────────────────────────────────── -->
+    <section id="tab-operator" class="tab-content active">
+
+      <p class="help-intro">You build quotes on a phone or tablet. Face ID or fingerprint signs you in. Photos come from your gallery. Submit when you're done — Rafter sends the PDF to ServiceM8 and attaches it to a new job.</p>
+
+      <div class="help-section" id="signing-in">
+        <h2>Signing in</h2>
+        <p>First time? Your boss sends you an email. Tap the link, set up Face ID (or fingerprint), and you're in. <strong>No password to remember.</strong></p>
+        <p>Next time you open Rafter on the same device, it knows you instantly — your phone asks for your face or your finger, and you're straight into the form.</p>
+        <div class="tip"><strong>iCloud users:</strong> if you've set up Face ID on your iPhone, your iPad gets it automatically. Same Apple account, same passkey. No second invite needed.</div>
+        <div class="warn"><strong>Switching iPhone to Android (or vice versa)?</strong> Your Face ID doesn't carry across. Ask your boss for a fresh invite on the new device.</div>
+      </div>
+
+      <div class="help-section" id="building-a-quote">
+        <h2>Building a quote</h2>
+        <ol>
+          <li>Open Rafter on your phone or tablet. Sign in with Face ID.</li>
+          <li>Fill in the customer details at the top — name, address, contact.</li>
+          <li>Tap a section (Excavation, Construction, whatever your business uses).</li>
+          <li>Add items from your price book. Type custom items if you need to.</li>
+          <li>Add photos by tapping the picker — they're already sorted by section.</li>
+          <li>Hit <strong>Preview PDF</strong> to check it looks right.</li>
+          <li>Hit <strong>Submit</strong> to send it to ServiceM8.</li>
+        </ol>
+        <p>About five minutes from open to sent, once you know the form.</p>
+      </div>
+
+      <div class="help-section" id="adding-photos">
+        <h2>Adding photos</h2>
+        <p>Tap the section you want photos in. Tap the photo picker — your camera roll opens. Pick one or more. They upload while you keep working on the rest of the quote.</p>
+        <p>Photos get compressed automatically so they don't bog down the PDF or the customer's email. You don't need to do anything.</p>
+        <div class="tip">If a photo fails to upload (slow signal, file too big), you'll see a red message next to it. Try again — usually works second time.</div>
+      </div>
+
+      <div class="help-section" id="preview">
+        <h2>Previewing the PDF</h2>
+        <p>The <strong>Preview PDF</strong> button opens a new tab with your quote PDF. Nothing gets sent. Safe to check.</p>
+        <p>If the preview looks wrong (typo, missing item, wrong photo), close the preview tab and edit the form. Preview again until it's right.</p>
+      </div>
+
+      <div class="help-section" id="submit">
+        <h2>Sending the quote</h2>
+        <p>When the preview looks good, hit <strong>Submit</strong>. Rafter:</p>
+        <ul>
+          <li>Sends the PDF to ServiceM8</li>
+          <li>Creates a job on it</li>
+          <li>Attaches the PDF to the job</li>
+        </ul>
+        <p>You'll see a confirmation with the quote reference — something like <strong>Q-20260613-0945</strong> (the date and time it was sent).</p>
+        <div class="warn">If submit fails once, try again. If it fails twice in a row, raise a support request below — there's something on our side we should look at.</div>
+      </div>
+
+      <div class="help-section" id="amend">
+        <h2>Changing a quote you already sent</h2>
+        <p>Customer rings, wants something added or changed? You don't start over.</p>
+        <ol>
+          <li>Open Rafter</li>
+          <li>Tap <strong>Find quote</strong> up the top</li>
+          <li>Find the quote in the list — recent ones are at the top</li>
+          <li>Tap it. Every section, item, quantity, and photo is exactly how you left it.</li>
+          <li>Make your change</li>
+          <li>Hit <strong>Submit</strong> — same ServiceM8 job, new PDF, customer can be sent the updated version</li>
+        </ol>
+        <p>If the ServiceM8 job has been deleted in the meantime, Rafter tells you straight up instead of failing silently.</p>
+      </div>
+
+      <div class="help-section" id="trouble-operator">
+        <h2>What if something doesn't work</h2>
+
+        <div class="qna">
+          <div class="qna-q">"Operator not found" on the home page</div>
+          <div class="qna-a">Check the URL in your address bar matches what your boss sent. If the URL is right and you still see this, raise a support request below.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">Face ID isn't working</div>
+          <div class="qna-a">Refresh the page first. If still not working, ask your boss to send you a fresh invite — that re-enrols Face ID on this device.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">"You need a Rafter invitation from your admin" message</div>
+          <div class="qna-a">Your device hasn't been enrolled yet, or your invite hasn't gone through. Ask your boss to send you an invite to your work email.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">A photo won't upload</div>
+          <div class="qna-a">Usually slow Wi-Fi. Move to better signal and tap upload again. If it still fails after a few tries, the photo might be too big — pick a smaller one.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">Submit failed</div>
+          <div class="qna-a">Try once more. Two failures in a row means raise a support request below — there's something on our side to check.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">"This account doesn't have access to this operator"</div>
+          <div class="qna-a">You're signed into the wrong business. Tap "Sign out & try a different sign-in" on the error screen and pick the right one.</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ─── ADMIN TAB ─────────────────────────────────────────────────── -->
+    <section id="tab-admin" class="tab-content">
+
+      <p class="help-intro">You set up Rafter for your business and manage your team. Most settings live behind the cog at the top of the Quote Builder — that's your control panel.</p>
+
+      <div class="help-section" id="connect-sm8">
+        <h2>Connecting ServiceM8 the first time</h2>
+        <p>You did this during setup. If you need to reconnect (token expired, swapped accounts, something broke), open <strong>Settings</strong>, scroll to <strong>Connect ServiceM8</strong>, and click reconnect.</p>
+        <p>Rafter only reads from ServiceM8 (templates, materials, staff) and writes new jobs when you submit a quote. Your existing jobs and customers in ServiceM8 are not touched.</p>
+      </div>
+
+      <div class="help-section" id="invite-team">
+        <h2>Inviting your team</h2>
+        <p>Settings → <strong>Team Access</strong>.</p>
+        <ol>
+          <li>Pick a staff member from the dropdown (it's pulled live from your ServiceM8 staff list)</li>
+          <li>Their email auto-fills</li>
+          <li>Click <strong>Send invitation</strong></li>
+          <li>They get an email from Rafter with a link</li>
+          <li>They tap the link, set up Face ID, they're in. About thirty seconds.</li>
+        </ol>
+        <p>You can only invite people who are <strong>in your ServiceM8 staff list AND have an email on file there</strong>. This is on purpose — stops accidental invites to customers, accountants, or whoever else might've ended up in your address book.</p>
+        <div class="tip">If a staff member is missing from the dropdown, add them in ServiceM8 first (with an email), then hit the refresh button at the top of Team Access to re-pull.</div>
+        <div class="warn">If the invite email doesn't arrive, Rafter gives you a copyable link so you can text it instead. Belt and braces.</div>
+      </div>
+
+      <div class="help-section" id="remove-team">
+        <h2>Removing a team member</h2>
+        <p>Settings → Team Access → trash icon next to their row → confirm.</p>
+        <p>This removes them from <strong>this business only</strong>. If they work for another business that also uses Rafter, their account there is unaffected.</p>
+        <p>Two safety rules:</p>
+        <ul>
+          <li>You can't remove yourself.</li>
+          <li>You can't remove the only admin.</li>
+        </ul>
+      </div>
+
+      <div class="help-section" id="refresh-team">
+        <h2>Refreshing the team list</h2>
+        <p>Top-right of the Team Access pane. If a team member just accepted their invite and you want to confirm, hit refresh — the row should move from <strong>Pending Invitations</strong> to <strong>Active Members</strong>.</p>
+      </div>
+
+      <div class="help-section" id="sections-photos">
+        <h2>Setting up sections and photos</h2>
+        <p>Settings → <strong>Sections &amp; Photos</strong>.</p>
+
+        <h3>Where sections come from</h3>
+        <p>Sections come from your ServiceM8 job templates. To add a new section, rename one, or remove one, do it in ServiceM8 first — then in Rafter hit <strong>Sync with ServiceM8</strong> to mirror it across.</p>
+        <div class="tip">Rafter has a safety check: if ServiceM8 returns zero templates (token blip, network issue), Rafter refuses to wipe your sections. Try the sync again in a minute.</div>
+
+        <h3>Ordering sections</h3>
+        <p>Drag sections to reorder. Whatever order you set is the order on the quote PDF AND the order in the operator's photo picker. One lever.</p>
+
+        <h3>Managing photos in a section</h3>
+        <p>Tap a section to expand it.</p>
+        <ul>
+          <li><strong>Add</strong>: drag images into the section grid</li>
+          <li><strong>Delete</strong>: tap delete on the photo</li>
+          <li><strong>Move</strong>: send a photo to a different section</li>
+          <li><strong>Copy</strong>: duplicate a photo into another section</li>
+        </ul>
+        <p>Photos compress automatically. You don't need to worry about file size or dimensions.</p>
+      </div>
+
+      <div class="help-section" id="branding">
+        <h2>Branding (colours, logo, T&amp;Cs)</h2>
+        <p>Settings → <strong>Business Configuration</strong> → <strong>Branding</strong>.</p>
+        <p>Eight colour palettes available. Pick one, hit save, your PDFs re-render in that palette instantly. Easy to try a few and pick what fits your business.</p>
+        <p>Logo: drag a PNG, JPG, or SVG up to 2MB. It shows on every PDF you send.</p>
+      </div>
+
+      <div class="help-section" id="bank-payment">
+        <h2>Bank details, payment, T&amp;Cs</h2>
+        <p>Settings → <strong>Business Configuration</strong>:</p>
+        <ul>
+          <li><strong>Bank Details</strong>: account name, BSB, account number — shows on every PDF</li>
+          <li><strong>Payment Thresholds</strong>: how you bill across milestones for different job-value bands</li>
+          <li><strong>Terms &amp; Conditions</strong>: list them in order — appear on every PDF</li>
+          <li><strong>Credentials</strong>: list your trade licences and insurance — appear on the quote</li>
+          <li><strong>Email Template</strong>: edit the email body customers receive with their quote</li>
+        </ul>
+      </div>
+
+      <div class="help-section" id="trouble-admin">
+        <h2>What if something doesn't work</h2>
+
+        <div class="qna">
+          <div class="qna-q">Settings page won't load — bounces to a sign-in screen</div>
+          <div class="qna-a">Your session expired and the settings page can't use your Face ID. Workaround: open the Quote Builder URL first (Face ID works there), then click the cog to come back to Settings. We're working on a proper fix.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">Team Access shows "Couldn't load team data"</div>
+          <div class="qna-a">Refresh the page once. If it still fails, raise a support request below — there's a backend integration that might need looking at.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">"Sync with ServiceM8" says "0 templates" or refuses</div>
+          <div class="qna-a">Rafter refuses to wipe your sections if ServiceM8 returns empty (it's a safety check against token blips). Try sync again in a minute. If it keeps happening, your SM8 connection may have expired — reconnect from Settings.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">Team member can't accept their invite</div>
+          <div class="qna-a">First, check the invite hasn't expired (revoke and re-send if needed). If the link doesn't work in their browser, copy the manual link from the invite confirmation screen and text it to them.</div>
+        </div>
+
+        <div class="qna">
+          <div class="qna-q">Reading a member's role as "Member" when they're actually an Admin</div>
+          <div class="qna-a">Known cosmetic issue — doesn't affect their actual access. They have full admin powers regardless of the badge text. We're working on a fix.</div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <!-- ─── SUPPORT FORM (UI stub — submit wired in a follow-up) ─────────── -->
+  <div class="support-card">
+    <h2>Need more help?</h2>
+    <p class="support-intro">If something's not working and you can't sort it from the guide above, send us a support request. We'll get back to you within one business day.</p>
+
+    <div class="support-stub-banner">
+      <strong>Coming soon.</strong> Support requests aren't wired up yet — for now, please contact your administrator or email <a href="mailto:hello@deepgreensea.au" style="color:#92400E;text-decoration:underline;">hello@deepgreensea.au</a>.
+    </div>
+
+    <form id="supportForm">
+      <div class="support-field">
+        <label for="supportSubject">Subject</label>
+        <input type="text" id="supportSubject" placeholder="e.g. Can't see my photos on the form">
+      </div>
+      <div class="support-field">
+        <label for="supportMessage">What happened?</label>
+        <textarea id="supportMessage" placeholder="Describe what you saw, what you expected, and what you were trying to do."></textarea>
+      </div>
+      <div class="support-field">
+        <label>Preferred contact</label>
+        <div class="support-radios">
+          <label><input type="radio" name="contactPref" value="call"> Call me back</label>
+          <label><input type="radio" name="contactPref" value="email" checked> Email reply is fine</label>
+          <label><input type="radio" name="contactPref" value="none"> No reply needed — just FYI</label>
+        </div>
+      </div>
+      <button type="submit" class="support-submit"><i class="ti ti-send"></i> Send support request</button>
+    </form>
+  </div>
+
+  <footer class="outro">
+    Rafter — built by Deep Green Sea
+  </footer>
+
+</div>
+
+<script>
+  // Tab switcher
+  document.querySelectorAll('.tab').forEach(tab => {
+    tab.addEventListener('click', () => {
+      const target = tab.dataset.tab;
+      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + target));
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    });
+  });
+
+  // Deep-link to a tab via #admin or #operator
+  if (location.hash === '#admin') {
+    document.querySelector('[data-tab="admin"]').click();
+  }
+
+  // Support form stub — Phase 7 will wire to admin-api POST /support/raise-request.
+  document.getElementById('supportForm').addEventListener('submit', (e) => {
+    e.preventDefault();
+    alert("Support requests aren't wired up yet — please email hello@deepgreensea.au for now, or contact your administrator.");
+  });
+</script>
+</body>
+</html>
