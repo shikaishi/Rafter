@@ -1,10 +1,10 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en-AU">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Rafter — Help</title>
-<link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@2.30.0/tabler-icons.min.css">
+<link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230D2E1C'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%2384B741'/%3E%3C/svg%3E">
 <style>
   :root {
     --rf-navy: #1B4F72;
@@ -20,367 +20,396 @@
     --rf-muted: #6B6860;
     --rf-green: #0D2E1C;
     --rf-lime: #84B741;
-    --rf-danger-bg: #FFCDD2;
-    --rf-danger: #E57373;
+    --rf-danger: #B91C1C;
+    --rf-success: #166534;
+    --shadow-card: 0 2px 8px rgba(0,0,0,0.08), 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-navy-btn: 0 1px 3px rgba(27,79,114,0.3);
   }
-  * { box-sizing: border-box; }
-  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif; background: var(--rf-outer); color: var(--rf-text); margin: 0; padding: 0; line-height: 1.55; }
-  .page { max-width: 760px; margin: 0 auto; padding: 16px; }
-  .card { background: var(--rf-card); border-radius: 12px; padding: 20px 24px; margin-bottom: 12px; }
-  header.topbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-  .topbar-title { display: flex; align-items: center; gap: 10px; }
-  .topbar-title i { font-size: 20px; color: var(--rf-navy); }
-  .topbar-title h1 { font-size: 16px; font-weight: 600; color: var(--rf-navy); margin: 0; text-transform: uppercase; letter-spacing: 0.04em; }
-  .topbar-title .sub { font-size: 11px; color: var(--rf-muted); margin-top: 2px; display: block; }
-  .back-link { display: inline-flex; align-items: center; gap: 4px; padding: 8px 12px; background: var(--rf-row-bg); border: 0.5px solid var(--rf-border); border-radius: 6px; text-decoration: none; color: var(--rf-text); font-size: 13px; }
-  .back-link:hover { background: var(--rf-teal-bg); border-color: var(--rf-teal-border); }
-  .back-link i { font-size: 16px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; color: var(--rf-text); background: var(--rf-outer); min-height: 100vh; }
+  body { padding: 16px; }
 
-  .tabs { display: flex; gap: 4px; padding: 6px; background: var(--rf-row-bg); border-radius: 10px; margin-bottom: 12px; }
-  .tab { flex: 1; background: transparent; border: none; padding: 12px 16px; border-radius: 6px; cursor: pointer; font-size: 15px; font-weight: 500; color: var(--rf-muted); font-family: inherit; }
-  .tab.active { background: var(--rf-card); color: var(--rf-navy); box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-  .tab:hover:not(.active) { color: var(--rf-text); }
+  .page { max-width: 780px; margin: 0 auto; }
 
-  .tab-content { display: none; }
-  .tab-content.active { display: block; }
+  /* Header */
+  .help-header {
+    background: var(--rf-card); border-radius: 12px; box-shadow: var(--shadow-card);
+    border: 0.5px solid var(--rf-border); padding: 18px 22px;
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin-bottom: 14px;
+  }
+  .help-header-title { display: flex; align-items: center; gap: 10px; }
+  .help-header-title i { font-size: 20px; color: var(--rf-navy); }
+  .help-header-title h1 { font-size: 17px; font-weight: 600; color: var(--rf-navy); }
+  .help-header a {
+    font-size: 12px; color: var(--rf-navy); text-decoration: none;
+    border: 0.5px solid var(--rf-border); border-radius: 8px; padding: 7px 12px;
+    display: inline-flex; align-items: center; gap: 6px;
+    transition: background 0.12s;
+  }
+  .help-header a:hover { background: var(--rf-row-bg); }
 
-  .help-section { margin-bottom: 28px; }
-  .help-section h2 { font-size: 18px; font-weight: 600; color: var(--rf-navy); margin: 0 0 8px; padding-bottom: 6px; border-bottom: 0.5px solid var(--rf-divider); }
-  .help-section h3 { font-size: 15px; font-weight: 600; color: var(--rf-text); margin: 18px 0 6px; }
-  .help-section p { margin: 8px 0; font-size: 15px; }
-  .help-section ol, .help-section ul { margin: 8px 0; padding-left: 22px; }
-  .help-section li { margin: 6px 0; font-size: 15px; }
-  .help-section strong { color: var(--rf-navy); }
-  .help-intro { font-size: 16px; color: var(--rf-muted); margin: 0 0 18px; }
+  /* Tab toggle */
+  .tab-bar {
+    display: flex; gap: 0; margin-bottom: 14px;
+    background: var(--rf-card); border-radius: 12px; box-shadow: var(--shadow-card);
+    border: 0.5px solid var(--rf-border); overflow: hidden;
+  }
+  .tab-btn {
+    flex: 1; padding: 14px 18px; font-size: 14px; font-weight: 500;
+    background: transparent; border: none; cursor: pointer;
+    color: var(--rf-muted); font-family: inherit;
+    display: flex; align-items: center; justify-content: center; gap: 8px;
+    transition: background 0.15s, color 0.15s;
+    border-bottom: 2px solid transparent;
+  }
+  .tab-btn:hover { background: var(--rf-row-bg); }
+  .tab-btn.active {
+    color: var(--rf-navy); font-weight: 600;
+    border-bottom-color: var(--rf-navy); background: var(--rf-teal-bg);
+  }
+  .tab-btn i { font-size: 16px; }
 
-  .tip { background: var(--rf-teal-bg); border-left: 3px solid var(--rf-ocean); padding: 12px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 14px; }
-  .tip strong { color: var(--rf-navy); }
-  .warn { background: #FFF7E6; border-left: 3px solid #D97706; padding: 12px 14px; border-radius: 0 6px 6px 0; margin: 12px 0; font-size: 14px; }
+  /* Content cards */
+  .content { display: none; }
+  .content.active { display: block; }
+  .card {
+    background: var(--rf-card); border-radius: 12px; box-shadow: var(--shadow-card);
+    border: 0.5px solid var(--rf-border); padding: 22px 26px; margin-bottom: 14px;
+  }
+  .card h2 {
+    font-size: 16px; font-weight: 600; color: var(--rf-navy);
+    margin: 0 0 14px 0; padding-bottom: 10px;
+    border-bottom: 0.5px solid var(--rf-divider);
+  }
+  .card h3 {
+    font-size: 14px; font-weight: 600; color: var(--rf-navy);
+    margin: 18px 0 8px 0;
+  }
+  .card h3:first-child { margin-top: 0; }
+  .card p { font-size: 14px; line-height: 1.65; color: var(--rf-text); margin: 0 0 10px 0; }
+  .card p:last-child { margin-bottom: 0; }
 
-  .qna { margin: 12px 0; padding: 14px 16px; background: var(--rf-row-bg); border-radius: 8px; }
-  .qna-q { font-weight: 600; color: var(--rf-navy); margin-bottom: 4px; font-size: 14px; }
-  .qna-a { font-size: 14px; color: var(--rf-text); }
+  /* Inline labels matching the product */
+  .ui-label {
+    font-weight: 600; color: var(--rf-navy);
+  }
+  .ui-ref {
+    font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+    font-size: 12px; background: var(--rf-teal-bg); color: var(--rf-navy);
+    border: 0.5px solid var(--rf-teal-border); border-radius: 4px;
+    padding: 2px 7px;
+  }
 
-  /* Support form */
-  .support-card { background: var(--rf-card); border-radius: 12px; padding: 24px; margin-top: 12px; }
-  .support-card h2 { font-size: 18px; font-weight: 600; color: var(--rf-navy); margin: 0 0 8px; }
-  .support-intro { font-size: 14px; color: var(--rf-muted); margin: 0 0 16px; }
-  .support-stub-banner { background: #FEF3C7; border: 0.5px solid #FDE68A; padding: 10px 14px; border-radius: 6px; font-size: 13px; color: #92400E; margin-bottom: 14px; }
-  .support-field { margin-bottom: 12px; }
-  .support-field label { display: block; font-size: 12px; color: var(--rf-muted); margin-bottom: 4px; font-weight: 500; }
-  .support-field input, .support-field textarea { width: 100%; padding: 10px 12px; font-size: 14px; border: 0.5px solid var(--rf-border); border-radius: 6px; font-family: inherit; background: var(--rf-card); color: var(--rf-text); }
-  .support-field textarea { min-height: 100px; resize: vertical; }
-  .support-field input:focus, .support-field textarea:focus { outline: none; border-color: var(--rf-ocean); box-shadow: 0 0 0 2px rgba(46,134,171,0.18); }
-  .support-radios { display: flex; gap: 16px; flex-wrap: wrap; font-size: 14px; }
-  .support-radios label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
-  .support-radios input { margin: 0; }
-  .support-submit { padding: 12px 20px; background: var(--rf-navy); color: #fff; border: none; border-radius: 6px; font-size: 14px; font-weight: 600; cursor: pointer; font-family: inherit; }
-  .support-submit:hover { background: var(--rf-ocean); }
+  /* Two-option block (Submit buttons) */
+  .option-block {
+    background: var(--rf-row-bg); border-radius: 8px; padding: 12px 16px;
+    margin: 10px 0; border: 0.5px solid var(--rf-divider);
+  }
+  .option-block + .option-block { margin-top: 8px; }
+  .option-block .opt-name {
+    font-size: 13px; font-weight: 600; color: var(--rf-navy); margin-bottom: 4px;
+  }
+  .option-block .opt-desc { font-size: 13px; color: var(--rf-text); line-height: 1.5; }
 
-  footer.outro { text-align: center; padding: 20px 0; color: var(--rf-muted); font-size: 12px; }
+  /* Troubleshooting */
+  .trouble-item {
+    border: 0.5px solid var(--rf-divider); border-radius: 8px;
+    margin-bottom: 8px; overflow: hidden;
+  }
+  .trouble-q {
+    padding: 10px 14px; font-size: 13px; font-weight: 600; color: var(--rf-navy);
+    background: var(--rf-row-bg); cursor: pointer; user-select: none;
+    display: flex; align-items: center; gap: 8px;
+  }
+  .trouble-q .chevron { display: inline-block; font-size: 12px; color: var(--rf-ocean); transition: transform 0.15s; margin-right: 2px; }
+  .trouble-item.open .trouble-q .chevron { transform: rotate(90deg); }
+  .trouble-a {
+    display: none; padding: 10px 14px; font-size: 13px; color: var(--rf-text); line-height: 1.6;
+  }
+  .trouble-item.open .trouble-a { display: block; }
+
+  /* Status colours — used in the SM8 health section */
+  .status-dot { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 4px; vertical-align: middle; }
+  .status-dot.green { background: var(--rf-success); }
+  .status-dot.amber { background: #92400E; }
+  .status-dot.red { background: var(--rf-danger); }
+
+  /* SVG mockup containers */
+  .mockup-wrap {
+    margin: 14px 0; padding: 16px; background: var(--rf-row-bg);
+    border: 0.5px solid var(--rf-divider); border-radius: 10px;
+    display: flex; justify-content: center;
+  }
+  .mockup-wrap svg { max-width: 100%; height: auto; }
+
+  /* Support footer */
+  .support-card {
+    background: var(--rf-teal-bg); border: 0.5px solid var(--rf-teal-border);
+    border-radius: 12px; padding: 22px 26px; margin-top: 14px; text-align: center;
+  }
+  .support-card p { font-size: 14px; color: var(--rf-navy); margin: 0 0 6px; }
+  .support-card a { color: var(--rf-ocean); font-weight: 500; }
+
+  /* Footer */
+  .help-footer {
+    text-align: center; padding: 18px 0 8px; font-size: 11px; color: rgba(255,255,255,0.5);
+  }
 
   @media (max-width: 560px) {
-    .page { padding: 8px; }
-    .card, .support-card { padding: 16px; }
-    header.topbar { flex-direction: column; align-items: flex-start; }
-    .tab { font-size: 14px; padding: 10px 12px; }
+    body { padding: 10px; }
+    .card { padding: 16px 18px; }
   }
 </style>
 </head>
 <body>
 <div class="page">
 
-  <div class="card">
-    <header class="topbar">
-      <div class="topbar-title">
-        <i class="ti ti-help-circle-filled"></i>
-        <div>
-          <h1>Rafter Help</h1>
-          <span class="sub">How to use the Quote Builder + settings</span>
-        </div>
-      </div>
-      <a href="/" class="back-link"><i class="ti ti-arrow-left"></i><span>Back to Rafter</span></a>
-    </header>
+  <!-- Header -->
+  <div class="help-header">
+    <div class="help-header-title">
+      
+      <h1>Rafter Help</h1>
+    </div>
+    <a href="/">&#8592; Back to Rafter</a>
   </div>
 
-  <div class="card">
-    <div class="tabs">
-      <button class="tab active" data-tab="operator" type="button">For operators</button>
-      <button class="tab" data-tab="admin" type="button">For admins</button>
+  <!-- Tab toggle -->
+  <div class="tab-bar">
+    <button class="tab-btn active" data-tab="operator" onclick="switchTab('operator')">
+      
+      <span>Quote Builder<span style="display:block;font-size:11px;font-weight:400;color:var(--rf-muted);margin-top:1px;">for everyone</span></span>
+    </button>
+    <button class="tab-btn" data-tab="admin" onclick="switchTab('admin')">
+      
+      <span>Settings<span style="display:block;font-size:11px;font-weight:400;color:var(--rf-muted);margin-top:1px;">admin only</span></span>
+    </button>
+  </div>
+
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- OPERATOR CONTENT                                                    -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="content active" id="tab-operator">
+
+    <!-- Sign in -->
+    <div class="card">
+      <h2>Sign in</h2>
+      <p>The first time you use Rafter on a device, you'll need an invite — your admin sends one to your email. Open the link, confirm your identity (Face ID, fingerprint, or however your device verifies you), and you're set up.</p>
+      <p>After that, Rafter recognises you when you open the Quote Builder. The same identity check runs automatically — no password, no login screen.</p>
+      <p>If you switch to a new device, you'll need a fresh invite for it.</p>
     </div>
 
-    <!-- ─── OPERATOR TAB ──────────────────────────────────────────────── -->
-    <section id="tab-operator" class="tab-content active">
+    <!-- Build a quote -->
+    <div class="card">
+      <h2>Build a quote</h2>
+      <p>Open Rafter and sign in. The form has four sections, top to bottom.</p>
 
-      <p class="help-intro">You build quotes on a phone or tablet. Face ID or fingerprint signs you in. Photos come from your gallery. Submit when you're done — Rafter sends the PDF to ServiceM8 and attaches it to a new job.</p>
+      <h3>Customer &amp; job details</h3>
+      <p>Start typing the customer's name. If they're already in ServiceM8, they'll appear in a dropdown — choose them and the name and address fill in. Phone and email need to be entered separately.</p>
+      <p>If the customer's new, type their details straight in. ServiceM8 creates them when you submit. Site address has address lookup built in — start typing and choose from the suggestions.</p>
 
-      <div class="help-section" id="signing-in">
-        <h2>Signing in</h2>
-        <p>First time? Your boss sends you an email. Tap the link, set up Face ID (or fingerprint), and you're in. <strong>No password to remember.</strong></p>
-        <p>Next time you open Rafter on the same device, it knows you instantly — your phone asks for your face or your finger, and you're straight into the form.</p>
-        <div class="tip"><strong>iCloud users:</strong> if you've set up Face ID on your iPhone, your iPad gets it automatically. Same Apple account, same passkey. No second invite needed.</div>
-        <div class="warn"><strong>Switching iPhone to Android (or vice versa)?</strong> Your Face ID doesn't carry across. Ask your boss for a fresh invite on the new device.</div>
+      <h3>Works</h3>
+      <p>Choose the sections this job needs from the chips at the top — Excavation, Paving, Turf, or whatever your business is set up with. Each one you add opens as a card.</p>
+      <p><span class="ui-label">Works description</span> comes pre-filled with the standard wording for that section. Edit it to match the job — this text goes onto the PDF and the ServiceM8 job note. <span class="ui-label">Reset</span> puts the original wording back if you need it.</p>
+      <p>Search materials to add line items — type in the <span class="ui-label">Search materials</span> box, pick what you need, and set the quantity. The section price builds up from the items automatically, but you can type over it to set a fixed figure. Most sections start with a Labour line already in place.</p>
+
+      <h3>Photos</h3>
+      <p><span class="ui-label">Add photos</span> opens the photo library for that section, sorted so you're only seeing what's relevant. Choose the photos for this quote. Selected photos appear as thumbnails below the section, and you can remove any of them individually.</p>
+
+      <h3>Notes</h3>
+      <p>Optional. Anything site-specific — caveats, access instructions, whatever the customer or your team needs to know.</p>
+
+      <h3>Totals &amp; payment</h3>
+      <p>Subtotal, GST, and total calculate on their own from the section prices. The payment schedule selects itself based on the total — the split changes at different job-value bands. Nothing to enter here.</p>
+    </div>
+
+    <!-- Preview and send -->
+    <div class="card">
+      <h2>Preview and send</h2>
+      <p><span class="ui-label">Preview PDF</span> opens the finished quote in a new tab. Nothing is sent — check it reads the way you want. Close the tab and make changes if needed.</p>
+      <p>When it is ready, two options:</p>
+      <div class="option-block">
+        <div class="opt-name">Submit &amp; Send Quote</div>
+        <div class="opt-desc">Creates a job in ServiceM8, attaches the PDF, and emails it to the customer. The customer's email address is validated before it sends.</div>
       </div>
-
-      <div class="help-section" id="building-a-quote">
-        <h2>Building a quote</h2>
-        <ol>
-          <li>Open Rafter on your phone or tablet. Sign in with Face ID.</li>
-          <li>Fill in the customer details at the top — name, address, contact.</li>
-          <li>Tap a section (Excavation, Construction, whatever your business uses).</li>
-          <li>Add items from your price book. Type custom items if you need to.</li>
-          <li>Add photos by tapping the picker — they're already sorted by section.</li>
-          <li>Hit <strong>Preview PDF</strong> to check it looks right.</li>
-          <li>Hit <strong>Submit</strong> to send it to ServiceM8.</li>
-        </ol>
-        <p>About five minutes from open to sent, once you know the form.</p>
+      <div class="option-block">
+        <div class="opt-name">Submit Job Only</div>
+        <div class="opt-desc">Creates the same ServiceM8 job and attaches the PDF, but doesn't email the customer. Use this when you want to review the job in ServiceM8 first, or send the quote yourself later.</div>
       </div>
+      <p>After submitting, a confirmation screen shows the quote name (e.g. <span class="ui-ref">Henderson_6Jun26_v1</span>), the customer, total, and date. From there you can return to the quote or start a new one.</p>
+    </div>
 
-      <div class="help-section" id="adding-photos">
-        <h2>Adding photos</h2>
-        <p>Tap the section you want photos in. Tap the photo picker — your camera roll opens. Pick one or more. They upload while you keep working on the rest of the quote.</p>
-        <p>Photos get compressed automatically so they don't bog down the PDF or the customer's email. You don't need to do anything.</p>
-        <div class="tip">If a photo fails to upload (slow signal, file too big), you'll see a red message next to it. Try again — usually works second time.</div>
+    <!-- Change a quote -->
+    <div class="card">
+      <h2>Change a quote you've sent</h2>
+      <p>Open the Quote Builder and choose <span class="ui-label">Find quote</span>. Your recent quotes are listed with the customer name, address, version, and total. Search by customer, address, or quote reference if you need to narrow it down.</p>
+      <p>Choose a quote and the form opens exactly as it was — every section, item, quantity, photo, and note. A banner at the top confirms which quote you're amending and that re-sending creates a new version on the same ServiceM8 job.</p>
+      <p>Make your changes. The quote name in the header updates to show the new version number. Then submit the same way — <span class="ui-label">Submit &amp; Send Quote</span> or <span class="ui-label">Submit Job Only</span>. The new PDF replaces the previous one on the ServiceM8 job.</p>
+      <p>If the ServiceM8 job has been deleted since the quote was sent, Rafter tells you: you'll need to create a new quote instead.</p>
+    </div>
+
+    <!-- Troubleshooting -->
+    <div class="card">
+      <h2>If something isn't working</h2>
+
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>"Operator not found"</div>
+        <div class="trouble-a">The web address doesn't match a Rafter business. Check the URL you were given.</div>
       </div>
-
-      <div class="help-section" id="preview">
-        <h2>Previewing the PDF</h2>
-        <p>The <strong>Preview PDF</strong> button opens a new tab with your quote PDF. Nothing gets sent. Safe to check.</p>
-        <p>If the preview looks wrong (typo, missing item, wrong photo), close the preview tab and edit the form. Preview again until it's right.</p>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>Sign-in prompt doesn't appear</div>
+        <div class="trouble-a">Reload the page. If it still doesn't appear, your device may not be enrolled. Ask your admin for a fresh invite.</div>
       </div>
-
-      <div class="help-section" id="submit">
-        <h2>Sending the quote</h2>
-        <p>When the preview looks good, hit <strong>Submit</strong>. Rafter:</p>
-        <ul>
-          <li>Sends the PDF to ServiceM8</li>
-          <li>Creates a job on it</li>
-          <li>Attaches the PDF to the job</li>
-        </ul>
-        <p>You'll see a confirmation with the quote reference — something like <strong>Q-20260613-0945</strong> (the date and time it was sent).</p>
-        <div class="warn">If submit fails once, try again. If it fails twice in a row, raise a support request below — there's something on our side we should look at.</div>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>"You need a Rafter invitation from your admin"</div>
+        <div class="trouble-a">Your device isn't set up yet. Ask your admin to send an invite to your work email.</div>
       </div>
-
-      <div class="help-section" id="amend">
-        <h2>Changing a quote you already sent</h2>
-        <p>Customer rings, wants something added or changed? You don't start over.</p>
-        <ol>
-          <li>Open Rafter</li>
-          <li>Tap <strong>Find quote</strong> up the top</li>
-          <li>Find the quote in the list — recent ones are at the top</li>
-          <li>Tap it. Every section, item, quantity, and photo is exactly how you left it.</li>
-          <li>Make your change</li>
-          <li>Hit <strong>Submit</strong> — same ServiceM8 job, new PDF, customer can be sent the updated version</li>
-        </ol>
-        <p>If the ServiceM8 job has been deleted in the meantime, Rafter tells you straight up instead of failing silently.</p>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>"This account doesn't have access to this operator"</div>
+        <div class="trouble-a">You're signed into the wrong business. Choose <strong>Sign out &amp; try a different sign-in</strong> and try the correct one.</div>
       </div>
-
-      <div class="help-section" id="trouble-operator">
-        <h2>What if something doesn't work</h2>
-
-        <div class="qna">
-          <div class="qna-q">"Operator not found" on the home page</div>
-          <div class="qna-a">Check the URL in your address bar matches what your boss sent. If the URL is right and you still see this, raise a support request below.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">Face ID isn't working</div>
-          <div class="qna-a">Refresh the page first. If still not working, ask your boss to send you a fresh invite — that re-enrols Face ID on this device.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">"You need a Rafter invitation from your admin" message</div>
-          <div class="qna-a">Your device hasn't been enrolled yet, or your invite hasn't gone through. Ask your boss to send you an invite to your work email.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">A photo won't upload</div>
-          <div class="qna-a">Usually slow Wi-Fi. Move to better signal and tap upload again. If it still fails after a few tries, the photo might be too big — pick a smaller one.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">Submit failed</div>
-          <div class="qna-a">Try once more. Two failures in a row means raise a support request below — there's something on our side to check.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">"This account doesn't have access to this operator"</div>
-          <div class="qna-a">You're signed into the wrong business. Tap "Sign out & try a different sign-in" on the error screen and pick the right one.</div>
-        </div>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>"Prices may be out of date"</div>
+        <div class="trouble-a">Rafter couldn't load current materials. Tell your admin — they can check the ServiceM8 connection in Settings.</div>
       </div>
-    </section>
-
-    <!-- ─── ADMIN TAB ─────────────────────────────────────────────────── -->
-    <section id="tab-admin" class="tab-content">
-
-      <p class="help-intro">You set up Rafter for your business and manage your team. Most settings live behind the cog at the top of the Quote Builder — that's your control panel.</p>
-
-      <div class="help-section" id="connect-sm8">
-        <h2>Connecting ServiceM8 the first time</h2>
-        <p>You did this during setup. If you need to reconnect (token expired, swapped accounts, something broke), open <strong>Settings</strong>, scroll to <strong>Connect ServiceM8</strong>, and click reconnect.</p>
-        <p>Rafter only reads from ServiceM8 (templates, materials, staff) and writes new jobs when you submit a quote. Your existing jobs and customers in ServiceM8 are not touched.</p>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>Submit failed</div>
+        <div class="trouble-a">Try once more. If it fails again, contact your admin.</div>
       </div>
-
-      <div class="help-section" id="invite-team">
-        <h2>Inviting your team</h2>
-        <p>Settings → <strong>Team Access</strong>.</p>
-        <ol>
-          <li>Pick a staff member from the dropdown (it's pulled live from your ServiceM8 staff list)</li>
-          <li>Their email auto-fills</li>
-          <li>Click <strong>Send invitation</strong></li>
-          <li>They get an email from Rafter with a link</li>
-          <li>They tap the link, set up Face ID, they're in. About thirty seconds.</li>
-        </ol>
-        <p>You can only invite people who are <strong>in your ServiceM8 staff list AND have an email on file there</strong>. This is on purpose — stops accidental invites to customers, accountants, or whoever else might've ended up in your address book.</p>
-        <div class="tip">If a staff member is missing from the dropdown, add them in ServiceM8 first (with an email), then hit the refresh button at the top of Team Access to re-pull.</div>
-        <div class="warn">If the invite email doesn't arrive, Rafter gives you a copyable link so you can text it instead. Belt and braces.</div>
-      </div>
-
-      <div class="help-section" id="remove-team">
-        <h2>Removing a team member</h2>
-        <p>Settings → Team Access → trash icon next to their row → confirm.</p>
-        <p>This removes them from <strong>this business only</strong>. If they work for another business that also uses Rafter, their account there is unaffected.</p>
-        <p>Two safety rules:</p>
-        <ul>
-          <li>You can't remove yourself.</li>
-          <li>You can't remove the only admin.</li>
-        </ul>
-      </div>
-
-      <div class="help-section" id="refresh-team">
-        <h2>Refreshing the team list</h2>
-        <p>Top-right of the Team Access pane. If a team member just accepted their invite and you want to confirm, hit refresh — the row should move from <strong>Pending Invitations</strong> to <strong>Active Members</strong>.</p>
-      </div>
-
-      <div class="help-section" id="sections-photos">
-        <h2>Setting up sections and photos</h2>
-        <p>Settings → <strong>Sections &amp; Photos</strong>.</p>
-
-        <h3>Where sections come from</h3>
-        <p>Sections come from your ServiceM8 job templates. To add a new section, rename one, or remove one, do it in ServiceM8 first — then in Rafter hit <strong>Sync with ServiceM8</strong> to mirror it across.</p>
-        <div class="tip">Rafter has a safety check: if ServiceM8 returns zero templates (token blip, network issue), Rafter refuses to wipe your sections. Try the sync again in a minute.</div>
-
-        <h3>Ordering sections</h3>
-        <p>Drag sections to reorder. Whatever order you set is the order on the quote PDF AND the order in the operator's photo picker. One lever.</p>
-
-        <h3>Managing photos in a section</h3>
-        <p>Tap a section to expand it.</p>
-        <ul>
-          <li><strong>Add</strong>: drag images into the section grid</li>
-          <li><strong>Delete</strong>: tap delete on the photo</li>
-          <li><strong>Move</strong>: send a photo to a different section</li>
-          <li><strong>Copy</strong>: duplicate a photo into another section</li>
-        </ul>
-        <p>Photos compress automatically. You don't need to worry about file size or dimensions.</p>
-      </div>
-
-      <div class="help-section" id="branding">
-        <h2>Branding (colours, logo, T&amp;Cs)</h2>
-        <p>Settings → <strong>Business Configuration</strong> → <strong>Branding</strong>.</p>
-        <p>Eight colour palettes available. Pick one, hit save, your PDFs re-render in that palette instantly. Easy to try a few and pick what fits your business.</p>
-        <p>Logo: drag a PNG, JPG, or SVG up to 2MB. It shows on every PDF you send.</p>
-      </div>
-
-      <div class="help-section" id="bank-payment">
-        <h2>Bank details, payment, T&amp;Cs</h2>
-        <p>Settings → <strong>Business Configuration</strong>:</p>
-        <ul>
-          <li><strong>Bank Details</strong>: account name, BSB, account number — shows on every PDF</li>
-          <li><strong>Payment Thresholds</strong>: how you bill across milestones for different job-value bands</li>
-          <li><strong>Terms &amp; Conditions</strong>: list them in order — appear on every PDF</li>
-          <li><strong>Credentials</strong>: list your trade licences and insurance — appear on the quote</li>
-          <li><strong>Email Template</strong>: edit the email body customers receive with their quote</li>
-        </ul>
-      </div>
-
-      <div class="help-section" id="trouble-admin">
-        <h2>What if something doesn't work</h2>
-
-        <div class="qna">
-          <div class="qna-q">Settings page won't load — bounces to a sign-in screen</div>
-          <div class="qna-a">Your session expired and the settings page can't use your Face ID. Workaround: open the Quote Builder URL first (Face ID works there), then click the cog to come back to Settings. We're working on a proper fix.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">Team Access shows "Couldn't load team data"</div>
-          <div class="qna-a">Refresh the page once. If it still fails, raise a support request below — there's a backend integration that might need looking at.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">"Sync with ServiceM8" says "0 templates" or refuses</div>
-          <div class="qna-a">Rafter refuses to wipe your sections if ServiceM8 returns empty (it's a safety check against token blips). Try sync again in a minute. If it keeps happening, your SM8 connection may have expired — reconnect from Settings.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">Team member can't accept their invite</div>
-          <div class="qna-a">First, check the invite hasn't expired (revoke and re-send if needed). If the link doesn't work in their browser, copy the manual link from the invite confirmation screen and text it to them.</div>
-        </div>
-
-        <div class="qna">
-          <div class="qna-q">Reading a member's role as "Member" when they're actually an Admin</div>
-          <div class="qna-a">Known cosmetic issue — doesn't affect their actual access. They have full admin powers regardless of the badge text. We're working on a fix.</div>
-        </div>
-      </div>
-    </section>
+    </div>
   </div>
 
-  <!-- ─── SUPPORT FORM (UI stub — submit wired in a follow-up) ─────────── -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <!-- ADMIN CONTENT                                                       -->
+  <!-- ═══════════════════════════════════════════════════════════════════ -->
+  <div class="content" id="tab-admin">
+
+    <!-- Getting to Settings -->
+    <div class="card">
+      <h2>Getting to Settings</h2>
+      <p>Open the Quote Builder and look for the gear icon in the header, next to Help. That's Settings — it only appears if you're an admin. If you don't see it, you don't have admin access; ask whoever set up the account.</p>
+      <p>Settings has three zones: <span class="ui-label">Sections &amp; photos</span> (what appears in the Quote Builder), <span class="ui-label">Business Configuration</span> (what appears on your quotes), and <span class="ui-label">Team access</span> (who can use Rafter).</p>
+    </div>
+
+    <!-- Sections & photos -->
+    <div class="card">
+      <h2>Sections &amp; photos</h2>
+      <p>Sections come from your ServiceM8 job templates. To add, rename, or remove a section, make the change in ServiceM8 first, then come back here and click <span class="ui-label">Sync from SM8</span>. Rafter mirrors what ServiceM8 has — it adds new templates, updates changed ones, renames them in place (photos follow the rename), and removes deleted ones. If ServiceM8 returns nothing (token issue, network problem), the sync refuses to run and tells you why. Your sections stay untouched until you try again.</p>
+      <p>After a sync, a report shows exactly what changed: added, updated, renamed, removed.</p>
+
+      <h3>Ordering sections</h3>
+      <p>The order you set here is the order everywhere — the Quote Builder's section chips, the photo picker, and the PDF. Drag sections to reorder. Drag only works when all sections are collapsed; expand a section to work on its photos, collapse all to reorder.</p>
+
+      <h3>Managing photos</h3>
+      <p>Expand a section to see its photo grid. From here you can add photos (click the button below the grid, pick files from your device — they upload and compress automatically), delete photos (hover for the delete icon, or select multiple and use <span class="ui-label">Delete selected</span>), move or copy photos to a different section, and drag photos within a section to set the order they appear on quotes.</p>
+    </div>
+
+    <!-- Business Configuration -->
+    <div class="card">
+      <h2>Business Configuration</h2>
+      <p>Eight cards, each saving independently. Open one, make changes, hit <span class="ui-label">Save</span>. A failed save on one card never blocks another.</p>
+
+      <h3>Business details</h3>
+      <p>Company name, ABN, phone, business address, business email, and operator email. The business email appears on PDF quotes. The operator email is internal — it receives quote notifications. ABN validates as you type and checks against the Australian Business Register when you leave the field.</p>
+
+      <h3>Bank details</h3>
+      <p>Account name, BSB, and account number. These appear on every PDF quote so customers can make direct transfers. BSB formats automatically as you type.</p>
+
+      <h3>Payment thresholds</h3>
+      <p>Six tiers by job value (Under $20K through to Over $200K). Enter the payment split for each as comma-separated percentages — for example, <span class="ui-ref">20, 60, 20</span> means 20% deposit, 60% progress, 20% final. The sum indicator next to each tier turns green when it hits 100%.</p>
+      <p>The Quote Builder uses these to auto-select the payment schedule based on the quote total.</p>
+
+      <h3>Terms &amp; conditions</h3>
+      <p>Shown at the bottom of every PDF quote. Add clauses one at a time, or click <span class="ui-label">Paste T&amp;Cs text</span> to drop in a full block — each paragraph (separated by a blank line) becomes its own clause. Reorder or delete individual clauses as needed.</p>
+
+      <h3>Credentials</h3>
+      <p>Licences, insurance, memberships, guarantees — anything that belongs in the "You can rely on" section of the quote. Each entry has a name (e.g. "Fully Licensed &amp; Insured") and an optional detail line (e.g. "Public liability up to $10M").</p>
+
+      <h3>Email template</h3>
+      <p>The email your customers receive with the quote attached. Use the editor to write and format the body — bold, italic, lists, links. Press Enter for a new paragraph.</p>
+      <p>Click merge tags to insert placeholders that fill in automatically when the email sends: <span class="ui-ref">{client_name}</span>, <span class="ui-ref">{job_address}</span>, <span class="ui-ref">{quote_ref}</span>, <span class="ui-ref">{total}</span>. Use <span class="ui-label">Preview</span> to see how it looks with sample data substituted.</p>
+      <p>Leave the template blank and Rafter sends a default email with your logo.</p>
+
+      <h3>Branding</h3>
+      <p>Choose one of eight preset colour palettes, or set custom colours (primary, accent, background) with hex values. The live preview shows how the colours look together. Your choice applies to every PDF quote.</p>
+      <p><span class="ui-label">Reset to default</span> clears any preset or custom selection and reverts to the platform palette.</p>
+
+      <h3>ServiceM8 connection</h3>
+      <p>Shows the health of your ServiceM8 link:</p>
+      <p><span class="status-dot green"></span> <strong>Green</strong> — connected, synced in the last day. Working as expected.</p>
+      <p><span class="status-dot amber"></span> <strong>Amber</strong> — connected, but a sync or two has been missed. Usually resolves on its own; if it lingers, reconnect.</p>
+      <p><span class="status-dot red"></span> <strong>Red</strong> — disconnected or no successful sync in three or more days. Reconnect to fix.</p>
+      <p>Materials and templates sync automatically once a day. If the status goes amber or red, click <span class="ui-label">Reconnect ServiceM8</span>. Rafter sends you to ServiceM8 to approve access, then brings you straight back to Settings with a confirmation.</p>
+    </div>
+
+    <!-- Team access -->
+    <div class="card">
+      <h2>Team access</h2>
+
+      <h3>Inviting someone</h3>
+      <p>Pick a staff member from the dropdown — it's pulled from your ServiceM8 staff list. Their email fills in automatically. Click <span class="ui-label">Send invitation</span>. They'll receive a link with instructions to complete sign-up. About thirty seconds.</p>
+      <p>Only staff who are in your ServiceM8 roster and have an email on file appear in the dropdown. If someone's missing, add them in ServiceM8 first (with an email), then hit the refresh button at the top of Team access.</p>
+      <p>If the invitation email doesn't arrive, Rafter shows a copyable link so you can send it to them directly.</p>
+
+      <h3>Removing someone</h3>
+      <p>Click the delete icon next to their name in <span class="ui-label">Active members</span> and confirm. They lose access to this business immediately. Two rules: you can't remove yourself, and you can't remove the only admin.</p>
+
+      <h3>Revoking a pending invitation</h3>
+      <p>Click the delete icon next to the pending invite and confirm. The link stops working immediately. Send a new one if needed.</p>
+
+      <h3>If the staff list won't load</h3>
+      <p>The dropdown says "Couldn't load your SM8 staff roster" — this usually means the ServiceM8 connection needs reconnecting. Open the <span class="ui-label">ServiceM8 connection</span> card in Business Configuration and reconnect from there.</p>
+    </div>
+
+    <!-- Admin troubleshooting -->
+    <div class="card">
+      <h2>If something isn't working</h2>
+
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>Settings page redirects to a sign-in screen</div>
+        <div class="trouble-a">Your session expired and Settings can't use your passkey from here. Open the Quote Builder first (passkey works there), then click the gear icon to come back to Settings.</div>
+      </div>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>"Admin access required"</div>
+        <div class="trouble-a">You're signed in but not as an admin. Ask whoever set up the account.</div>
+      </div>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>"Couldn't load team data"</div>
+        <div class="trouble-a">Refresh the page. If it persists, the ServiceM8 connection may need reconnecting — open Business Configuration → ServiceM8 connection.</div>
+      </div>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>"Sync from SM8" says 0 templates or won't run</div>
+        <div class="trouble-a">Rafter won't wipe your sections when ServiceM8 returns nothing — it's a safety check. Usually a token issue. Reconnect ServiceM8 and try the sync again.</div>
+      </div>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>Staff member missing from the invite dropdown</div>
+        <div class="trouble-a">They need to be in your ServiceM8 staff list with an email address. Add them in ServiceM8, then refresh Team access.</div>
+      </div>
+      <div class="trouble-item">
+        <div class="trouble-q" onclick="this.parentElement.classList.toggle('open')"><span class="chevron">▸</span>Something else</div>
+        <div class="trouble-a">Contact your account administrator.</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Support footer (shared) -->
   <div class="support-card">
-    <h2>Need more help?</h2>
-    <p class="support-intro">If something's not working and you can't sort it from the guide above, send us a support request. We'll get back to you within one business day.</p>
-
-    <div class="support-stub-banner">
-      <strong>Coming soon.</strong> Support requests aren't wired up yet — for now, please contact your administrator or email <a href="mailto:hello@deepgreensea.au" style="color:#92400E;text-decoration:underline;">hello@deepgreensea.au</a>.
-    </div>
-
-    <form id="supportForm">
-      <div class="support-field">
-        <label for="supportSubject">Subject</label>
-        <input type="text" id="supportSubject" placeholder="e.g. Can't see my photos on the form">
-      </div>
-      <div class="support-field">
-        <label for="supportMessage">What happened?</label>
-        <textarea id="supportMessage" placeholder="Describe what you saw, what you expected, and what you were trying to do."></textarea>
-      </div>
-      <div class="support-field">
-        <label>Preferred contact</label>
-        <div class="support-radios">
-          <label><input type="radio" name="contactPref" value="call"> Call me back</label>
-          <label><input type="radio" name="contactPref" value="email" checked> Email reply is fine</label>
-          <label><input type="radio" name="contactPref" value="none"> No reply needed — just FYI</label>
-        </div>
-      </div>
-      <button type="submit" class="support-submit"><i class="ti ti-send"></i> Send support request</button>
-    </form>
+    <p>Need help with something not covered here?</p>
+    <p>Contact your account administrator.</p>
   </div>
 
-  <footer class="outro">
-    Rafter — built by Deep Green Sea
-  </footer>
-
+  <div class="help-footer">Rafter — built by Deep Green Sea</div>
 </div>
 
 <script>
-  // Tab switcher
-  document.querySelectorAll('.tab').forEach(tab => {
-    tab.addEventListener('click', () => {
-      const target = tab.dataset.tab;
-      document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t === tab));
-      document.querySelectorAll('.tab-content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + target));
-      window.scrollTo({ top: 0, behavior: 'smooth' });
-    });
-  });
-
-  // Deep-link to a tab via #admin or #operator
-  if (location.hash === '#admin') {
-    document.querySelector('[data-tab="admin"]').click();
-  }
-
-  // Support form stub — Phase 7 will wire to admin-api POST /support/raise-request.
-  document.getElementById('supportForm').addEventListener('submit', (e) => {
-    e.preventDefault();
-    alert("Support requests aren't wired up yet — please email hello@deepgreensea.au for now, or contact your administrator.");
-  });
+function switchTab(tab) {
+  document.querySelectorAll('.tab-btn').forEach(b => b.classList.toggle('active', b.dataset.tab === tab));
+  document.querySelectorAll('.content').forEach(c => c.classList.toggle('active', c.id === 'tab-' + tab));
+  window.location.hash = tab === 'admin' ? '#admin' : '';
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+// Deep-link support: /help#admin opens the admin tab.
+if (window.location.hash === '#admin') switchTab('admin');
 </script>
 </body>
 </html>
