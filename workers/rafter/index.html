@@ -1233,6 +1233,33 @@ function fmtAgo(iso) {
   const days = Math.round(hrs / 24);
   return `${days} d ago`;
 }
+
+// Human filename for the finder display — MUST stay in sync with
+// workers/pdf/index.js buildPdfFilename so what the operator sees in the
+// finder matches the .pdf the customer received. Pattern:
+//   {Customer}_{D-Mon-YY}_v{N}    e.g.  Thomastown_6Jun26_v1
+// (Returned without the .pdf extension — caller decides whether to append.)
+function buildHumanQuoteName(r) {
+  const customer = String(r.client_name || "Customer").replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
+  const v = Number.isInteger(r.version) && r.version >= 1 ? r.version : 1;
+  let dateStr = "";
+  if (r.proposal_date) {
+    const d = new Date(r.proposal_date);
+    if (!isNaN(d.getTime())) {
+      const parts = new Intl.DateTimeFormat("en-AU", {
+        timeZone: MEL_TZ,
+        day: "numeric",
+        month: "short",
+        year: "2-digit",
+      }).formatToParts(d);
+      const day = parts.find(p => p.type === "day")?.value || "";
+      const mon = parts.find(p => p.type === "month")?.value || "";
+      const yr = parts.find(p => p.type === "year")?.value || "";
+      dateStr = `${day}${mon}${yr}`;
+    }
+  }
+  return [customer, dateStr, `v${v}`].filter(Boolean).join("_");
+}
 function photoUrl(key) {
   return `${API}/photo?uuid=${state.clientUuid}&key=${encodeURIComponent(key)}`;
 }
@@ -1477,7 +1504,7 @@ function renderFinderResults(results) {
         <div>
           <div class="badges">${statusBadge}${versionBadge}${r.proposal_type ? `<span class="badge">${escapeHtml(r.proposal_type)}</span>` : ""}</div>
           <div class="primary">${escapeHtml(r.client_name || "(no customer name)")}</div>
-          <div class="secondary">${escapeHtml(r.site_address || "")}${r.site_address ? " · " : ""}${escapeHtml(r.quote_ref)}</div>
+          <div class="secondary">${escapeHtml(r.site_address || "")}${r.site_address ? " · " : ""}${escapeHtml(buildHumanQuoteName(r))}</div>
         </div>
         <div class="right">
           <div class="total">${total}</div>

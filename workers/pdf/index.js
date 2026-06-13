@@ -1081,41 +1081,46 @@ function renderTerms(terms) {
   </section>`;
 }
 
-// PDF-as-object naming (RFT-32, 2026-06-06): customer name leads, version
-// token tail, ISO date for sortability. Drops the HHMM-bearing quote_ref
-// from the customer-facing filename — the internal quote_ref still lives
-// in payload.quote_ref, the PDF body, the rafter-quotes row, and the SM8
-// job_description block. The PDF as an object the customer holds shouldn't
-// be tagged with a machine timestamp.
+// PDF-as-object naming. The customer holds an object — its filename should
+// read as a name, not a machine timestamp. Internal Q-YYYYMMDD-HHMM key stays
+// the rafter-quotes row id / SM8 join key / log reference; never the filename.
+//
+// Pattern: {Customer}_{D-Mon-YY}_v{N}.pdf  e.g.  Thomastown_6Jun26_v1.pdf
+//   Customer  — alphanumeric only, no internal separator (spaces and
+//               punctuation stripped, not replaced). Truncated to 40 chars.
+//   D-Mon-YY  — Melbourne timezone, no leading zero on day, 3-letter month,
+//               2-digit year. Concatenated (no spaces).
+//   v{N}      — always present, never bare. First issue v1, amend chain v2…
+//               via rafter-quotes.version (RFT-32).
 function buildPdfFilename(payload, client) {
-  const customer = slugForFilename(payload.client_name || "Customer");
-  const dateStr = formatPdfFilenameDate(payload.proposal_date);
-  const labels = buildProposalTypeLabels(client && client.proposal_types);
-  const ptypeRaw = (labels && labels[payload.proposal_type]) || payload.proposal_type || "Quote";
-  const ptype = slugForFilename(ptypeRaw);
+  const customer = slugForCustomerName(payload.client_name || "Customer");
+  const dateStr = formatPdfFilenameShortDate(payload.proposal_date);
   const v = Number.isInteger(payload.version) && payload.version >= 1 ? payload.version : 1;
-  const parts = [customer, dateStr, ptype, `v${v}`].filter(Boolean);
-  return `${parts.join("-") || "quote"}.pdf`;
+  const parts = [customer, dateStr, `v${v}`].filter(Boolean);
+  return `${parts.join("_") || "Quote"}.pdf`;
 }
 
-function slugForFilename(s) {
-  return String(s || "")
-    .replace(/[\\\/:*?"<>|\x00-\x1f]/g, "")  // filesystem-unsafe
-    .replace(/[^\w\s\-]/g, "")                // strip other punctuation
-    .replace(/\s+/g, "-")
-    .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .trim();
+// Tight slug: keep alphanumeric only, drop everything else (incl. spaces).
+// "Thomas Town Pty Ltd" → "ThomasTownPtyLtd". Case preserved.
+function slugForCustomerName(s) {
+  return String(s || "").replace(/[^A-Za-z0-9]/g, "").slice(0, 40);
 }
 
-function formatPdfFilenameDate(s) {
+// D-Mon-YY in Melbourne TZ. "6Jun26", "13Jun26".
+function formatPdfFilenameShortDate(s) {
   if (!s) return "";
   const d = new Date(s);
   if (isNaN(d.getTime())) return "";
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${dd}`;
+  const parts = new Intl.DateTimeFormat("en-AU", {
+    timeZone: "Australia/Melbourne",
+    day: "numeric",
+    month: "short",
+    year: "2-digit",
+  }).formatToParts(d);
+  const day = parts.find(p => p.type === "day")?.value || "";
+  const month = parts.find(p => p.type === "month")?.value || "";
+  const year = parts.find(p => p.type === "year")?.value || "";
+  return `${day}${month}${year}`;
 }
 
 function buildJobDescription(payload, labels) {
