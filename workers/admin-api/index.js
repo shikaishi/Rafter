@@ -576,6 +576,16 @@ async function handleSettingsState(uuid, env) {
       email_template:       record.email_template || '',
       branding:             record.branding ?? null,
     },
+    // RFT-118 follow-up: SM8 connection health for the Settings →
+    // ServiceM8 connection pane. connected is server-derived (boolean —
+    // no token leaked); connected_at + materials_synced_at are ISO strings
+    // sourced from the client record. Pane computes green/amber/red from
+    // these + the cron cadence (24h/72h thresholds).
+    sm8: {
+      connected: !!record.access_token,
+      connected_at: record.connected_at || null,
+      materials_synced_at: record.materials_synced_at || null,
+    },
   });
 }
 

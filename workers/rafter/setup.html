@@ -309,7 +309,10 @@
   const params = new URLSearchParams({
     response_type: "code",
     client_id: "781230",
-    scope: "vendor vendor_logo vendor_email read_staff read_inventory read_job_categories read_job_queues manage_templates manage_badges read_tax_rates read_forms read_customers read_jobs publish_email create_jobs manage_customers manage_schedule publish_job_attachments read_attachments manage_job_materials manage_jobs manage_attachments",
+    // CANONICAL SCOPE — keep in sync with onboarding.html + settings.html
+    // (RFT-118). read_attachments dropped 2026-06-13: not a valid SM8 scope
+    // (Phase 1 docs sweep confirmed runtime name is manage_attachments only).
+    scope: "vendor vendor_logo vendor_email read_staff read_inventory read_job_categories read_job_queues manage_templates manage_badges read_tax_rates read_forms read_customers read_jobs publish_email create_jobs manage_customers manage_schedule publish_job_attachments manage_job_materials manage_jobs manage_attachments",
     redirect_uri: "https://rafter.deepgreensea.au/callback",
     state,
   });

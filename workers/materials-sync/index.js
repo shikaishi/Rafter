@@ -205,6 +205,20 @@ async function writeMaterials(env, uuid, data) {
     JSON.stringify(data),
     { expirationTtl: MATERIALS_TTL_SECONDS },
   );
+  // RFT-118 follow-up: stamp materials_synced_at on the client record so the
+  // Settings → ServiceM8 connection pane can render a sync-health indicator.
+  // Non-blocking: the materials cache write already succeeded above; a missed
+  // stamp just means the status pill shows "sync pending" until the next sync.
+  try {
+    const raw = await env.RAFTER_CLIENTS.get(CLIENT_KEY_PREFIX + uuid);
+    if (raw) {
+      const config = JSON.parse(raw);
+      config.materials_synced_at = new Date().toISOString();
+      await env.RAFTER_CLIENTS.put(CLIENT_KEY_PREFIX + uuid, JSON.stringify(config));
+    }
+  } catch (e) {
+    console.warn(JSON.stringify({ event: 'materials_synced_at_stamp_failed', uuid, error: e.message }));
+  }
 }
 
 function summariseMaterials(data) {

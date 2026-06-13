@@ -226,6 +226,12 @@
         window.location.replace('/onboarding.html?oauth_complete=1');
         return;
       }
+      // RFT-118: Settings → ServiceM8 Connection reconnect path. Lands the
+      // admin back on /settings rather than dumping them at the wizard.
+      if (returnTo === 'settings') {
+        window.location.replace('/settings?sm8_reconnect=ok');
+        return;
+      }
       showComplete(passkeyResult);
 
     } catch(err) {

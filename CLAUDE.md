@@ -211,6 +211,16 @@ For migrated tenants (Andy): the KV record predates the Clerk-org binding. Onboa
 
 2. **Team-pane role badge may mislabel v2 admins as "Member".** `workers/rafter/settings.html` line ~2493 reads `m.role` from the Clerk Backend API `/v1/organizations/{org_id}/memberships` response and compares `=== 'org:admin'`. On v2 instances the Backend API likely returns the short form (`"admin"`), so the badge falls through to "Member" for actual admins. RFT-107 explicitly scoped this out (token-claim normalisation vs Backend API response normalisation are separate concerns). Needs verification against a real prod `/memberships` response before patching — the actual response shape is the source of truth, not the v2 token shape.
 
+### Reconnect surface — Settings → ServiceM8 Connection (RFT-118, 2026-06-13)
+
+D-NEW-6 (RFT-70 Option C) defined the establish-or-refresh SM8 OAuth backend, but the UI to trigger it was deferred. As of 2026-06-13 the gap is closed:
+
+* **Settings → Business Configuration → ServiceM8 connection** (8th pane) — admin-only, "Reconnect ServiceM8" button. Builds SM8 OAuth URL with the canonical scope, sets `sessionStorage.oauth_return_to='settings'`, posts the code to admin-api `/onboarding/sm8-callback` (admin-gated, race-locked, three-way established/reconnected/takeover branch). Lands on `/settings?sm8_reconnect=ok` with a success toast; URL cleaned via `history.replaceState`.
+* **token_expired toast** at `index.html:2480` now role-aware. Admins (and `null` role for ungated tenants) see "ServiceM8 needs reconnecting — open Settings → ServiceM8 connection." Members see "ServiceM8 needs reconnecting — ask your admin to fix it." The `/setup` reference is gone.
+* **Canonical SM8 OAuth scope** standardised across `setup.html:312`, `onboarding.html:1378`, and the new settings pane. `read_attachments` dropped — Phase 1 docs sweep confirmed runtime-confirmed name is `manage_attachments` only. Each site has an inline "CANONICAL SCOPE — keep in sync" comment.
+
+Legacy `/setup.html` remains reachable but is no longer the documented reconnect path.
+
 ---
 
 ## Architecture decisions (locked — do not reopen without explicit instruction)

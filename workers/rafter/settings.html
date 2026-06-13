@@ -30,6 +30,7 @@
     --rf-muted: #6B7280;
     --rf-danger: #B91C1C;
     --rf-success: #166534;
+    --rf-warn: #92400E; /* amber — already in use via .team-row-badge.pending + .team-staff-warn; promoted to a var for RFT-118 status pill */
     --shadow-card: 0 1px 2px rgba(15, 23, 42, 0.04), 0 1px 1px rgba(15, 23, 42, 0.03);
     --shadow-navy-btn: 0 1px 2px rgba(27, 79, 114, 0.25);
   }
@@ -297,6 +298,15 @@
   .team-invite-status.err { color: var(--rf-danger); }
   .team-invite-status .copy-url { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; word-break: break-all; display: block; margin-top: 4px; color: var(--rf-muted); }
   .team-staff-warn { padding: 10px 14px; background: #FEF3C7; border: 0.5px solid #FDE68A; border-radius: 6px; font-size: 12px; color: #92400E; margin-bottom: 10px; }
+  /* RFT-118 follow-up — traffic-light health pill for the Settings → ServiceM8 connection card. */
+  .sm8-status-line { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 6px; font-size: 13px; font-weight: 500; margin-bottom: 14px; }
+  .sm8-status-dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 2px rgba(255,255,255,0.6); }
+  .sm8-status-line.green { background: #DCFCE7; color: var(--rf-success); }
+  .sm8-status-line.green .sm8-status-dot { background: var(--rf-success); }
+  .sm8-status-line.amber { background: #FEF3C7; color: var(--rf-warn); }
+  .sm8-status-line.amber .sm8-status-dot { background: var(--rf-warn); }
+  .sm8-status-line.red { background: #FECACA; color: var(--rf-danger); }
+  .sm8-status-line.red .sm8-status-dot { background: var(--rf-danger); }
   @keyframes team-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
   .team-refresh-spin { animation: team-refresh-spin 0.8s linear infinite; display: inline-block; }
   /* Subtle icon-only destructive action on team rows (RFT-111 + revoke). */
@@ -540,6 +550,15 @@ async function loadState() {
     state.photos = data.photos || [];
     // RFT-102 Phase 3: capture config slices for the Business Configuration zone.
     state.config = data.config || {};
+    // RFT-118 follow-up: SM8 connection health for the ServiceM8 connection pane.
+    state.sm8 = data.sm8 || null;
+    // Self-heal: connected but no sync recorded → fire a background sync so the
+    // pill flips green without the admin needing to know about the QB Materials
+    // button. Common case for tenants onboarded before materials-sync started
+    // stamping materials_synced_at.
+    if (state.sm8?.connected && !state.sm8.materials_synced_at) {
+      triggerInitialSm8Sync();
+    }
     render();
     // Zone 2 renders separately from render(), so a Zone 1 re-render (drag,
     // photo ops) never clobbers unsaved input in an expanded config card.
@@ -1062,6 +1081,7 @@ const PANE_RENDERERS = {
   'credentials':        () => renderCredentialsCard(),
   'email-template':     () => renderEmailTemplateCard(),
   'branding':           () => renderBrandingCard(),
+  'sm8-connection':     () => renderSm8ConnectionCard(),
 };
 const PANE_WIRERS = {
   'business-details':   wireBusinessDetailsPane,
@@ -1071,6 +1091,7 @@ const PANE_WIRERS = {
   'credentials':        wireCredentialsPane,
   'email-template':     wireEmailTemplatePane,
   'branding':           wireBrandingPane,
+  'sm8-connection':     wireSm8ConnectionPane,
 };
 function rerenderCard(pane) {
   const existing = document.querySelector(`.config-card[data-pane="${pane}"]`);
@@ -1106,7 +1127,125 @@ function previewTrunc(s, max = 60) {
   return (lastSpace > 30 ? cut.slice(0, lastSpace) : cut) + '…';
 }
 
-// Render the Business Configuration cards. All seven panes mount here.
+// ─── 8 of 8: ServiceM8 Connection ────────────────────────────────────────────
+// Reconnect surface (RFT-118). Not a D13 write-back pane — triggers OAuth.
+// Same admin-only zone, same visual pattern. OAuth lands at /callback with
+// oauth_return_to='settings', which admin-api /onboarding/sm8-callback handles
+// via the existing establish-or-refresh path (admin-api:2138, three-way
+// established/reconnected/takeover branch).
+
+// Relative time formatter — ported from index.html:1225 (RFT-118 follow-up).
+function fmtAgoSettings(iso) {
+  if (!iso) return 'never';
+  const diff = Date.now() - new Date(iso).getTime();
+  const mins = Math.round(diff / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins} min ago`;
+  const hrs = Math.round(mins / 60);
+  if (hrs < 24) return `${hrs} hr ago`;
+  const days = Math.round(hrs / 24);
+  return `${days} d ago`;
+}
+
+// Compute traffic-light state from the /settings/state sm8 block.
+// Thresholds keyed to materials-sync cron cadence (0 10 * * * — daily): green
+// if synced <24h ago, amber 24-72h or freshly connected with sync pending,
+// red if disconnected or >72h with no successful sync.
+function computeSm8Status(sm8) {
+  if (!sm8 || !sm8.connected) {
+    return { state: 'red', text: 'Disconnected — reconnect below', summary: 'Disconnected — reconnect needed' };
+  }
+  const synced = sm8.materials_synced_at;
+  if (!synced) {
+    // null is a real degraded state — without a sync, the price book is stale or absent.
+    // Settings.html self-heals this on load (triggerInitialSync) so most admins won't see
+    // it for long. When they do, the colour + text agree: red, actionable.
+    return {
+      state: 'red',
+      text: 'Materials haven\'t synced yet — open the Quote Builder and tap Materials, or reconnect below',
+      summary: 'Materials not synced',
+    };
+  }
+  const hours = (Date.now() - new Date(synced).getTime()) / 3600000;
+  const rel = fmtAgoSettings(synced);
+  if (hours < 24) return { state: 'green', text: `Connected · synced ${rel}`, summary: `Connected · synced ${rel}` };
+  if (hours < 72) return { state: 'amber', text: `Connected · last synced ${rel}`, summary: `Connected · last synced ${rel}` };
+  return { state: 'red', text: `Stale — last sync ${rel} ago`, summary: `Stale — no sync in 3+ days` };
+}
+
+// Self-heal when settings opens on a tenant that has a connected SM8 grant but
+// no recorded materials_synced_at. Fire a background /refresh-materials, then
+// rerender the card with the fresh timestamp. Silent on failure — the admin can
+// still trigger sync manually from the Quote Builder Materials button.
+async function triggerInitialSm8Sync() {
+  if (!state.uuid) return;
+  try {
+    const r = await authedFetch(`${PHOTO_HOST}/refresh-materials?uuid=${encodeURIComponent(state.uuid)}`);
+    if (!r.ok) return;
+    const data = await r.json().catch(() => null);
+    if (!data?.ok) return;
+    state.sm8 = state.sm8 || {};
+    state.sm8.materials_synced_at = new Date().toISOString();
+    rerenderCard('sm8-connection');
+    toast('Materials synced', 'ok');
+  } catch {
+    /* silent — manual retry via Quote Builder Materials button */
+  }
+}
+
+function renderSm8ConnectionCard() {
+  const expanded = configCardOpen('sm8-connection');
+  const status = computeSm8Status(state.sm8);
+  // Primary emphasis on the button when there's something to act on (red/amber).
+  const btnClass = status.state === 'green' ? 'btn' : 'btn primary';
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="sm8-connection">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">ServiceM8 connection</div>
+          <div class="config-card-summary">${esc(status.summary)}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div class="sm8-status-line ${status.state}">
+          <span class="sm8-status-dot"></span>
+          <span>${esc(status.text)}</span>
+        </div>
+        <p style="font-size:13px;color:var(--rf-text);margin-bottom:12px;line-height:1.55;">If your ServiceM8 connection has broken (token expired, account changed, or something else), reconnect here. Rafter sends you to ServiceM8 to approve access, then brings you straight back.</p>
+        <p style="font-size:12px;color:var(--rf-muted);margin-bottom:14px;line-height:1.5;">Materials and templates sync automatically once a day. If sync is stale, the most likely cause is a dead SM8 grant — reconnect to refresh.</p>
+        <div class="config-actions">
+          <button class="${btnClass}" data-action="sm8-reconnect"><i class="ti ti-refresh"></i>Reconnect ServiceM8</button>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function wireSm8ConnectionPane(root) {
+  const btn = root.querySelector('[data-action="sm8-reconnect"]');
+  if (!btn) return;
+  btn.addEventListener('click', () => {
+    // CANONICAL SCOPE — keep in sync with setup.html + onboarding.html.
+    // read_attachments dropped 2026-06-13 (RFT-118) per Phase 1 docs sweep:
+    // runtime-confirmed name is manage_attachments only.
+    const scope = 'vendor vendor_logo vendor_email read_staff read_inventory read_job_categories read_job_queues manage_templates manage_badges read_tax_rates read_forms read_customers read_jobs publish_email create_jobs manage_customers manage_schedule publish_job_attachments manage_job_materials manage_jobs manage_attachments';
+    const oauthState = Array.from(crypto.getRandomValues(new Uint8Array(16)))
+      .map(b => b.toString(16).padStart(2, '0')).join('');
+    sessionStorage.setItem('oauth_state', oauthState);
+    sessionStorage.setItem('oauth_return_to', 'settings');
+    const params = new URLSearchParams({
+      response_type: 'code',
+      client_id: '781230',
+      scope,
+      redirect_uri: 'https://rafter.deepgreensea.au/callback',
+      state: oauthState,
+    });
+    window.location.href = `https://go.servicem8.com/oauth/authorize?${params}`;
+  });
+}
+
+// Render the Business Configuration cards. All eight panes mount here.
 function renderConfigCards() {
   const root = $('configCards');
   if (!root) return;
@@ -1122,6 +1261,7 @@ function renderConfigCards() {
     renderCredentialsCard(),
     renderEmailTemplateCard(),
     renderBrandingCard(),
+    renderSm8ConnectionCard(),
   ].join('');
 
   // Wire toggle on the card head (delegated to the head element only — body
@@ -1141,6 +1281,7 @@ function renderConfigCards() {
   wireCredentialsPane(root);
   wireEmailTemplatePane(root);
   wireBrandingPane(root);
+  wireSm8ConnectionPane(root);
 }
 
 // ─── 1 of 7: Business details ───────────────────────────────────────────────
@@ -2750,6 +2891,16 @@ function slugify(s) {
     .replace(/-+/g, '-')
     .replace(/^-|-$/g, '');
 }
+
+// RFT-118: detect a successful SM8 reconnect (return from callback.html)
+// and surface a toast. URL is cleaned so refresh doesn't re-show.
+(function () {
+  const params = new URLSearchParams(window.location.search);
+  if (params.get('sm8_reconnect') === 'ok') {
+    history.replaceState(null, '', window.location.pathname);
+    if (typeof toast === 'function') toast('ServiceM8 reconnected', 'ok');
+  }
+})();
 
 boot();
 </script>

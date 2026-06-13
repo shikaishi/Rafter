@@ -2477,7 +2477,14 @@ async function refreshMaterials() {
     if (!r.ok) {
       state.materialsAvailable = false;
       updateMatBtn();
-      toast(data.error === "token_expired" ? "ServiceM8 token expired — re-authorise via /setup" : "Materials refresh failed", "err");
+      // RFT-118: role-aware reconnect message. Admins (and ungated tenants
+      // where state.orgRole is null) get the actionable path; members get the
+      // "ask your admin" path since they'd 403 at the callback anyway.
+      const isMember = state.orgRole === 'org:member';
+      const expiredMsg = isMember
+        ? "ServiceM8 needs reconnecting — ask your admin to fix it."
+        : "ServiceM8 needs reconnecting — open Settings → ServiceM8 connection.";
+      toast(data.error === "token_expired" ? expiredMsg : "Materials refresh failed", "err");
       return;
     }
     await loadMaterials();
