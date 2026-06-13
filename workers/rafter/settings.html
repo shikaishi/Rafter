@@ -297,6 +297,14 @@
   .team-invite-status.err { color: var(--rf-danger); }
   .team-invite-status .copy-url { font-family: ui-monospace, 'SF Mono', Menlo, Consolas, monospace; font-size: 10px; word-break: break-all; display: block; margin-top: 4px; color: var(--rf-muted); }
   .team-staff-warn { padding: 10px 14px; background: #FEF3C7; border: 0.5px solid #FDE68A; border-radius: 6px; font-size: 12px; color: #92400E; margin-bottom: 10px; }
+  @keyframes team-refresh-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+  .team-refresh-spin { animation: team-refresh-spin 0.8s linear infinite; display: inline-block; }
+  /* Subtle icon-only destructive action on team rows (RFT-111 + revoke). */
+  .team-row-icon-btn { background: transparent; border: none; color: var(--rf-muted); cursor: pointer; padding: 6px; border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; transition: color 0.15s, background-color 0.15s; }
+  .team-row-icon-btn:hover { color: var(--rf-danger); background: rgba(229,115,115,0.08); }
+  .team-row-icon-btn:focus-visible { outline: 2px solid var(--rf-ocean); outline-offset: 2px; }
+  .team-row-icon-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .team-row-icon-btn i { font-size: 16px; line-height: 1; }
 </style>
 </head>
 <body>
@@ -377,6 +385,7 @@
       <div class="pane">
         <div class="pane-header">
           <h2><i class="ti ti-users" style="vertical-align:middle;margin-right:4px;"></i>Team access</h2>
+          <button class="btn small" id="teamRefreshBtn" type="button" title="Refresh team data" onclick="refreshTeamPane()" style="padding:6px 10px;"><i class="ti ti-refresh"></i></button>
         </div>
         <div style="font-size:12px;color:var(--rf-muted);line-height:1.5;margin-bottom:12px;">
           Invite SM8 staff to use the Quote Builder on their own device. They tap the email link, set up Face ID / fingerprint, and they're signed in for next time — no password to remember.
@@ -2452,6 +2461,24 @@ function showSyncReport(data) {
 // Independent fetch + render — never blocks Zone 1/2 paint, never re-renders
 // on Zone 1/2 mutations. State held locally (state.team) so revoke/invite
 // actions can rerender in-place without re-fetching the staff roster.
+// Pane-level refresh — re-polls /settings/team so an admin can see a pending
+// invitation move to Active members without reloading the whole settings page.
+async function refreshTeamPane() {
+  const btn = document.getElementById('teamRefreshBtn');
+  if (btn) {
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = 'ti ti-loader-2 team-refresh-spin';
+  }
+  await loadTeam();
+  if (btn) {
+    btn.disabled = false;
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = 'ti ti-refresh';
+  }
+}
+
 async function loadTeam() {
   const pane = $('teamPane');
   if (!pane) return;
@@ -2492,12 +2519,18 @@ function renderTeam() {
         const name = [m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || '—';
         const roleLabel = m.role === 'org:admin' ? 'Admin' : 'Member';
         const badgeClass = m.role === 'org:admin' ? 'admin' : 'member';
+        // RFT-111: Remove button on every active member except the signed-in admin.
+        const isSelf = m.user_id && window.Clerk?.user?.id && m.user_id === window.Clerk.user.id;
+        const removeBtn = (isSelf || !m.user_id)
+          ? ''
+          : `<button class="team-row-icon-btn" data-action="remove-member" data-user-id="${esc(m.user_id)}" data-name="${esc(name)}" title="Remove ${esc(name)}" aria-label="Remove ${esc(name)}"><i class="ti ti-trash"></i></button>`;
         return `<div class="team-row">
           <div class="team-row-main">
             <div class="team-row-name">${esc(name)}</div>
             <div class="team-row-meta">${esc(m.email || '')}</div>
           </div>
           <span class="team-row-badge ${badgeClass}">${roleLabel}</span>
+          ${removeBtn}
         </div>`;
       }).join('');
 
@@ -2511,7 +2544,7 @@ function renderTeam() {
             <div class="team-row-meta">${esc(p.email)}</div>
           </div>
           <span class="team-row-badge pending">Pending</span>
-          <button class="btn small danger" data-action="revoke" data-invite-id="${esc(p.id)}"><i class="ti ti-x"></i>Revoke</button>
+          <button class="team-row-icon-btn" data-action="revoke" data-invite-id="${esc(p.id)}" title="Revoke invitation" aria-label="Revoke invitation"><i class="ti ti-trash"></i></button>
         </div>`;
       }).join('');
 
@@ -2576,6 +2609,38 @@ function renderTeam() {
 }
 
 function wireTeamPane() {
+  // Remove member buttons (RFT-111).
+  document.querySelectorAll('#teamPane [data-action="remove-member"]').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      const userId = btn.dataset.userId;
+      const name = btn.dataset.name || 'this member';
+      if (!userId) return;
+      if (!confirm(`Remove ${name} from your team? They'll lose access immediately.`)) return;
+      btn.disabled = true;
+      try {
+        const res = await authedFetch(`${ADMIN_API}/settings/team/members/remove`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ user_id: userId }),
+        });
+        if (!res.ok) {
+          const body = await res.json().catch(() => ({}));
+          let msg = body.error || `HTTP ${res.status}`;
+          if (body.error === 'last_admin_removal_blocked') msg = 'Cannot remove the only admin.';
+          if (body.error === 'cannot_remove_self') msg = "You can't remove yourself.";
+          toast(`Remove failed: ${msg}`, 'err');
+          btn.disabled = false;
+          return;
+        }
+        toast(`${name} removed`);
+        loadTeam();
+      } catch (e) {
+        toast('Network error', 'err');
+        btn.disabled = false;
+      }
+    });
+  });
+
   // Revoke buttons (pending invites).
   document.querySelectorAll('#teamPane [data-action="revoke"]').forEach(btn => {
     btn.addEventListener('click', async () => {

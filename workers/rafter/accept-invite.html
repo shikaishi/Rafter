@@ -160,7 +160,7 @@
     const secondary = document.createElement('div');
     secondary.className = 'secondary-action';
     secondary.innerHTML = SLUG
-      ? `<a href="/?slug=${encodeURIComponent(SLUG)}">Back to Quote Builder</a>`
+      ? `<a href="/${encodeURIComponent(SLUG)}">Back to Quote Builder</a>`
       : `<a href="/">Back to Rafter</a>`;
     card.appendChild(secondary);
   }
@@ -259,7 +259,7 @@
   }
 
   function redirectToForm() {
-    const target = SLUG ? `/?slug=${encodeURIComponent(SLUG)}` : '/';
+    const target = SLUG ? `/${encodeURIComponent(SLUG)}` : '/';
     setTimeout(() => { window.location.replace(target); }, 900);
   }
 
@@ -336,23 +336,16 @@
           return;
         }
 
-        // signUp.finalize is the modern wrapper. It activates the created
-        // session and runs the navigate callback with {session, decorateUrl}.
-        // We do NOT navigate from the callback — we run the seam handler
-        // and passkey enrol after finalize returns, so all logic is linear.
-        let observedTask = null;
-        await signUp.finalize({
-          navigate: ({ session }) => {
-            observedTask = session?.currentTask?.key ?? null;
-            console.log('[accept-invite] finalize navigate', {
-              session_status: session?.status,
-              currentTask: observedTask,
-            });
-            // Suppress Clerk's default navigation — we drive it ourselves
-            // post-seam-resolution.
-            return undefined;
-          },
-        });
+        // signUp.finalize is on SignUpFuture (experimental), not on SignUp
+        // in clerk-js 6.14.0. Use setActive directly — same pattern as the
+        // signIn path above.
+        if (!signUp.createdSessionId) {
+          showError("Couldn't complete sign-in",
+            'Sign-up returned no session. Ask your admin to send a fresh invitation.',
+            `signUp.createdSessionId=${signUp.createdSessionId}`);
+          return;
+        }
+        await Clerk.setActive({ session: signUp.createdSessionId });
 
         // ── Path B seam handler ──────────────────────────────────────────
         // Datapoint: did Clerk auto-resolve choose-organization for a

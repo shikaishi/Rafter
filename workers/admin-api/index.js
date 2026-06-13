@@ -346,9 +346,11 @@ async function handleTenantMode(slug, env) {
   if (!/^[a-z0-9-]+$/i.test(slug)) {
     return json({ ok: false, error: 'invalid_slug' }, 400);
   }
-  const uuid = await env.RAFTER_CLIENTS.get(SLUG_PREFIX + slug).catch(() => null);
+  // RFT-110: slugs are stored lowercase; lookups normalise so /BVT and /bvt both work.
+  const lookup = slug.toLowerCase();
+  const uuid = await env.RAFTER_CLIENTS.get(SLUG_PREFIX + lookup).catch(() => null);
   if (!uuid) {
-    return json({ ok: false, error: 'slug_not_found', slug }, 404);
+    return json({ ok: false, error: 'slug_not_found', slug: lookup }, 404);
   }
   const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
   if (!raw) {
@@ -358,7 +360,7 @@ async function handleTenantMode(slug, env) {
   try { config = JSON.parse(raw); }
   catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
   const gate_enforced = config.gate_enforced !== false;
-  return json({ ok: true, slug, uuid, gate_enforced });
+  return json({ ok: true, slug: lookup, uuid, gate_enforced });
 }
 
 async function handleForm(request, env, url, jwtPayload) {
@@ -413,9 +415,11 @@ async function handleVerifyTenant(request, env, jwtPayload) {
     if (typeof target_slug !== 'string' || !/^[a-z0-9-]+$/i.test(target_slug)) {
       return json({ ok: false, error: 'invalid_target_slug' }, 400);
     }
-    const slugUuid = await env.RAFTER_CLIENTS.get(`slug:${target_slug}`).catch(() => null);
+    // RFT-110: slugs are stored lowercase; lookups normalise.
+    const slugLookup = target_slug.toLowerCase();
+    const slugUuid = await env.RAFTER_CLIENTS.get(`slug:${slugLookup}`).catch(() => null);
     if (!slugUuid) {
-      return json({ ok: false, error: 'slug_not_found', slug: target_slug }, 404);
+      return json({ ok: false, error: 'slug_not_found', slug: slugLookup }, 404);
     }
     resolvedTargetUuid = slugUuid;
   }
@@ -497,6 +501,7 @@ async function handleSettings(request, env, url, jwtPayload) {
   if (method === 'GET'  && path === '/settings/team')                      return handleSettingsTeam(uuid, env, jwtPayload);
   if (method === 'POST' && path === '/settings/team/invites')              return handleSettingsTeamInviteSend(uuid, request, env, jwtPayload);
   if (method === 'POST' && path === '/settings/team/invites/revoke')       return handleSettingsTeamInviteRevoke(uuid, request, env, jwtPayload);
+  if (method === 'POST' && path === '/settings/team/members/remove')       return handleSettingsTeamMemberRemove(uuid, request, env, jwtPayload);
 
   return json({ ok: false, error: 'Not Found', path }, 404);
 }
@@ -1775,6 +1780,60 @@ async function handleSettingsTeamInviteRevoke(uuid, request, env, jwtPayload) {
   return json({ ok: true, invitation_id });
 }
 
+// RFT-111: revoke an active member's org membership. Org-scoped — Clerk user
+// stays intact (they may belong to other Rafter tenants). Two server-side
+// guards: can't remove yourself, can't remove the only admin.
+async function handleSettingsTeamMemberRemove(uuid, request, env, jwtPayload) {
+  const orgId = extractOrgId(jwtPayload);
+  const requesterUserId = jwtPayload.sub || null;
+  if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+  if (!requesterUserId) return json({ ok: false, error: 'no_user_in_jwt' }, 401);
+  if (!env.CLERK_SECRET_KEY) return json({ ok: false, error: 'clerk_secret_key_missing' }, 500);
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+
+  const user_id = typeof body?.user_id === 'string' ? body.user_id.trim() : '';
+  if (!user_id || !/^user_[A-Za-z0-9]+$/.test(user_id)) {
+    return json({ ok: false, error: 'invalid_user_id' }, 400);
+  }
+
+  // Guard 1: self-removal would brick the admin (no other admin to re-invite).
+  if (user_id === requesterUserId) {
+    return json({ ok: false, error: 'cannot_remove_self' }, 400);
+  }
+
+  // Guard 2: last-admin check. Clerk Backend API may return role as 'admin' or
+  // 'org:admin' depending on instance shape — match both.
+  const isAdminRole = (r) => r === 'admin' || r === 'org:admin';
+  const memberships = await clerkBackendFetch(env, `/v1/organizations/${orgId}/memberships?limit=100`);
+  if (!memberships.ok) {
+    let detail = '';
+    try { detail = await memberships.text(); } catch {}
+    return json({ ok: false, error: 'clerk_memberships_failed', status: memberships.status, detail: detail.slice(0, 500) }, 502);
+  }
+  const membersBody = await memberships.json();
+  const data = membersBody.data || [];
+  const targetIsAdmin = data.some(m => m.public_user_data?.user_id === user_id && isAdminRole(m.role));
+  if (targetIsAdmin) {
+    const adminCount = data.filter(m => isAdminRole(m.role)).length;
+    if (adminCount <= 1) {
+      return json({ ok: false, error: 'last_admin_removal_blocked' }, 400);
+    }
+  }
+
+  const res = await clerkBackendFetch(env, `/v1/organizations/${orgId}/memberships/${user_id}`, {
+    method: 'DELETE',
+  });
+  if (!res.ok) {
+    let detail = '';
+    try { detail = await res.text(); } catch {}
+    return json({ ok: false, error: 'clerk_remove_failed', status: res.status, detail: detail.slice(0, 500) }, 502);
+  }
+  return json({ ok: true, user_id, removed_from_org: orgId });
+}
+
 // Look up the inviter's email from the organization memberships. Used to
 // populate "invited by ..." in the recipient's email. Best-effort — empty
 // string fallback so a missing membership doesn't block the invite.
@@ -2204,7 +2263,15 @@ function makePhotoFilename(originalName) {
 
 async function handleProvision(body, env) {
   const errors = [];
-  if (!body.slug) errors.push('slug required');
+  if (!body.slug) {
+    errors.push('slug required');
+  } else {
+    // RFT-110: normalise + validate before any KV write.
+    body.slug = String(body.slug).trim().toLowerCase();
+    if (!/^[a-z0-9-]+$/.test(body.slug)) {
+      errors.push('slug must be lowercase letters, digits, and hyphens only');
+    }
+  }
   if (!body.company_name) errors.push('company_name required');
   if (body.webhook_url !== undefined) errors.push('webhook_url not allowed — send webhook_env');
   if (!body.webhook_env) errors.push('webhook_env required');

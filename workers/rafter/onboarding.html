@@ -1208,7 +1208,11 @@ function initSlugLogic() {
   const slugInput   = document.getElementById('slug');
   const slugPreview = document.getElementById('slug-preview');
   slugInput.addEventListener('input', () => {
-    slugPreview.textContent = slugInput.value.trim() || 'yourcompany';
+    // RFT-110: slugs are stored lowercase; auto-lowercase as the user types
+    // so what they see is what gets saved.
+    const lowered = slugInput.value.toLowerCase();
+    if (slugInput.value !== lowered) slugInput.value = lowered;
+    slugPreview.textContent = lowered.trim() || 'yourcompany';
   });
 }
 

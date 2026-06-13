@@ -1060,6 +1060,10 @@ async function rateLimitOrInternal(request, env, binding) {
 //     does not own the target. Returns { ok, uuid, org_id, role } on match.
 // On any failure returns { error: Response } for the caller to short-circuit.
 async function requireFormJWT(request, env, { target_uuid, target_slug }) {
+  // RFT-110: slugs are stored lowercase; normalise once so all three lookup
+  // paths below (internal-secret bypass, worker-secret bypass, gated path)
+  // use the canonical form.
+  if (target_slug) target_slug = target_slug.toLowerCase();
   // Bypass paths (two trusted patterns, both pre-existing):
   //   • x-rafter-secret matching RAFTER_INTERNAL_SECRET — Make/cron pattern
   //   • Authorization: Bearer matching RAFTER_WORKER_SECRET — admin-api W2W
