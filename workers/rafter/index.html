@@ -884,7 +884,10 @@
       </div>
     </div>
     <div class="meta">
-      <div class="quote-ref" id="quoteRef">Q-—</div>
+      <!-- RFT-103: hidden on new quotes (operator never sees a Q-timestamp).
+           updateQuoteRefPill() reveals it in amend mode with the human-readable
+           name + new version, reusing RFT-119's buildHumanQuoteName. -->
+      <div class="quote-ref" id="quoteRef" style="display:none;"></div>
       <button class="find-btn" id="findBtn" type="button" aria-label="Find an existing quote">
         <i class="ti ti-search"></i>
         <span>Find quote</span>
@@ -1228,9 +1231,30 @@ function fmtAgo(iso) {
   return `${days} d ago`;
 }
 
-// Human filename for the finder display — MUST stay in sync with
-// workers/pdf/index.js buildPdfFilename so what the operator sees in the
-// finder matches the .pdf the customer received. Pattern:
+// RFT-103: reveal the quote-ref pill in amend mode with the human-readable
+// name + bumped version. Hidden on fresh quotes (operator never sees the
+// internal Q- timestamp on the operator surface — that's a system key only).
+// Reuses RFT-119's buildHumanQuoteName so the pill and the PDF filename are
+// produced by a single source.
+function updateQuoteRefPill() {
+  const pill = $("quoteRef");
+  if (!pill) return;
+  if (!state.amendOf) {
+    pill.style.display = "none";
+    return;
+  }
+  const newVersion = (state.amendParentVersion || 1) + 1;
+  pill.textContent = buildHumanQuoteName({
+    client_name: state.clientName,
+    proposal_date: state.proposalDate,
+    version: newVersion,
+  });
+  pill.style.display = "";
+}
+
+// Human filename for the finder display + amend-mode pill (RFT-103) — MUST
+// stay in sync with workers/pdf/index.js buildPdfFilename so what the operator
+// sees in the finder + header matches the .pdf the customer received. Pattern:
 //   {Customer}_{D-Mon-YY}_v{N}    e.g.  Thomastown_6Jun26_v1
 // (Returned without the .pdf extension — caller decides whether to append.)
 function buildHumanQuoteName(r) {
@@ -1360,7 +1384,8 @@ async function verifyGatedTenant() {
 async function boot() {
   state.quoteRef = generateQuoteRef();
   state.proposalDate = generateProposalDate();
-  $("quoteRef").textContent = state.quoteRef;
+  // RFT-103: fresh quote — pill stays hidden. Internal quote_ref still
+  // populated for the rafter-quotes row id + SM8 join key; just not displayed.
 
   // RFT-87 commit 7: tenant-mode lookup is FIRST. Public, unauth, fast.
   // The flag it returns decides whether to demand a Clerk session at all.
@@ -1593,15 +1618,22 @@ async function rehydrateFromDraft(quoteRef) {
       }));
     }
 
-    // KEEP the original quote_ref — issuing a new one happens at amend submit
-    // time so the UI badge/title shows the version the operator opened.
+    // KEEP the original quote_ref as the parent for now — a fresh one is
+    // issued at amend submit time.
     state.quoteRef = p.quote_ref || state.quoteRef;
-    $("quoteRef").textContent = state.quoteRef;
 
     // Mark amend mode.
     state.amendOf = quoteRef;
     state.amendParentVersion = data.version || 1;
-    $("amendOfRef").textContent = `${quoteRef} (v${state.amendParentVersion})`;
+    // RFT-103: display the PARENT human filename in the "you are amending"
+    // banner (no Q- timestamps on the operator surface). The pill below
+    // shows the NEW version's human filename.
+    $("amendOfRef").textContent = buildHumanQuoteName({
+      client_name: state.clientName,
+      proposal_date: state.proposalDate,
+      version: state.amendParentVersion,
+    });
+    updateQuoteRefPill();
     $("amendBanner").style.display = "flex";
     $("amendJobBtn").style.display = "inline-flex";
     $("amendEmailBtn").style.display = "inline-flex";
@@ -1634,9 +1666,10 @@ async function doAmend(sendEmail) {
   btn.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>Submitting…';
   try {
     // Generate a fresh quote_ref for the new version (Melbourne TZ).
+    // RFT-103: internal key only — pill keeps showing the human filename
+    // already set by updateQuoteRefPill() at rehydrate time.
     const newRef = generateQuoteRef();
     state.quoteRef = newRef;
-    $("quoteRef").textContent = newRef;
 
     const payload = buildPayload("submit", sendEmail);
     // Override quote_ref in payload — buildPayload uses state.quoteRef but be
@@ -2433,7 +2466,14 @@ function showSuccess(payload, opts = {}) {
       ? `Quote submitted and sent to ${payload.customer_email}`
       : "Quote submitted to ServiceM8";
   }
-  $("successRef").textContent = payload.quote_ref || state.quoteRef || "";
+  // RFT-103: show the human-readable filename, not the internal Q- ref.
+  // Submit → v1. Amend → opts.newVersion (server-confirmed, matches PDF).
+  const successVersion = opts.amended ? (opts.newVersion || 2) : 1;
+  $("successRef").textContent = buildHumanQuoteName({
+    client_name: payload.client_name,
+    proposal_date: payload.proposal_date,
+    version: successVersion,
+  });
   const rows = [];
   if (payload.client_name) rows.push({ lbl: "Client", val: payload.client_name });
   if (payload.total != null) rows.push({ lbl: "Total (inc. GST)", val: AUD.format(payload.total) });
