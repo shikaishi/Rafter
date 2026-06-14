@@ -2767,6 +2767,15 @@ async function handleConsole(request, env, url, jwtPayload, userId) {
   if (method === 'POST' && path === '/console/backfill-environment') {
     return handleConsoleBackfillEnvironment(env);
   }
+  if (method === 'GET' && path === '/console/observability') {
+    return handleConsoleObservability(url, env);
+  }
+  if (method === 'GET' && path === '/console/observability/summary') {
+    return handleConsoleObservabilitySummary(env);
+  }
+  if (method === 'GET' && path === '/console/team') {
+    return handleConsoleTeam(env);
+  }
   const tenantMatch = path.match(/^\/console\/tenants\/([0-9a-f-]{36})(\/[a-z-]+)?$/i);
   if (tenantMatch) {
     const [, uuid, action] = tenantMatch;
@@ -3089,6 +3098,294 @@ async function handleConsoleBackfillEnvironment(env) {
     report,
     note: "Andy's record (0e604a45-…) is excluded — set via POST /console/tenants/{uuid}/environment after explicit review.",
   });
+}
+
+// ── RFT-123: Observability ───────────────────────────────────────────────────
+//
+// GET /console/observability — paginated event feed with tenant/type/since
+//                              filters. Reads rafter-events.events directly.
+// GET /console/observability/summary — 24h/7d aggregates for the console
+//                              summary cards.
+//
+// Column note: the events table's timestamp column is `occurred_at` (TEXT,
+// ISO string), set by writeD1Event across all workers (RFT-90 + RFT-96).
+// Brief said `created_at`; the actual schema is `occurred_at`. Sort + filter
+// on that.
+
+const OBSERVABILITY_DEFAULT_SINCE_DAYS = 7;
+const OBSERVABILITY_DEFAULT_LIMIT = 50;
+const OBSERVABILITY_MAX_LIMIT = 200;
+
+async function handleConsoleObservability(url, env) {
+  if (!env.RAFTER_EVENTS) {
+    return json({ ok: false, error: 'rafter_events_not_bound' }, 503);
+  }
+  const tenantUuid = url.searchParams.get('tenant_uuid');
+  const eventType = url.searchParams.get('event_type');
+  let since = url.searchParams.get('since');
+  let limit = parseInt(url.searchParams.get('limit') || '', 10);
+  if (!Number.isFinite(limit) || limit < 1) limit = OBSERVABILITY_DEFAULT_LIMIT;
+  if (limit > OBSERVABILITY_MAX_LIMIT) limit = OBSERVABILITY_MAX_LIMIT;
+
+  if (tenantUuid && !/^[0-9a-f-]{36}$/i.test(tenantUuid)) {
+    return json({ ok: false, error: 'invalid_tenant_uuid' }, 400);
+  }
+  if (!since) {
+    since = new Date(Date.now() - OBSERVABILITY_DEFAULT_SINCE_DAYS * 24 * 60 * 60 * 1000).toISOString();
+  }
+
+  // Build the WHERE with parameterised bindings — no string concat with user
+  // input. The clauses are appended conditionally so a missing filter doesn't
+  // reduce the result set unnecessarily.
+  const where = ['occurred_at >= ?'];
+  const binds = [since];
+  if (tenantUuid) { where.push('client_uuid = ?'); binds.push(tenantUuid); }
+  if (eventType) { where.push('event_type = ?'); binds.push(eventType); }
+  const whereSql = where.join(' AND ');
+
+  let events = [];
+  let total = 0;
+  try {
+    const rowsRes = await env.RAFTER_EVENTS.prepare(
+      `SELECT id, client_uuid, event_type, occurred_at, payload
+         FROM events WHERE ${whereSql}
+         ORDER BY occurred_at DESC LIMIT ?`
+    ).bind(...binds, limit).all();
+    events = (rowsRes.results || []).map(r => {
+      let payload = null;
+      if (r.payload) {
+        try { payload = JSON.parse(r.payload); }
+        catch { payload = { _raw: String(r.payload).slice(0, 300) }; }
+      }
+      return { id: r.id, client_uuid: r.client_uuid, event_type: r.event_type, occurred_at: r.occurred_at, payload };
+    });
+    const countRes = await env.RAFTER_EVENTS.prepare(
+      `SELECT COUNT(*) AS n FROM events WHERE ${whereSql}`
+    ).bind(...binds).first();
+    total = countRes?.n ?? 0;
+  } catch (e) {
+    return json({ ok: false, error: 'd1_read_failed', detail: e.message }, 502);
+  }
+
+  return json({ ok: true, events, total_count: total, since, limit, filters: { tenant_uuid: tenantUuid || null, event_type: eventType || null } });
+}
+
+async function handleConsoleObservabilitySummary(env) {
+  if (!env.RAFTER_EVENTS) {
+    return json({ ok: false, error: 'rafter_events_not_bound' }, 503);
+  }
+  const now = Date.now();
+  const since24h = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+  const since7d = new Date(now - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  try {
+    // Aggregate in one batched call where possible — D1 supports batch() but
+    // each prepare/bind/run is also cheap on a 5-row events table. Five
+    // sequential awaits is fine for current scale (rafter-events row count is
+    // in the hundreds).
+    const events24hRow = await env.RAFTER_EVENTS.prepare(
+      'SELECT COUNT(*) AS n FROM events WHERE occurred_at >= ?'
+    ).bind(since24h).first();
+    const events7dRow = await env.RAFTER_EVENTS.prepare(
+      'SELECT COUNT(*) AS n FROM events WHERE occurred_at >= ?'
+    ).bind(since7d).first();
+    const ctaRow = await env.RAFTER_EVENTS.prepare(
+      "SELECT COUNT(*) AS n FROM events WHERE event_type = 'cross_tenant_attempt' AND occurred_at >= ?"
+    ).bind(since7d).first();
+    const byTypeRes = await env.RAFTER_EVENTS.prepare(
+      'SELECT event_type, COUNT(*) AS n FROM events WHERE occurred_at >= ? GROUP BY event_type ORDER BY n DESC'
+    ).bind(since7d).all();
+    const byTenantRes = await env.RAFTER_EVENTS.prepare(
+      'SELECT client_uuid, COUNT(*) AS n FROM events WHERE occurred_at >= ? AND client_uuid IS NOT NULL GROUP BY client_uuid ORDER BY n DESC LIMIT 20'
+    ).bind(since7d).all();
+
+    // Enrich by_tenant with slug/company from KV — bounded list (max 20).
+    const byTenant = [];
+    for (const row of (byTenantRes.results || [])) {
+      const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + row.client_uuid).catch(() => null);
+      let slug = null, company = null, environment = null;
+      if (raw) {
+        try {
+          const rec = JSON.parse(raw);
+          slug = rec.slug || null;
+          company = rec.company_name || null;
+          environment = rec.environment || null;
+        } catch { /* leave nulls */ }
+      }
+      byTenant.push({ uuid: row.client_uuid, slug, company, environment, event_count: row.n });
+    }
+
+    const byType = {};
+    for (const row of (byTypeRes.results || [])) byType[row.event_type] = row.n;
+
+    return json({
+      ok: true,
+      events_24h: events24hRow?.n ?? 0,
+      events_7d: events7dRow?.n ?? 0,
+      cross_tenant_attempts_7d: ctaRow?.n ?? 0,
+      by_type: byType,
+      by_tenant: byTenant,
+      windows: { since_24h: since24h, since_7d: since7d },
+    });
+  } catch (e) {
+    return json({ ok: false, error: 'd1_read_failed', detail: e.message }, 502);
+  }
+}
+
+// ── RFT-124: Team & access ───────────────────────────────────────────────────
+//
+// Cross-org aggregator — KV list every tenant, fan out per-org Clerk Backend
+// API reads (org + memberships + pending invites). Per-org failures degrade
+// gracefully into a null entry rather than breaking the whole response.
+// Pagination handled per-call — current scale is tens of members across two
+// orgs, but the limit is parameterised so the math holds when it grows.
+
+async function handleConsoleTeam(env) {
+  // KV scan — same shape as handleConsoleTenants. We need the full client
+  // record for environment + slug + company, so this is a JSON parse per
+  // tenant. Bounded fan-out for the Clerk calls (Promise.all over the orgs).
+  const tenants = [];
+  let cursor;
+  do {
+    const page = await env.RAFTER_CLIENTS.list({ prefix: CLIENT_PREFIX, cursor, limit: 1000 });
+    for (const k of page.keys) {
+      const uuid = k.name.slice(CLIENT_PREFIX.length);
+      if (!/^[0-9a-f-]{36}$/i.test(uuid)) continue;
+      const raw = await env.RAFTER_CLIENTS.get(k.name).catch(() => null);
+      if (!raw) continue;
+      try {
+        const rec = JSON.parse(raw);
+        tenants.push({
+          uuid,
+          slug: rec.slug || null,
+          company: rec.company_name || null,
+          environment: rec.environment || null,
+          clerk_org_id: rec.clerk_org_id || null,
+        });
+      } catch { /* skip corrupt records — they'll surface in the unbound list as a different ticket if it matters */ }
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+
+  const unbound = tenants.filter(t => !t.clerk_org_id);
+  const withOrg = tenants.filter(t => t.clerk_org_id);
+
+  // Per-org fan-out. Each org gets three Clerk calls — org details +
+  // memberships + pending invites. A single per-call failure is recorded in
+  // the org's error field, the rest of the data populates.
+  const orgs = await Promise.all(withOrg.map(async (t) => {
+    return await fetchOrgWithMembersAndInvites(env, t);
+  }));
+
+  const totals = orgs.reduce((acc, o) => {
+    acc.members += (o.members?.length || 0);
+    acc.pending_invites += (o.pending_invites?.length || 0);
+    return acc;
+  }, { members: 0, pending_invites: 0 });
+
+  return json({
+    ok: true,
+    summary: {
+      total_tenants: tenants.length,
+      total_orgs: orgs.length,
+      total_members: totals.members,
+      total_pending_invites: totals.pending_invites,
+      unbound_tenants: unbound.length,
+    },
+    orgs,
+    unbound_tenants: unbound.map(t => ({ uuid: t.uuid, slug: t.slug, company: t.company, environment: t.environment })),
+  });
+}
+
+const TEAM_MEMBER_PAGE_LIMIT = 100;
+const TEAM_INVITE_PAGE_LIMIT = 100;
+
+async function fetchOrgWithMembersAndInvites(env, tenant) {
+  const out = {
+    tenant_uuid: tenant.uuid,
+    tenant_slug: tenant.slug,
+    tenant_company: tenant.company,
+    tenant_environment: tenant.environment,
+    org_id: tenant.clerk_org_id,
+    org_name: null,
+    org_slug: null,
+    org_created_at: null,
+    members: [],
+    pending_invites: [],
+    error: null,
+  };
+
+  // Org details.
+  const orgRes = await clerkFetch(env, `/v1/organizations/${encodeURIComponent(tenant.clerk_org_id)}`);
+  if (orgRes.ok && orgRes.data) {
+    out.org_name = orgRes.data.name || null;
+    out.org_slug = orgRes.data.slug || null;
+    out.org_created_at = orgRes.data.created_at || null;
+  } else {
+    out.error = `org_${orgRes.status || 'fetch_failed'}`;
+    // Continue — the membership endpoint may still work.
+  }
+
+  // Memberships — paginated. Stop once the page returns fewer than the limit.
+  try {
+    let offset = 0;
+    while (true) {
+      const memRes = await clerkFetch(env,
+        `/v1/organizations/${encodeURIComponent(tenant.clerk_org_id)}/memberships?limit=${TEAM_MEMBER_PAGE_LIMIT}&offset=${offset}`
+      );
+      if (!memRes.ok || !memRes.data) {
+        out.members_error = `memberships_${memRes.status || 'fetch_failed'}`;
+        break;
+      }
+      const rows = Array.isArray(memRes.data.data) ? memRes.data.data : (Array.isArray(memRes.data) ? memRes.data : []);
+      for (const m of rows) {
+        const u = m.public_user_data || m.user || {};
+        out.members.push({
+          user_id: u.user_id || u.id || null,
+          email: u.identifier || u.email_address || null,
+          first_name: u.first_name || null,
+          last_name: u.last_name || null,
+          role: m.role || null,
+          created_at: m.created_at || null,
+        });
+      }
+      if (rows.length < TEAM_MEMBER_PAGE_LIMIT) break;
+      offset += rows.length;
+      if (offset > 1000) break; // safety stop — no real org has 1000+ members on this platform
+    }
+  } catch (e) {
+    out.members_error = e.message;
+  }
+
+  // Pending invitations — paginated.
+  try {
+    let offset = 0;
+    while (true) {
+      const invRes = await clerkFetch(env,
+        `/v1/organizations/${encodeURIComponent(tenant.clerk_org_id)}/invitations?status=pending&limit=${TEAM_INVITE_PAGE_LIMIT}&offset=${offset}`
+      );
+      if (!invRes.ok || !invRes.data) {
+        out.invites_error = `invitations_${invRes.status || 'fetch_failed'}`;
+        break;
+      }
+      const rows = Array.isArray(invRes.data.data) ? invRes.data.data : (Array.isArray(invRes.data) ? invRes.data : []);
+      for (const inv of rows) {
+        out.pending_invites.push({
+          id: inv.id || null,
+          email: inv.email_address || inv.email || null,
+          role: inv.role || null,
+          created_at: inv.created_at || null,
+        });
+      }
+      if (rows.length < TEAM_INVITE_PAGE_LIMIT) break;
+      offset += rows.length;
+      if (offset > 1000) break;
+    }
+  } catch (e) {
+    out.invites_error = e.message;
+  }
+
+  return out;
 }
 
 // ── Tenant teardown (RFT-30) ─────────────────────────────────────────────────
