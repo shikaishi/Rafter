@@ -1635,10 +1635,13 @@ function initTcPaste() {
   });
 }
 
-function initCredentialExamples() {
-  addRepItem('credential-list', 'credential', { name: 'Fully Licensed & Insured', detail: 'Public liability up to $10M' });
-  addRepItem('credential-list', 'credential', { name: '10-Year Workmanship Guarantee', detail: 'All work backed by our satisfaction guarantee' });
-}
+// RFT-78 #7: Credentials list now starts empty. The earlier seed
+// ("Fully Licensed & Insured" / "10-Year Workmanship Guarantee") looked like
+// real configured data and risked operators shipping it unedited. Empty
+// state leans on the input placeholders ("e.g. Fully Licensed & Insured"
+// / "Optional detail — e.g. Public liability up to $10M") to communicate
+// the field shape without dressing examples up as data.
+function initCredentialExamples() { /* no-op — see comment */ }
 
 // ── Step 1 button setup ──────────────────────────────────────────────────────
 
@@ -2004,9 +2007,14 @@ function updatePhotoStatus() {
   if (total === 0) {
     msg = '';
   } else if (finished === total) {
+    // RFT-78 #6: per-section count summary so the operator can see at a
+    // glance what landed where without scrolling the chip list.
+    const perCat = {};
+    for (const c of _photoChips) if (c.state === 'done') perCat[c.category] = (perCat[c.category] ?? 0) + 1;
+    const breakdown = Object.entries(perCat).map(([cat, n]) => `${cat}: ${n}`).join(' · ');
     msg = counts.failed
-      ? `${counts.done} uploaded · ${counts.failed} failed — retry or skip.`
-      : `${counts.done} of ${total} uploaded. ✓`;
+      ? `${counts.done} uploaded · ${counts.failed} failed — retry or skip.${breakdown ? '  ·  ' + breakdown : ''}`
+      : `${counts.done} of ${total} uploaded. ✓${breakdown ? '  ·  ' + breakdown : ''}`;
   } else {
     const parts = [];
     if (counts.resizing)  parts.push(`Optimising ${counts.resizing}`);
