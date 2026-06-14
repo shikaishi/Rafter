@@ -40,12 +40,22 @@ export default {
     const { pathname } = url;
 
     // CORS preflight — must be handled before any auth check
-    if (request.method === 'OPTIONS' && (pathname.startsWith('/onboarding/') || pathname.startsWith('/form/') || pathname.startsWith('/settings/'))) {
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/onboarding/') || pathname.startsWith('/form/') || pathname.startsWith('/settings/') || pathname.match(/^\/admin\/clients\/[0-9a-f-]{36}$/i))) {
       return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
     }
 
     if (request.method === 'POST' && pathname === '/webhooks/clerk') {
       return handleClerkWebhook(request, env);
+    }
+    // RFT-30 — tenant self-teardown lives under /admin/ for URL coherence but
+    // is Clerk-JWT-gated (not admin-bearer), so the org's own admin can close
+    // their account. Intercepted BEFORE the requireBearer block below so the
+    // bearer check never fires on this path.
+    const deleteClientMatch = request.method === 'DELETE' && pathname.match(/^\/admin\/clients\/([0-9a-f-]{36})$/i);
+    if (deleteClientMatch) {
+      const { error, payload } = await requireClerkJWT(request, env);
+      if (error) return withCors(error);
+      return withCors(await handleDeleteClient(deleteClientMatch[1], env, payload));
     }
     if (pathname.startsWith('/admin/')) {
       const authErr = requireBearer(request, env);
@@ -2511,6 +2521,88 @@ async function handleSync(uuid, env) {
     await writeEvent(env, 'sync_failed', uuid, { error: err.message });
     return json({ ok: false, error: err.message }, 500);
   }
+}
+
+// ── Tenant teardown (RFT-30) ─────────────────────────────────────────────────
+//
+// DELETE /admin/clients/:uuid — Clerk-JWT + org:admin gated; the URL :uuid
+// must match the uuid resolved from the caller's JWT org claim
+// (defence-in-depth on top of the JWT verification — same pattern as the
+// F-PROV-1 fix). Even with a leaked admin bearer, the org's admin is the
+// only caller who can wipe their own tenant.
+//
+// Order is irreversible-last: R2 photos → R2 logo → D1 quotes → D1 events →
+// KV reverse indexes → KV client record. If a step fails partway, the next
+// run can retry cleanly because each step is keyed on the stable uuid and
+// the KV client record (the index of all the other state) is deleted last.
+//
+// Does NOT cascade to Clerk — the org membership / org itself stays until a
+// human deletes it in the Clerk dashboard. Surfaced in the response so the
+// caller knows there's a follow-up step.
+async function handleDeleteClient(uuid, env, jwtPayload) {
+  const gateErr = settingsAdminGate(jwtPayload);
+  if (gateErr) return gateErr;
+
+  const orgId = extractOrgId(jwtPayload);
+  if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+
+  const jwtUuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+  if (!jwtUuid) return json({ ok: false, error: 'no_tenant_for_org' }, 404);
+  if (jwtUuid !== uuid) return json({ ok: false, error: 'uuid_mismatch', detail: 'URL uuid does not match JWT org claim' }, 403);
+
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return json({ ok: false, error: 'client_not_found', uuid }, 404);
+  let record;
+  try { record = JSON.parse(raw); }
+  catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
+
+  // 1. R2: delete every object under clients/{uuid}/ (covers photos/, logo, anything else).
+  const r2Prefix = `clients/${uuid}/`;
+  let r2_objects = 0;
+  let cursor;
+  do {
+    const page = await env.RAFTER_ASSETS.list({ prefix: r2Prefix, cursor, limit: 1000 });
+    if (page.objects.length === 0) break;
+    const keys = page.objects.map((o) => o.key);
+    // R2 delete supports batch by passing an array.
+    await env.RAFTER_ASSETS.delete(keys);
+    r2_objects += keys.length;
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+
+  // 2. D1 rafter-quotes — all rows for this tenant.
+  let quotes_rows = 0;
+  if (env.RAFTER_QUOTES) {
+    const res = await env.RAFTER_QUOTES.prepare('DELETE FROM quotes WHERE client_uuid = ?').bind(uuid).run();
+    quotes_rows = res.meta?.changes ?? 0;
+  }
+
+  // 3. D1 rafter-events — all rows for this tenant.
+  let events_rows = 0;
+  if (env.RAFTER_EVENTS) {
+    const res = await env.RAFTER_EVENTS.prepare('DELETE FROM events WHERE client_uuid = ?').bind(uuid).run();
+    events_rows = res.meta?.changes ?? 0;
+  }
+
+  // 4. KV reverse indexes — slug + clerk_org. Delete before the canonical
+  //    record so a partial-failure leaves a discoverable client:{uuid} for
+  //    a retry, not an orphaned reverse index pointing at nothing.
+  if (record.slug) await env.RAFTER_CLIENTS.delete(SLUG_PREFIX + record.slug).catch(() => {});
+  if (record.clerk_org_id) await env.RAFTER_CLIENTS.delete('clerk_org:' + record.clerk_org_id).catch(() => {});
+
+  // 5. KV canonical record — last, because everything else was indexed by uuid.
+  await env.RAFTER_CLIENTS.delete(CLIENT_PREFIX + uuid);
+
+  return json({
+    ok: true,
+    deleted: true,
+    uuid,
+    r2_objects,
+    quotes_rows,
+    events_rows,
+    clerk_org_id: record.clerk_org_id ?? null,
+    note: 'Clerk org NOT cascaded — delete the organization in the Clerk dashboard to complete teardown.',
+  });
 }
 
 // ── Smoketest — REQ-On-39 to 53 ─────────────────────────────────────────────
