@@ -11,6 +11,14 @@ id = "7c7ad02d8136452eb6d03d1af89a684f"
 binding = "RAFTER_ASSETS"
 bucket_name = "rafter-assets"
 
+# RFT-96: cross-tenant attempt logging writes a row per occurrence so security
+# triage can be paged on (Telegram) AND retrospectively queried (D1). Same
+# rafter-events.events table as admin-api and materials-sync.
+[[d1_databases]]
+binding = "RAFTER_EVENTS"
+database_name = "rafter-events"
+database_id = "39f38376-d163-439b-984d-2f0889e88d56"
+
 [browser]
 binding = "BROWSER"
 

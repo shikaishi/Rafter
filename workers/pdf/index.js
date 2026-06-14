@@ -125,6 +125,78 @@ function constantTimeEqual(a, b) {
   return diff === 0;
 }
 
+// ── RFT-96: cross-tenant attempt observability ───────────────────────────────
+// Mirrors the helpers in admin-api + materials-sync — fire-and-forget triple
+// sink (console, D1, Telegram). Telegram + D1 secrets gracefully no-op when
+// unset so the rollout window before the secrets are bound is log-only.
+async function sendTelegramAlert(text, env) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) {
+    console.error(JSON.stringify({ event: "telegram_alert_skipped", reason: "TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set" }));
+    return;
+  }
+  const truncated = text.length > 4096 ? text.slice(0, 4093) + "…" : text;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text: truncated }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      console.error(JSON.stringify({ event: "telegram_send_failed", status: res.status, body: body.slice(0, 200) }));
+    }
+  } catch (e) {
+    console.error(JSON.stringify({ event: "telegram_send_error", error: e.message }));
+  }
+}
+
+async function writeD1Event(env, eventType, clientUuid, payload) {
+  if (!env.RAFTER_EVENTS) return;
+  try {
+    await env.RAFTER_EVENTS.prepare(
+      "INSERT INTO events (id, client_uuid, event_type, occurred_at, payload) VALUES (?, ?, ?, ?, ?)"
+    ).bind(
+      crypto.randomUUID(),
+      clientUuid || null,
+      eventType,
+      new Date().toISOString(),
+      payload ? JSON.stringify(payload) : null
+    ).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: "d1_write_failed", eventType, error: e.message }));
+  }
+}
+
+function logCrossTenantAttempt(env, request, details) {
+  const event = {
+    event: "cross_tenant_attempt",
+    worker: "pdf",
+    endpoint: details.endpoint || "",
+    method: details.method || "",
+    requested_uuid: details.requested_uuid || null,
+    resolved_uuid: details.resolved_uuid || null,
+    detail: details.detail || null,
+    source_ip: request?.headers?.get?.("cf-connecting-ip") || null,
+    user_agent: (request?.headers?.get?.("user-agent") || "").slice(0, 120),
+    occurred_at: new Date().toISOString(),
+  };
+  console.log(JSON.stringify(event));
+  writeD1Event(env, "cross_tenant_attempt", event.resolved_uuid, event).catch(() => {});
+  sendCrossTenantTelegram(env, event).catch(() => {});
+}
+
+function sendCrossTenantTelegram(env, ev) {
+  const short = (u) => u ? String(u).slice(0, 8) : "?";
+  const text =
+    `⚠️ Cross-tenant attempt (${ev.worker})\n` +
+    `${ev.method} ${ev.endpoint}\n` +
+    `requested ${short(ev.requested_uuid)} from scope ${short(ev.resolved_uuid)}\n` +
+    `ip ${ev.source_ip || "?"}` + (ev.detail ? `\ndetail: ${String(ev.detail).slice(0, 200)}` : "");
+  return sendTelegramAlert(text, env);
+}
+
 // RFT-87 scope (a): JWT-or-internal verifier mirroring materials-sync.
 // Caller proves authorisation by one of:
 //   - Bearer RAFTER_WORKER_SECRET — internal callers (materials-sync amend,
@@ -251,6 +323,18 @@ async function handleGenerate(request, env, url) {
   const expectedPhotoPrefix = `clients/${client_uuid}/photos/`;
   const invalidPhotoKeys = photoKeys.filter(k => !k.startsWith(expectedPhotoPrefix));
   if (invalidPhotoKeys.length > 0) {
+    // RFT-96 — payload referencing photo keys outside the auth'd client_uuid
+    // is the cross-tenant egress vector RFT-94 closed. Log + page on every
+    // occurrence so this branch never goes silent again.
+    const sample = invalidPhotoKeys[0];
+    const sampleUuid = sample.match(/^clients\/([0-9a-f-]{36})\//i)?.[1] || null;
+    logCrossTenantAttempt(env, request, {
+      endpoint: "/generate",
+      method: "POST",
+      requested_uuid: sampleUuid,
+      resolved_uuid: client_uuid,
+      detail: `${invalidPhotoKeys.length} of ${photoKeys.length} photo key(s) outside tenant prefix`,
+    });
     return json({
       error: "invalid_photo_keys",
       detail: `${invalidPhotoKeys.length} key(s) outside tenant prefix ${expectedPhotoPrefix}`,
