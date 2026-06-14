@@ -317,7 +317,58 @@ textarea { resize: vertical; min-height: 68px; }
   font-family: 'Mulish', sans-serif;
 }
 .btn-secondary:hover { background: var(--rf-teal-bg); }
+.form-footer .btn-back { margin-right: auto; }
 #submit-status { font-size: 13px; color: var(--rf-muted); }
+
+/* ===== Branding palette picker (RFT-61) ===== */
+.brand-mode-toggle { display: flex; gap: 8px; margin-bottom: 14px; }
+.brand-mode-btn {
+  background: transparent; color: var(--rf-muted); border: 1px solid var(--rf-border);
+  border-radius: 6px; padding: 7px 14px; font-size: 13px; font-weight: 600; cursor: pointer;
+  font-family: 'Mulish', sans-serif;
+}
+.brand-mode-btn.active { background: var(--rf-navy); color: #fff; border-color: var(--rf-navy); }
+.brand-loading { font-size: 13px; color: var(--rf-muted); padding: 8px 0; }
+.brand-preset-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 10px;
+}
+.brand-preset-card {
+  border: 1px solid var(--rf-border); border-radius: 8px; padding: 10px;
+  cursor: pointer; transition: border-color 0.15s, transform 0.1s;
+  background: #fff;
+}
+.brand-preset-card:hover { border-color: var(--rf-ocean); }
+.brand-preset-card.selected { border-color: var(--rf-lime); border-width: 2px; padding: 9px; }
+.brand-preset-name {
+  font-size: 11px; font-weight: 700; color: var(--rf-text);
+  margin-bottom: 6px; text-transform: capitalize; letter-spacing: 0.02em;
+}
+.brand-preset-swatch { display: flex; gap: 3px; height: 18px; border-radius: 4px; overflow: hidden; }
+.brand-preset-swatch span { flex: 1; }
+.brand-hex-row { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px; }
+.brand-hex-pair { display: flex; gap: 6px; align-items: center; }
+.brand-hex-pair input[type="color"] {
+  width: 36px; height: 36px; border: 1px solid var(--rf-border); border-radius: 6px;
+  padding: 2px; cursor: pointer; background: #fff;
+}
+.brand-hex-pair input[type="text"] {
+  flex: 1; padding: 8px 10px; border: 1px solid var(--rf-border); border-radius: 6px;
+  font-family: 'Mulish', monospace; font-size: 13px;
+}
+.brand-preview {
+  margin-top: 14px; padding: 12px; border: 1px dashed var(--rf-divider); border-radius: 8px;
+  background: var(--rf-row-bg);
+}
+.brand-preview-label { font-size: 11px; color: var(--rf-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
+.brand-preview-bars { display: flex; gap: 6px; margin-bottom: 8px; }
+.brand-preview-bar {
+  flex: 1; padding: 8px 0; text-align: center; border-radius: 4px;
+  font-size: 11px; font-weight: 700;
+}
+.brand-preview-sample {
+  padding: 10px 12px; border-radius: 4px; font-size: 13px;
+}
 
 /* ===== Step 1 — connect ===== */
 .connect-hero { padding: 40px 24px; text-align: center; }
@@ -632,6 +683,9 @@ textarea { resize: vertical; min-height: 68px; }
       </div>
 
       <div class="form-footer">
+        <button type="button" class="btn-secondary btn-back" data-back-to="1">
+          <i class="ti ti-arrow-left"></i> Back
+        </button>
         <button type="button" id="step2-continue" class="btn-primary">
           <i class="ti ti-arrow-right"></i>
           Continue to configuration
@@ -661,6 +715,21 @@ textarea { resize: vertical; min-height: 68px; }
             <label>Account Number</label>
             <input type="text" id="bank_account" placeholder="123456789" maxlength="12" autocomplete="off" inputmode="numeric">
           </div>
+        </div>
+        <div class="field-hint" id="bsb-hint" style="margin-top:-4px;">6 digits, formatted XXX-XXX</div>
+      </div>
+
+      <!-- Branding palette (RFT-61) -->
+      <div class="section">
+        <div class="section-title">
+          <i class="ti ti-palette"></i> Branding palette
+          <span class="optional-badge">optional — can change later</span>
+        </div>
+        <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
+          Colours used on your PDF quotes. Pick a preset or set your own — they apply to headings, accents, and section backgrounds.
+        </p>
+        <div id="brand-panel">
+          <div class="brand-loading" id="brand-loading">Loading palettes…</div>
         </div>
       </div>
 
@@ -789,6 +858,9 @@ textarea { resize: vertical; min-height: 68px; }
 
       <!-- Submit -->
       <div class="form-footer">
+        <button type="button" class="btn-secondary btn-back" data-back-to="2">
+          <i class="ti ti-arrow-left"></i> Back
+        </button>
         <button type="submit" id="submit-btn" class="btn-primary">
           <i class="ti ti-check"></i>
           Set up my account
@@ -826,7 +898,10 @@ textarea { resize: vertical; min-height: 68px; }
       <div class="photo-status-bar" id="photo-status-bar"></div>
 
       <div class="form-footer" style="border-top:1px solid var(--rf-divider);padding-top:20px;margin-top:4px;">
-        <button type="button" id="photo-skip-btn" class="btn-secondary" style="margin-right:auto;">
+        <button type="button" class="btn-secondary btn-back" data-back-to="3">
+          <i class="ti ti-arrow-left"></i> Back
+        </button>
+        <button type="button" id="photo-skip-btn" class="btn-secondary">
           Skip for now →
         </button>
         <button type="button" id="photo-done-btn" class="btn-primary" disabled>
@@ -886,10 +961,205 @@ function showStep(n) {
     }
   });
   if (n === 2) initAddressAutocomplete();
+  // RFT-61: lazy-fetch branding presets when Step 3 first appears. The picker
+  // renders into the existing #brand-panel placeholder. Subsequent visits
+  // (e.g. back-then-forward via RFT-97) re-use the cached presets.
+  if (n === 3) ensureBrandingPresets();
   // RFT-78 #2: scroll to top on every step transition. Without this, the
   // operator lands at wherever the previous step's scroll happened to be
   // (often the bottom for long steps), missing the new step's intro.
   window.scrollTo(0, 0);
+}
+
+// ── Branding palette picker (RFT-61) ─────────────────────────────────────────
+//
+// Presets come from GET /settings/branding-presets (admin-api proxies the pdf
+// worker's PRESETS table, D14). Lazy-fetched on first Step 3 view; the picker
+// re-renders into #brand-panel once loaded. The onboarding user has the
+// org:admin role (they just created the org) so settingsAdminGate passes.
+//
+// Save shape mirrors resolveBranding fallthrough in workers/pdf/index.js:
+//   { preset } → preset mode (no hex stored — renderer looks up PRESETS by key)
+//   { primary, accent, background } → custom mode (preset omitted)
+// Picker default is "preset" mode with no selection → branding omitted from
+// the payload entirely → renderer falls back to platform default.
+
+const PLATFORM_DEFAULT_BRANDING = { primary: '#2E86AB', accent: '#1B4F72', background: '#EAF4F8' };
+let brandingPresets = null;
+let brandingPresetsLoading = false;
+
+async function ensureBrandingPresets() {
+  if (brandingPresets || brandingPresetsLoading) return;
+  brandingPresetsLoading = true;
+  try {
+    const token = await getClerkToken();
+    const res = await fetch(ADMIN_API + '/settings/branding-presets', {
+      headers: token ? { 'Authorization': 'Bearer ' + token } : {},
+    });
+    if (res.ok) {
+      const data = await res.json();
+      brandingPresets = {
+        presets: data.presets || {},
+        platform_default: data.platform_default || PLATFORM_DEFAULT_BRANDING,
+      };
+    } else {
+      brandingPresets = { presets: {}, platform_default: PLATFORM_DEFAULT_BRANDING };
+    }
+  } catch {
+    brandingPresets = { presets: {}, platform_default: PLATFORM_DEFAULT_BRANDING };
+  }
+  brandingPresetsLoading = false;
+  renderBrandingPanel();
+}
+
+function renderBrandingPanel() {
+  const panel = document.getElementById('brand-panel');
+  if (!panel || !brandingPresets) return;
+  const presets = brandingPresets.presets;
+  const pd = brandingPresets.platform_default;
+  const presetCards = Object.entries(presets).map(([name, p]) => `
+    <div class="brand-preset-card" data-preset="${esc(name)}">
+      <div class="brand-preset-name">${esc(name.replace(/-/g, ' '))}</div>
+      <div class="brand-preset-swatch" title="${esc(p.primary)} · ${esc(p.accent)} · ${esc(p.background)}">
+        <span style="background:${esc(p.primary)}"></span>
+        <span style="background:${esc(p.accent)}"></span>
+        <span style="background:${esc(p.background)}"></span>
+      </div>
+    </div>
+  `).join('');
+  panel.innerHTML = `
+    <div class="brand-mode-toggle">
+      <button type="button" class="brand-mode-btn active" data-mode="preset">Use a preset</button>
+      <button type="button" class="brand-mode-btn" data-mode="custom">Custom colours</button>
+    </div>
+    <div id="brand-preset-panel">
+      <div class="brand-preset-grid">${presetCards || '<div class="brand-loading">No presets available — use Custom colours.</div>'}</div>
+    </div>
+    <div id="brand-custom-panel" hidden>
+      <div class="brand-hex-row">
+        ${['primary','accent','background'].map(k => `
+          <div class="field">
+            <label>${k.charAt(0).toUpperCase() + k.slice(1)}</label>
+            <div class="brand-hex-pair">
+              <input type="color" id="br-${k}-picker" value="${esc(pd[k])}">
+              <input type="text" id="br-${k}" value="${esc(pd[k])}" placeholder="#RRGGBB" maxlength="7" autocomplete="off">
+            </div>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+    <div class="brand-preview">
+      <div class="brand-preview-label">Live preview</div>
+      <div class="brand-preview-bars">
+        <div class="brand-preview-bar" id="br-prev-primary" style="background:${esc(pd.primary)};color:#fff;">Primary</div>
+        <div class="brand-preview-bar" id="br-prev-accent" style="background:${esc(pd.accent)};color:#fff;">Accent</div>
+        <div class="brand-preview-bar" id="br-prev-background" style="background:${esc(pd.background)};color:var(--rf-text);border:0.5px solid var(--rf-divider);">Background</div>
+      </div>
+      <div class="brand-preview-sample" id="br-prev-sample" style="background:${esc(pd.background)};border-left:3px solid ${esc(pd.accent)};">
+        <strong style="color:${esc(pd.primary)};">Sample quote heading</strong> — body text on the chosen background.
+      </div>
+    </div>
+  `;
+  wireBrandingPicker();
+}
+
+function wireBrandingPicker() {
+  const panel = document.getElementById('brand-panel');
+  if (!panel) return;
+  panel.querySelectorAll('.brand-mode-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const mode = btn.dataset.mode;
+      panel.querySelectorAll('.brand-mode-btn').forEach(b => b.classList.toggle('active', b === btn));
+      document.getElementById('brand-preset-panel').hidden = mode !== 'preset';
+      document.getElementById('brand-custom-panel').hidden = mode !== 'custom';
+      updateBrandingPreview();
+    });
+  });
+  panel.querySelectorAll('.brand-preset-card').forEach(pc => {
+    pc.addEventListener('click', () => {
+      panel.querySelectorAll('.brand-preset-card').forEach(p => p.classList.toggle('selected', p === pc));
+      updateBrandingPreview();
+    });
+  });
+  for (const k of ['primary','accent','background']) {
+    const picker = document.getElementById(`br-${k}-picker`);
+    const text = document.getElementById(`br-${k}`);
+    if (picker && text) {
+      picker.addEventListener('input', () => { text.value = picker.value.toUpperCase(); updateBrandingPreview(); });
+      text.addEventListener('input', () => {
+        let v = text.value.trim();
+        if (/^[0-9a-f]{6}$/i.test(v)) v = '#' + v;
+        if (/^#[0-9a-f]{6}$/i.test(v)) picker.value = v.toLowerCase();
+        updateBrandingPreview();
+      });
+    }
+  }
+}
+
+function getBrandingMode() {
+  return document.querySelector('#brand-panel .brand-mode-btn.active')?.dataset.mode || 'preset';
+}
+
+function getBrandingHex(k) {
+  const v = document.getElementById(`br-${k}`)?.value?.trim() || '';
+  return /^#[0-9a-f]{6}$/i.test(v) ? v.toUpperCase() : null;
+}
+
+function updateBrandingPreview() {
+  const pd = brandingPresets?.platform_default || PLATFORM_DEFAULT_BRANDING;
+  let palette = { ...pd };
+  if (getBrandingMode() === 'preset') {
+    const sel = document.querySelector('#brand-panel .brand-preset-card.selected')?.dataset.preset;
+    if (sel && brandingPresets?.presets?.[sel]) palette = brandingPresets.presets[sel];
+  } else {
+    for (const k of ['primary','accent','background']) {
+      const v = getBrandingHex(k);
+      if (v) palette[k] = v;
+    }
+  }
+  const pp = document.getElementById('br-prev-primary');
+  const pa = document.getElementById('br-prev-accent');
+  const pb = document.getElementById('br-prev-background');
+  const ps = document.getElementById('br-prev-sample');
+  if (pp) pp.style.background = palette.primary;
+  if (pa) pa.style.background = palette.accent;
+  if (pb) pb.style.background = palette.background;
+  if (ps) {
+    ps.style.background = palette.background;
+    ps.style.borderLeftColor = palette.accent;
+    const strong = ps.querySelector('strong');
+    if (strong) strong.style.color = palette.primary;
+  }
+}
+
+function buildBrandingPayload() {
+  // Only emit a branding payload if the operator made an explicit choice.
+  // No selection → undefined → renderer falls back to platform default.
+  if (getBrandingMode() === 'preset') {
+    const sel = document.querySelector('#brand-panel .brand-preset-card.selected')?.dataset.preset;
+    return sel ? { preset: sel } : null;
+  }
+  const out = {};
+  for (const k of ['primary','accent','background']) {
+    const v = getBrandingHex(k);
+    if (v) out[k] = v;
+  }
+  return Object.keys(out).length ? out : null;
+}
+
+// ── RFT-66: BSB auto-format ──────────────────────────────────────────────────
+function initBsbAutoFormat() {
+  const bsb = document.getElementById('bank_bsb');
+  const hint = document.getElementById('bsb-hint');
+  if (!bsb) return;
+  bsb.addEventListener('input', () => {
+    const d = bsb.value.replace(/\D/g, '').slice(0, 6);
+    bsb.value = d.length > 3 ? `${d.slice(0, 3)}-${d.slice(3)}` : d;
+    if (!hint) return;
+    if (!d.length) { hint.textContent = '6 digits, formatted XXX-XXX'; hint.style.color = 'var(--rf-muted)'; }
+    else if (d.length < 6) { hint.textContent = `${d.length}/6 digits`; hint.style.color = 'var(--rf-muted)'; }
+    else { hint.textContent = '✓ 6 digits'; hint.style.color = 'var(--rf-lime)'; }
+  });
 }
 
 // ── Section seed text ────────────────────────────────────────────────────────
@@ -1457,6 +1727,10 @@ async function handleSubmit(e, clerk) {
   const bankAccount = document.getElementById('bank_account').value.trim();
   if (bankName || bankBsb || bankAccount) payload.bank_details = { name: bankName, bsb: bankBsb, account: bankAccount };
 
+  // RFT-61: branding payload — null when operator left the picker untouched.
+  const branding = buildBrandingPayload();
+  if (branding) payload.branding = branding;
+
   const emailTemplate = document.getElementById('email_template').value.trim();
   if (emailTemplate) payload.email_template = emailTemplate;
 
@@ -1869,6 +2143,19 @@ function photoFilename(originalName) {
   document.getElementById('step2-continue').addEventListener('click', () => showStep(3));
   document.getElementById('prefill-retry').addEventListener('click', fetchSm8Prefill);
   document.getElementById('onboarding-form').addEventListener('submit', e => handleSubmit(e, clerk));
+
+  // RFT-97 — back buttons on steps 2, 3, 4 (Step 1 has no back). Step state is
+  // already in-memory (DOM values + repeater arrays), so showStep is a pure
+  // visibility flip — going back preserves everything the operator has entered.
+  document.querySelectorAll('.btn-back[data-back-to]').forEach(btn => {
+    btn.addEventListener('click', () => {
+      const n = parseInt(btn.dataset.backTo, 10);
+      if (Number.isFinite(n)) showStep(n);
+    });
+  });
+
+  // RFT-66 — BSB auto-format (ports the pattern from settings.html).
+  initBsbAutoFormat();
 
   loadingEl.hidden = true;
   formEl.hidden    = false;
