@@ -278,15 +278,25 @@ async function handleOnboarding(request, env, url, jwtPayload) {
   if (method === 'POST' && path === '/onboarding/provision') {
     const body = await parseBody(request);
     if (!body) return json({ ok: false, error: 'Invalid JSON body' }, 400);
+    // RFT-92 F-PROV-1: tenant uuid MUST come from JWT, never the request body.
+    // body.uuid would otherwise let any authed caller overwrite any tenant's
+    // KV record via provisionClient's merge path and re-point the clerk_org:
+    // reverse index. Drop it before forwarding — provisionClient's clerk_org
+    // reverse-lookup path (set on body.clerk_org_id below) is the only source.
+    delete body.uuid;
     // Scope to JWT org — browser cannot provision outside its own org (REQ-On-28)
     body.clerk_org_id = extractOrgId(jwtPayload) ?? null;
     return handleProvision(body, env);
   }
 
   if (method === 'POST' && path === '/onboarding/verify') {
-    const body = await parseBody(request) ?? {};
-    const uuid = body.uuid;
-    if (!uuid) return json({ ok: false, error: 'uuid required in body' }, 400);
+    // RFT-92 F-VER-1: tenant uuid MUST come from JWT, never the request body.
+    // Previously body.uuid was trusted, letting any authed caller smoketest
+    // (and leak slug/company_name from) any tenant's KV record.
+    const orgId = extractOrgId(jwtPayload);
+    if (!orgId) return json({ ok: false, error: 'no_org_in_jwt' }, 401);
+    const uuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
+    if (!uuid) return json({ ok: false, error: 'no_tenant_for_org' }, 404);
     return handleVerify(uuid, url, env);
   }
 
