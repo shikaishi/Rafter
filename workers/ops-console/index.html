@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en-AU">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Rafter ops</title>
+<link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230F1F15'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%236EE7A0'/%3E%3C/svg%3E">
+<link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
+<style>
+:root {
+  --ops-deepest: #0A1610;
+  --ops-bark: #0F1F15;
+  --ops-canopy: #1A3325;
+  --ops-moss: #2D5A3F;
+  --ops-fern: #4A7C5E;
+  --ops-mint: #6EE7A0;
+  --ops-mist: #D1E8D5;
+  --ops-cloud: #F6F9F7;
+  --ops-text: #0F1F15;
+  --ops-muted: #5E7A67;
+  --ops-border: #C8DCC8;
+  --ops-card: #FFFFFF;
+  --ops-danger: #B91C1C;
+  --ops-warn: #92400E;
+  --ops-success: #064E3B;
+  --ops-tinted: #EBF5EE;
+  --font-mono: ui-monospace, 'SF Mono', Menlo, Consolas, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+}
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; padding: 0; height: 100%; }
+body {
+  font-family: var(--font-sans);
+  font-size: 13px;
+  color: var(--ops-text);
+  background: var(--ops-cloud);
+  line-height: 1.45;
+}
+
+/* ===== Boot states ===== */
+.boot-screen {
+  position: fixed; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 20px; background: var(--ops-deepest); color: var(--ops-mist);
+  padding: 32px;
+}
+.boot-screen .ti { font-size: 36px; color: var(--ops-mint); }
+.boot-screen h1 { margin: 0; font-size: 16px; font-weight: 600; color: var(--ops-cloud); }
+.boot-screen p { margin: 0; color: var(--ops-mist); font-size: 13px; text-align: center; max-width: 400px; }
+.boot-screen .btn-out { background: transparent; border: 1px solid var(--ops-fern); color: var(--ops-mist); padding: 8px 16px; border-radius: 6px; font-family: var(--font-sans); font-size: 13px; cursor: pointer; }
+.boot-screen .btn-out:hover { background: var(--ops-canopy); color: var(--ops-cloud); }
+.spinner {
+  width: 28px; height: 28px;
+  border: 2px solid var(--ops-canopy);
+  border-top-color: var(--ops-mint);
+  border-radius: 50%; animation: spin 0.75s linear infinite;
+}
+@keyframes spin { to { transform: rotate(360deg); } }
+
+/* ===== App layout ===== */
+.app { display: flex; height: 100vh; }
+.sidebar {
+  width: 200px; flex-shrink: 0;
+  background: var(--ops-bark);
+  display: flex; flex-direction: column;
+  border-right: 1px solid var(--ops-canopy);
+}
+.sidebar-head { padding: 18px 16px 14px; border-bottom: 1px solid var(--ops-canopy); }
+.sidebar-head .ti { color: var(--ops-mint); font-size: 18px; vertical-align: middle; margin-right: 6px; }
+.sidebar-head .title { color: var(--ops-cloud); font-size: 14px; font-weight: 600; vertical-align: middle; }
+.sidebar-head .sub { color: var(--ops-fern); font-size: 10px; font-family: var(--font-mono); margin-top: 4px; padding-left: 24px; }
+
+.sidebar-nav { flex: 1; padding: 8px 0; overflow-y: auto; }
+.nav-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 16px; margin: 1px 8px; border-radius: 6px;
+  cursor: pointer; color: var(--ops-mist);
+  font-size: 12.5px; font-weight: 500;
+  background: transparent; border: none; width: calc(100% - 16px); text-align: left;
+  font-family: var(--font-sans);
+}
+.nav-item:hover { background: var(--ops-canopy); color: var(--ops-cloud); }
+.nav-item.active { background: var(--ops-canopy); color: var(--ops-cloud); }
+.nav-item.active .ti { color: var(--ops-mint); }
+.nav-item .ti { color: var(--ops-fern); font-size: 16px; }
+.nav-item:hover .ti { color: var(--ops-mint); }
+
+.sidebar-foot {
+  padding: 12px 16px; border-top: 1px solid var(--ops-canopy);
+  display: flex; align-items: center; gap: 10px;
+}
+.avatar {
+  width: 28px; height: 28px; border-radius: 50%;
+  background: var(--ops-moss); color: var(--ops-cloud);
+  display: flex; align-items: center; justify-content: center;
+  font-size: 11px; font-weight: 700; flex-shrink: 0;
+}
+.user-block { flex: 1; min-width: 0; }
+.user-name { color: var(--ops-cloud); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.user-sub { color: var(--ops-fern); font-size: 10px; font-family: var(--font-mono); }
+.sign-out-btn { background: transparent; border: none; color: var(--ops-fern); cursor: pointer; padding: 4px; }
+.sign-out-btn:hover { color: var(--ops-mint); }
+
+.main { flex: 1; overflow-y: auto; }
+.main-inner { padding: 28px 32px; max-width: 1400px; }
+
+/* ===== View headers ===== */
+.view-header { display: flex; align-items: baseline; gap: 16px; margin-bottom: 20px; }
+.view-header h1 { margin: 0; font-size: 22px; font-weight: 600; color: var(--ops-text); }
+.view-header .meta { color: var(--ops-muted); font-size: 12px; }
+.view-header .actions { margin-left: auto; }
+.btn-action {
+  background: var(--ops-bark); color: var(--ops-mist); border: none;
+  padding: 9px 16px; border-radius: 6px; cursor: pointer;
+  font-size: 12.5px; font-weight: 600; font-family: var(--font-sans);
+  display: inline-flex; align-items: center; gap: 6px; text-decoration: none;
+}
+.btn-action:hover { background: var(--ops-canopy); color: var(--ops-cloud); }
+.btn-action .ti { color: var(--ops-mint); }
+
+/* ===== Summary cards ===== */
+.summary-row {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px;
+  margin-bottom: 24px;
+}
+.summary-card {
+  background: var(--ops-tinted);
+  border: 0.5px solid var(--ops-border);
+  border-radius: 6px;
+  padding: 14px 16px;
+}
+.summary-label { font-size: 11px; color: var(--ops-fern); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 6px; }
+.summary-number { font-size: 22px; font-weight: 500; color: var(--ops-text); font-variant-numeric: tabular-nums; }
+.summary-sub { font-size: 11px; color: var(--ops-muted); margin-top: 4px; font-family: var(--font-mono); }
+
+/* ===== Tenant cards ===== */
+.tenants-list { display: flex; flex-direction: column; gap: 10px; }
+.tenant-card {
+  background: var(--ops-card);
+  border: 0.5px solid var(--ops-border);
+  border-radius: 6px;
+  overflow: hidden;
+  transition: border-color 0.15s;
+}
+.tenant-card:hover { border-color: var(--ops-fern); }
+.tenant-card.expanded { border-color: var(--ops-moss); }
+.tenant-head {
+  display: flex; align-items: center; gap: 16px;
+  padding: 14px 18px; cursor: pointer;
+}
+.tenant-identity { flex: 1; min-width: 0; }
+.tenant-name { font-size: 14px; font-weight: 500; color: var(--ops-text); }
+.tenant-ids { font-family: var(--font-mono); font-size: 11px; color: var(--ops-muted); margin-top: 2px; }
+.tenant-badges { display: flex; gap: 6px; flex-shrink: 0; }
+.badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 3px 8px; border-radius: 4px;
+  font-size: 11px; font-weight: 600;
+  font-family: var(--font-sans);
+}
+.badge .ti { font-size: 12px; }
+.badge-sm8 { background: var(--ops-tinted); color: var(--ops-success); }
+.badge-sm8.off { background: #FEF3F2; color: var(--ops-danger); }
+.badge-env { background: var(--ops-canopy); color: var(--ops-mint); font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.05em; }
+.badge-env.dev { background: #FEF6E7; color: var(--ops-warn); }
+.badge-env.bvt { background: #EFF6FF; color: #1E40AF; }
+.badge-env.prod { background: var(--ops-canopy); color: var(--ops-mint); }
+.badge-env.unset { background: #F3F4F6; color: var(--ops-muted); }
+.badge-gate { background: #F3F4F6; color: var(--ops-muted); }
+.tenant-chevron { color: var(--ops-fern); transition: transform 0.15s; }
+.tenant-card.expanded .tenant-chevron { transform: rotate(180deg); }
+
+.tenant-stats {
+  display: flex; gap: 18px; flex-wrap: wrap;
+  padding: 0 18px 14px;
+  font-size: 11px; color: var(--ops-muted);
+}
+.tenant-stats .stat { display: inline-flex; align-items: center; gap: 5px; }
+.tenant-stats .stat .ti { font-size: 13px; color: var(--ops-fern); }
+.tenant-stats .stat .v { font-family: var(--font-mono); color: var(--ops-text); }
+
+.tenant-detail {
+  border-top: 0.5px solid var(--ops-border);
+  background: var(--ops-tinted);
+  padding: 18px;
+  display: grid; grid-template-columns: 1fr 1fr; gap: 18px;
+}
+.detail-block h3 {
+  margin: 0 0 8px; font-size: 11px; font-weight: 600;
+  color: var(--ops-fern); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.detail-list { font-family: var(--font-mono); font-size: 11px; color: var(--ops-text); }
+.detail-list .row {
+  display: flex; gap: 12px;
+  padding: 4px 0; border-bottom: 0.5px dashed var(--ops-border);
+}
+.detail-list .row:last-child { border-bottom: none; }
+.detail-list .col-time { color: var(--ops-muted); flex-shrink: 0; min-width: 130px; }
+.detail-list .col-name { flex: 1; min-width: 0; word-break: break-word; }
+.detail-list .empty { color: var(--ops-muted); font-style: italic; font-family: var(--font-sans); padding: 4px 0; }
+
+.detail-actions {
+  grid-column: 1 / -1;
+  padding-top: 14px;
+  border-top: 0.5px solid var(--ops-border);
+  display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+}
+.btn-link {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border); color: var(--ops-text);
+  padding: 7px 12px; border-radius: 5px; cursor: pointer;
+  font-size: 12px; font-weight: 500; font-family: var(--font-sans);
+  display: inline-flex; align-items: center; gap: 5px; text-decoration: none;
+}
+.btn-link:hover { border-color: var(--ops-fern); }
+.btn-link .ti { color: var(--ops-fern); font-size: 14px; }
+.btn-danger {
+  background: var(--ops-card); border: 0.5px solid var(--ops-danger); color: var(--ops-danger);
+  padding: 7px 12px; border-radius: 5px; cursor: pointer;
+  font-size: 12px; font-weight: 600; font-family: var(--font-sans);
+  display: inline-flex; align-items: center; gap: 5px;
+  margin-left: auto;
+}
+.btn-danger:hover { background: #FEF2F2; }
+.env-editor { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; color: var(--ops-muted); }
+.env-editor select {
+  font-family: var(--font-mono); font-size: 11px; padding: 5px 8px;
+  border: 0.5px solid var(--ops-border); border-radius: 4px;
+  background: var(--ops-card); color: var(--ops-text); text-transform: uppercase;
+}
+
+/* ===== Coming-soon view ===== */
+.coming-soon {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  padding: 80px 20px; color: var(--ops-muted); text-align: center;
+}
+.coming-soon .ti { font-size: 48px; color: var(--ops-fern); margin-bottom: 12px; }
+.coming-soon h2 { margin: 0; font-size: 18px; color: var(--ops-text); font-weight: 500; }
+.coming-soon p { margin: 6px 0 0; font-size: 12px; }
+
+/* ===== Modal ===== */
+.modal-backdrop {
+  position: fixed; inset: 0;
+  background: rgba(15, 31, 21, 0.6);
+  display: flex; align-items: center; justify-content: center;
+  z-index: 100; padding: 20px;
+}
+.modal {
+  background: var(--ops-card);
+  border-radius: 8px;
+  max-width: 480px; width: 100%;
+  box-shadow: 0 16px 48px rgba(0,0,0,0.25);
+  overflow: hidden;
+}
+.modal-head { padding: 18px 20px 12px; border-bottom: 0.5px solid var(--ops-border); }
+.modal-head h2 { margin: 0; font-size: 15px; font-weight: 600; color: var(--ops-text); display: inline-flex; align-items: center; gap: 8px; }
+.modal-head .ti { color: var(--ops-danger); font-size: 18px; }
+.modal-body { padding: 16px 20px; color: var(--ops-text); font-size: 13px; line-height: 1.55; }
+.modal-body p { margin: 0 0 10px; }
+.modal-body code {
+  font-family: var(--font-mono); font-size: 12px;
+  background: var(--ops-tinted); padding: 2px 6px; border-radius: 3px;
+}
+.modal-body .warn-box {
+  background: #FEF2F2; border-left: 3px solid var(--ops-danger);
+  padding: 10px 12px; border-radius: 4px; margin: 12px 0;
+  color: var(--ops-danger); font-size: 12px;
+}
+.modal-body input[type="text"] {
+  width: 100%; padding: 9px 11px; margin-top: 8px;
+  border: 1px solid var(--ops-border); border-radius: 5px;
+  font-family: var(--font-mono); font-size: 13px;
+}
+.modal-body input[type="text"]:focus { outline: none; border-color: var(--ops-moss); }
+.modal-foot {
+  padding: 14px 20px; border-top: 0.5px solid var(--ops-border);
+  display: flex; gap: 8px; justify-content: flex-end;
+}
+.btn-cancel {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border); color: var(--ops-text);
+  padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 12.5px; font-weight: 500; font-family: var(--font-sans);
+}
+.btn-cancel:hover { border-color: var(--ops-fern); }
+.btn-confirm-danger {
+  background: var(--ops-danger); color: white; border: none;
+  padding: 8px 14px; border-radius: 5px; cursor: pointer; font-size: 12.5px; font-weight: 600; font-family: var(--font-sans);
+}
+.btn-confirm-danger:hover { background: #991B1B; }
+.btn-confirm-danger:disabled { background: #E5E7EB; color: var(--ops-muted); cursor: not-allowed; }
+
+/* ===== Toast ===== */
+#toasts {
+  position: fixed; bottom: 20px; right: 20px; z-index: 200;
+  display: flex; flex-direction: column; gap: 8px;
+}
+.toast {
+  background: var(--ops-bark); color: var(--ops-cloud);
+  padding: 12px 16px; border-radius: 6px;
+  font-size: 13px; max-width: 360px;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.2);
+  display: flex; align-items: flex-start; gap: 8px;
+}
+.toast.ok { border-left: 3px solid var(--ops-mint); }
+.toast.err { border-left: 3px solid var(--ops-danger); }
+.toast .ti { font-size: 16px; flex-shrink: 0; margin-top: 1px; }
+.toast.ok .ti { color: var(--ops-mint); }
+.toast.err .ti { color: var(--ops-danger); }
+
+/* ===== Inline loading + empty ===== */
+.inline-loading { padding: 32px; text-align: center; color: var(--ops-muted); font-size: 12px; }
+.inline-loading .spinner { width: 18px; height: 18px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px; }
+</style>
+</head>
+<body>
+
+<!-- Boot loading -->
+<div id="loadingScreen" class="boot-screen">
+  <div class="spinner"></div>
+  <p>Loading Rafter ops…</p>
+</div>
+
+<!-- Auth needed (no session) -->
+<div id="authScreen" class="boot-screen" hidden>
+  <i class="ti ti-key"></i>
+  <h1>Rafter ops</h1>
+  <p>Platform operator sign-in required. Use your registered passkey.</p>
+  <button id="passkeyBtn" class="btn-out"><i class="ti ti-fingerprint" style="font-size:14px;"></i> Sign in with passkey</button>
+  <p id="passkeyHint" style="font-size:11px;opacity:0.6;"></p>
+</div>
+
+<!-- Access denied (signed in but not a platform operator) -->
+<div id="deniedScreen" class="boot-screen" hidden>
+  <i class="ti ti-shield-x" style="color:var(--ops-danger);"></i>
+  <h1>Access denied</h1>
+  <p>You are signed in, but your account is not on the platform-operator allowlist.</p>
+  <button id="signOutBtn1" class="btn-out"><i class="ti ti-logout" style="font-size:14px;"></i> Sign out</button>
+</div>
+
+<!-- App shell -->
+<div id="app" class="app" hidden>
+  <aside class="sidebar">
+    <div class="sidebar-head">
+      <i class="ti ti-trees"></i>
+      <span class="title">Rafter ops</span>
+      <div class="sub">deepgreensea.au</div>
+    </div>
+    <nav class="sidebar-nav">
+      <button class="nav-item active" data-view="tenants"><i class="ti ti-building-community"></i> Tenants</button>
+      <button class="nav-item" data-view="observability"><i class="ti ti-activity"></i> Observability</button>
+      <button class="nav-item" data-view="platform-health"><i class="ti ti-heartbeat"></i> Platform health</button>
+      <button class="nav-item" data-view="team"><i class="ti ti-users"></i> Team &amp; access</button>
+      <button class="nav-item" data-view="issues"><i class="ti ti-bug"></i> Issues</button>
+      <button class="nav-item" data-view="cost"><i class="ti ti-coin"></i> Cost &amp; usage</button>
+      <button class="nav-item" data-view="make"><i class="ti ti-plug"></i> Make scenarios</button>
+    </nav>
+    <div class="sidebar-foot">
+      <div class="avatar" id="userAvatar">?</div>
+      <div class="user-block">
+        <div class="user-name" id="userName">…</div>
+        <div class="user-sub" id="userIdShort">…</div>
+      </div>
+      <button class="sign-out-btn" id="signOutBtn2" title="Sign out"><i class="ti ti-logout" style="font-size:14px;"></i></button>
+    </div>
+  </aside>
+
+  <main class="main">
+    <div class="main-inner">
+
+      <!-- TENANTS VIEW -->
+      <div id="view-tenants">
+        <div class="view-header">
+          <h1>Tenants</h1>
+          <div class="meta" id="tenantsMeta">…</div>
+          <div class="actions">
+            <a class="btn-action" href="https://rafter.deepgreensea.au/sign-up" target="_blank" rel="noopener">
+              <i class="ti ti-plus"></i> Onboard tenant
+            </a>
+          </div>
+        </div>
+
+        <div class="summary-row" id="summaryRow">
+          <div class="summary-card"><div class="summary-label">Active tenants</div><div class="summary-number" data-sum="total">0</div><div class="summary-sub" data-sum="env-breakdown">—</div></div>
+          <div class="summary-card"><div class="summary-label">Quotes last 7d</div><div class="summary-number" data-sum="quotes-7d">0</div><div class="summary-sub" data-sum="quotes-sub">across all tenants</div></div>
+          <div class="summary-card"><div class="summary-label">SM8 connections</div><div class="summary-number" data-sum="sm8">0</div><div class="summary-sub" data-sum="sm8-sub">—</div></div>
+          <div class="summary-card"><div class="summary-label">Open issues</div><div class="summary-number">0</div><div class="summary-sub">linear sync pending</div></div>
+        </div>
+
+        <div class="tenants-list" id="tenantsList">
+          <div class="inline-loading"><div class="spinner"></div> Loading tenants…</div>
+        </div>
+      </div>
+
+      <!-- COMING-SOON view template (cloned per non-tenants nav item) -->
+      <div id="view-placeholder" hidden>
+        <div class="coming-soon">
+          <i class="ti" id="placeholderIcon"></i>
+          <h2 id="placeholderTitle">Coming soon</h2>
+          <p>This section is on the roadmap. Tracked as a follow-up ticket.</p>
+        </div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<div id="toasts"></div>
+
+<script
+  data-clerk-publishable-key="pk_live_Y2xlcmsuZGVlcGdyZWVuc2VhLmF1JA"
+  src="https://clerk.deepgreensea.au/npm/@clerk/clerk-js@6.14.0/dist/clerk.browser.js"
+  crossorigin="anonymous"
+></script>
+<script>
+'use strict';
+
+const ADMIN_API = 'https://rafter-admin-api.will-8e8.workers.dev';
+
+const PLACEHOLDER_SECTIONS = {
+  'observability':    { icon: 'ti-activity',     title: 'Observability'    },
+  'platform-health':  { icon: 'ti-heartbeat',    title: 'Platform health'  },
+  'team':             { icon: 'ti-users',        title: 'Team & access'    },
+  'issues':           { icon: 'ti-bug',          title: 'Issues'           },
+  'cost':             { icon: 'ti-coin',         title: 'Cost & usage'     },
+  'make':             { icon: 'ti-plug',         title: 'Make scenarios'   },
+};
+
+const $ = (id) => document.getElementById(id);
+
+function esc(s) {
+  return String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' }[c]));
+}
+
+function toast(msg, kind = 'ok', ms = 4500) {
+  const t = document.createElement('div');
+  t.className = `toast ${kind}`;
+  const icon = kind === 'err' ? 'ti-alert-triangle' : 'ti-check';
+  t.innerHTML = `<i class="ti ${icon}"></i><span>${esc(msg)}</span>`;
+  $('toasts').appendChild(t);
+  setTimeout(() => t.remove(), ms);
+}
+
+function fmtRel(ts) {
+  if (!ts) return '—';
+  const t = new Date(ts);
+  if (isNaN(t.getTime())) return '—';
+  const mins = Math.floor((Date.now() - t.getTime()) / 60000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 30) return `${days}d ago`;
+  return t.toLocaleDateString();
+}
+
+function fmtBytes(n) {
+  if (!n) return '0 B';
+  const units = ['B', 'KB', 'MB', 'GB'];
+  let i = 0; let v = n;
+  while (v >= 1024 && i < units.length - 1) { v /= 1024; i++; }
+  return `${v.toFixed(v < 10 ? 1 : 0)} ${units[i]}`;
+}
+
+function shortUuid(u) {
+  return u ? String(u).slice(0, 8) : '';
+}
+
+// ─── Auth ─────────────────────────────────────────────────────────────────────
+
+let clerk = null;
+
+async function authedFetch(url, opts = {}) {
+  const headers = new Headers(opts.headers || {});
+  if (clerk?.session) {
+    const token = await clerk.session.getToken();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+  }
+  return fetch(url, { ...opts, headers });
+}
+
+async function tryPasskeySignIn() {
+  $('passkeyHint').textContent = 'Touch your security key or use your device passkey…';
+  try {
+    await window.Clerk.client.signIn.authenticateWithPasskey({ flow: 'discoverable' });
+    location.reload();
+  } catch (e) {
+    $('passkeyHint').textContent = 'Sign-in failed — make sure your passkey is registered with this account.';
+  }
+}
+
+async function signOut() {
+  try { await clerk.signOut(); } catch {}
+  location.reload();
+}
+
+// ─── Tenants view ─────────────────────────────────────────────────────────────
+
+let TENANTS = []; // last fetched list
+let EXPANDED_DETAIL = null; // uuid of currently-expanded card
+
+async function loadTenants() {
+  $('tenantsList').innerHTML = `<div class="inline-loading"><div class="spinner"></div> Loading tenants…</div>`;
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/tenants`);
+    if (res.status === 403) {
+      showDenied(); return;
+    }
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    TENANTS = data.tenants || [];
+    renderTenants(TENANTS, data.aggregates || {});
+  } catch (e) {
+    $('tenantsList').innerHTML = `<div class="inline-loading" style="color:var(--ops-danger);">Could not load tenants: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderTenants(tenants, agg) {
+  $('tenantsMeta').textContent = `${tenants.length} total · ${(agg.sm8_connected ?? 0)} SM8-connected`;
+
+  // Summary cards
+  document.querySelector('[data-sum="total"]').textContent = agg.total ?? tenants.length;
+  const env = agg.by_environment || {};
+  document.querySelector('[data-sum="env-breakdown"]').textContent =
+    `${env.prod || 0} prod · ${env.bvt || 0} bvt · ${env.dev || 0} dev · ${env.unset || 0} unset`;
+  document.querySelector('[data-sum="quotes-7d"]').textContent = agg.quotes_last_7d ?? 0;
+  document.querySelector('[data-sum="quotes-sub"]').textContent = `${agg.drafts_total || 0} drafts in flight`;
+  document.querySelector('[data-sum="sm8"]').textContent = agg.sm8_connected ?? 0;
+  document.querySelector('[data-sum="sm8-sub"]').textContent = `of ${agg.total ?? tenants.length} tenants`;
+
+  // Sort: prod first, then bvt, then dev, then unset; within group by name.
+  const envOrder = { prod: 0, bvt: 1, dev: 2, unset: 3 };
+  const sorted = [...tenants].sort((a, b) => {
+    const ea = envOrder[a.environment || 'unset'] ?? 9;
+    const eb = envOrder[b.environment || 'unset'] ?? 9;
+    if (ea !== eb) return ea - eb;
+    return (a.company_name || '').localeCompare(b.company_name || '');
+  });
+
+  const list = $('tenantsList');
+  list.innerHTML = '';
+  for (const t of sorted) {
+    list.appendChild(renderTenantCard(t));
+  }
+}
+
+function renderTenantCard(t) {
+  const env = t.environment || 'unset';
+  const card = document.createElement('div');
+  card.className = 'tenant-card';
+  card.dataset.uuid = t.uuid;
+  card.innerHTML = `
+    <div class="tenant-head">
+      <div class="tenant-identity">
+        <div class="tenant-name">${esc(t.company_name || '(unnamed tenant)')}</div>
+        <div class="tenant-ids">${esc(t.slug || '—')} · ${esc(shortUuid(t.uuid))}</div>
+      </div>
+      <div class="tenant-badges">
+        <span class="badge badge-env ${env}">${esc(env)}</span>
+        ${t.gate_enforced
+          ? '<span class="badge badge-gate"><i class="ti ti-shield-check"></i> gated</span>'
+          : '<span class="badge badge-gate"><i class="ti ti-shield-off"></i> open</span>'}
+        ${t.sm8_connected
+          ? '<span class="badge badge-sm8"><i class="ti ti-plug-connected"></i> SM8</span>'
+          : '<span class="badge badge-sm8 off"><i class="ti ti-plug-off"></i> SM8</span>'}
+      </div>
+      <i class="ti ti-chevron-down tenant-chevron"></i>
+    </div>
+    <div class="tenant-stats">
+      <span class="stat"><i class="ti ti-file-invoice"></i> <span class="v">${t.quotes_total ?? 0}</span> quotes</span>
+      <span class="stat"><i class="ti ti-pencil"></i> <span class="v">${t.drafts ?? 0}</span> drafts</span>
+      <span class="stat"><i class="ti ti-users"></i> <span class="v">${t.clerk?.members_count ?? '—'}</span> members</span>
+      <span class="stat"><i class="ti ti-refresh"></i> last sync <span class="v">${esc(fmtRel(t.materials_synced_at))}</span></span>
+      ${t.last_quote_submitted_at
+        ? `<span class="stat"><i class="ti ti-send"></i> last quote <span class="v">${esc(fmtRel(t.last_quote_submitted_at))}</span></span>`
+        : ''}
+    </div>
+  `;
+  card.querySelector('.tenant-head').addEventListener('click', () => toggleTenant(card, t));
+  return card;
+}
+
+async function toggleTenant(card, t) {
+  if (card.classList.contains('expanded')) {
+    card.classList.remove('expanded');
+    const d = card.querySelector('.tenant-detail');
+    if (d) d.remove();
+    EXPANDED_DETAIL = null;
+    return;
+  }
+  // Collapse any other expanded card.
+  document.querySelectorAll('.tenant-card.expanded').forEach((c) => {
+    c.classList.remove('expanded');
+    const d = c.querySelector('.tenant-detail');
+    if (d) d.remove();
+  });
+  card.classList.add('expanded');
+  const placeholder = document.createElement('div');
+  placeholder.className = 'tenant-detail';
+  placeholder.innerHTML = '<div class="inline-loading" style="grid-column:1/-1;"><div class="spinner"></div> Loading detail…</div>';
+  card.appendChild(placeholder);
+  EXPANDED_DETAIL = t.uuid;
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/tenants/${encodeURIComponent(t.uuid)}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (EXPANDED_DETAIL !== t.uuid) return; // user closed while loading
+    placeholder.innerHTML = '';
+    placeholder.appendChild(renderTenantDetail(data.tenant));
+  } catch (e) {
+    placeholder.innerHTML = `<div class="inline-loading" style="grid-column:1/-1;color:var(--ops-danger);">Could not load: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderTenantDetail(t) {
+  const wrap = document.createElement('div');
+  wrap.style.display = 'contents';
+  const eventsRows = (t.recent_events || []).map((e) => `
+    <div class="row">
+      <span class="col-time">${esc(fmtRel(e.occurred_at))}</span>
+      <span class="col-name">${esc(e.event_type)}</span>
+    </div>
+  `).join('') || '<div class="empty">No events yet.</div>';
+  const quotesRows = (t.recent_quotes || []).map((q) => `
+    <div class="row">
+      <span class="col-time">${esc(fmtRel(q.updated_at))}</span>
+      <span class="col-name">${esc(q.quote_ref)} <span style="color:var(--ops-muted);">· ${esc(q.status)} v${q.version}</span></span>
+    </div>
+  `).join('') || '<div class="empty">No quotes yet.</div>';
+
+  const r2 = t.r2 || {};
+  const catRows = Object.entries(r2.by_category || {})
+    .sort((a, b) => b[1] - a[1])
+    .map(([k, v]) => `<div class="row"><span class="col-time">${esc(k)}</span><span class="col-name">${v}</span></div>`)
+    .join('') || '<div class="empty">No photos.</div>';
+
+  const slug = t.slug || '';
+  const env = t.environment || 'unset';
+
+  wrap.innerHTML = `
+    <div class="detail-block">
+      <h3>Recent events</h3>
+      <div class="detail-list">${eventsRows}</div>
+    </div>
+    <div class="detail-block">
+      <h3>Recent quotes</h3>
+      <div class="detail-list">${quotesRows}</div>
+    </div>
+    <div class="detail-block">
+      <h3>R2 photos · ${r2.photo_count ?? 0} files · ${esc(fmtBytes(r2.photo_bytes ?? 0))}</h3>
+      <div class="detail-list">${catRows}</div>
+    </div>
+    <div class="detail-block">
+      <h3>Identity</h3>
+      <div class="detail-list">
+        <div class="row"><span class="col-time">uuid</span><span class="col-name">${esc(t.uuid)}</span></div>
+        <div class="row"><span class="col-time">clerk org</span><span class="col-name">${esc(t.clerk_org_id || '—')}</span></div>
+        <div class="row"><span class="col-time">token exp</span><span class="col-name">${esc(t.token_expires_at || '—')}</span></div>
+      </div>
+    </div>
+    <div class="detail-actions">
+      <a class="btn-link" href="https://rafter.deepgreensea.au/${encodeURIComponent(slug)}" target="_blank" rel="noopener"><i class="ti ti-external-link"></i> Open form</a>
+      <a class="btn-link" href="https://rafter.deepgreensea.au/settings" target="_blank" rel="noopener"><i class="ti ti-settings"></i> Open settings</a>
+      <span class="env-editor">
+        env
+        <select data-uuid="${esc(t.uuid)}">
+          <option value="dev" ${env === 'dev' ? 'selected' : ''}>dev</option>
+          <option value="bvt" ${env === 'bvt' ? 'selected' : ''}>bvt</option>
+          <option value="prod" ${env === 'prod' ? 'selected' : ''}>prod</option>
+        </select>
+      </span>
+      <button class="btn-danger" data-action="teardown" data-uuid="${esc(t.uuid)}"><i class="ti ti-trash"></i> Tear down</button>
+    </div>
+  `;
+  wrap.querySelector('select').addEventListener('change', (e) => setEnvironment(t.uuid, e.target.value, t));
+  wrap.querySelector('[data-action="teardown"]').addEventListener('click', () => openTeardownModal(t));
+  return wrap;
+}
+
+async function setEnvironment(uuid, environment, t) {
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/tenants/${encodeURIComponent(uuid)}/environment`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ environment }),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    t.environment = environment;
+    toast(`Environment set to ${environment}`, 'ok');
+    // Refresh the list to re-sort.
+    loadTenants();
+  } catch (e) {
+    toast(`Couldn't set environment: ${e.message}`, 'err');
+  }
+}
+
+// ─── Teardown modal ───────────────────────────────────────────────────────────
+
+function openTeardownModal(t) {
+  const env = t.environment || 'unset';
+  const isProd = env !== 'dev' && env !== 'bvt';
+  const slug = t.slug || '';
+
+  const backdrop = document.createElement('div');
+  backdrop.className = 'modal-backdrop';
+  backdrop.innerHTML = `
+    <div class="modal">
+      <div class="modal-head">
+        <h2><i class="ti ti-alert-triangle"></i> Tear down ${esc(t.company_name || slug || shortUuid(t.uuid))}</h2>
+      </div>
+      <div class="modal-body">
+        <p>This will permanently delete:</p>
+        <ul style="margin:0 0 12px 18px;color:var(--ops-muted);font-size:12px;">
+          <li>Clerk organization (${esc(t.clerk_org_id || 'none')})</li>
+          <li>All R2 photos (${(t.r2?.photo_count ?? '?')} files)</li>
+          <li>All D1 quote rows (${t.quotes_total ?? '?'} total)</li>
+          <li>All D1 events</li>
+          <li>KV tenant record + reverse indexes</li>
+        </ul>
+        ${isProd ? `
+          <div class="warn-box">
+            <strong>Production tenant.</strong> Type the slug <code>${esc(slug)}</code> to confirm.
+          </div>
+          <input type="text" id="teardownConfirm" placeholder="Type the slug to confirm" autocomplete="off">
+        ` : `
+          <p style="color:var(--ops-muted);font-size:12px;">${esc(env)} tenant — no slug confirmation required.</p>
+        `}
+      </div>
+      <div class="modal-foot">
+        <button class="btn-cancel" data-modal-action="cancel">Cancel</button>
+        <button class="btn-confirm-danger" data-modal-action="confirm" ${isProd ? 'disabled' : ''}>Tear down</button>
+      </div>
+    </div>
+  `;
+  document.body.appendChild(backdrop);
+
+  const confirmBtn = backdrop.querySelector('[data-modal-action="confirm"]');
+  const cancelBtn = backdrop.querySelector('[data-modal-action="cancel"]');
+  const confirmInput = backdrop.querySelector('#teardownConfirm');
+
+  if (isProd && confirmInput) {
+    confirmInput.addEventListener('input', () => {
+      confirmBtn.disabled = confirmInput.value.trim() !== slug;
+    });
+    confirmInput.focus();
+  }
+
+  cancelBtn.addEventListener('click', () => backdrop.remove());
+  backdrop.addEventListener('click', (e) => { if (e.target === backdrop) backdrop.remove(); });
+  confirmBtn.addEventListener('click', async () => {
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = 'Tearing down…';
+    try {
+      const body = isProd ? { confirm_slug: slug } : {};
+      const res = await authedFetch(`${ADMIN_API}/console/tenants/${encodeURIComponent(t.uuid)}/teardown`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
+      backdrop.remove();
+      // Remove the card from the list.
+      const card = document.querySelector(`.tenant-card[data-uuid="${t.uuid}"]`);
+      if (card) card.remove();
+      toast(`Torn down: ${slug || shortUuid(t.uuid)} (R2 ${data.r2_objects_deleted}, quotes ${data.quotes_deleted}, events ${data.events_deleted}, Clerk ${data.clerk_org_deleted ? '✓' : '✗'})`, 'ok', 8000);
+      // Refresh aggregates.
+      loadTenants();
+    } catch (e) {
+      confirmBtn.textContent = 'Tear down';
+      confirmBtn.disabled = false;
+      toast(`Teardown failed: ${e.message}`, 'err');
+    }
+  });
+}
+
+// ─── Nav routing ──────────────────────────────────────────────────────────────
+
+function setView(viewKey) {
+  document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === viewKey));
+  const tenantsView = $('view-tenants');
+  const placeholderView = $('view-placeholder');
+  if (viewKey === 'tenants') {
+    tenantsView.hidden = false;
+    placeholderView.hidden = true;
+  } else {
+    tenantsView.hidden = true;
+    placeholderView.hidden = false;
+    const def = PLACEHOLDER_SECTIONS[viewKey] || { icon: 'ti-help', title: 'Coming soon' };
+    $('placeholderIcon').className = `ti ${def.icon}`;
+    $('placeholderTitle').textContent = def.title;
+  }
+}
+
+// ─── Boot ─────────────────────────────────────────────────────────────────────
+
+function showAuth() {
+  $('loadingScreen').hidden = true;
+  $('authScreen').hidden = false;
+  $('deniedScreen').hidden = true;
+  $('app').hidden = true;
+}
+
+function showDenied() {
+  $('loadingScreen').hidden = true;
+  $('authScreen').hidden = true;
+  $('deniedScreen').hidden = false;
+  $('app').hidden = true;
+}
+
+function showApp() {
+  $('loadingScreen').hidden = true;
+  $('authScreen').hidden = true;
+  $('deniedScreen').hidden = true;
+  $('app').hidden = false;
+}
+
+(async () => {
+  try {
+    if (!window.Clerk) {
+      await new Promise((resolve, reject) => {
+        const start = Date.now();
+        const iv = setInterval(() => {
+          if (window.Clerk) { clearInterval(iv); resolve(); }
+          else if (Date.now() - start > 12000) { clearInterval(iv); reject(new Error('Clerk failed to load')); }
+        }, 80);
+      });
+    }
+    await window.Clerk.load();
+    clerk = window.Clerk;
+
+    if (!clerk.session) {
+      // Try silent passkey first — same Surface-4 pattern as Rafter index.html.
+      try {
+        await clerk.client.signIn.authenticateWithPasskey({ flow: 'discoverable' });
+        if (clerk.session) { /* fall through to boot */ }
+      } catch { /* user has no passkey or cancelled — show manual sign-in */ }
+    }
+
+    if (!clerk.session) {
+      showAuth();
+      $('passkeyBtn').addEventListener('click', tryPasskeySignIn);
+      $('signOutBtn1').addEventListener('click', signOut);
+      return;
+    }
+
+    // Populate user block.
+    const user = clerk.user;
+    if (user) {
+      const initials = ((user.firstName || '?')[0] + (user.lastName || '')[0] || '?').toUpperCase();
+      $('userAvatar').textContent = initials;
+      $('userName').textContent = [user.firstName, user.lastName].filter(Boolean).join(' ') || user.primaryEmailAddress?.emailAddress || 'Operator';
+      $('userIdShort').textContent = user.id ? user.id.slice(0, 16) : '';
+    }
+
+    // Wire nav.
+    document.querySelectorAll('.nav-item').forEach((n) => {
+      n.addEventListener('click', () => setView(n.dataset.view));
+    });
+    $('signOutBtn2').addEventListener('click', signOut);
+
+    showApp();
+    setView('tenants');
+    await loadTenants();
+  } catch (e) {
+    $('loadingScreen').innerHTML = `<i class="ti ti-alert-triangle" style="color:var(--ops-danger);font-size:32px;"></i><p>Boot failed: ${esc(e.message)}</p>`;
+  }
+})();
+</script>
+
+</body>
+</html>
