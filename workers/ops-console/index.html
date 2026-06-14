@@ -334,7 +334,13 @@ body {
   <i class="ti ti-shield-x" style="color:var(--ops-danger);"></i>
   <h1>Access denied</h1>
   <p>You are signed in, but your account is not on the platform-operator allowlist.</p>
-  <button id="signOutBtn1" class="btn-out"><i class="ti ti-logout" style="font-size:14px;"></i> Sign out</button>
+  <p style="font-family:var(--font-mono);font-size:11px;color:var(--ops-fern);">
+    Your user ID: <span id="deniedUserId">—</span>
+  </p>
+  <p style="font-size:11px;color:var(--ops-muted);max-width:380px;">
+    If this should be you, copy the ID above and add it to the PLATFORM_OPERATORS allowlist on the admin-api worker.
+  </p>
+  <button id="deniedSignOutBtn" class="btn-out"><i class="ti ti-logout" style="font-size:14px;"></i> Sign out</button>
 </div>
 
 <!-- App shell -->
@@ -503,8 +509,10 @@ async function loadTenants() {
   $('tenantsList').innerHTML = `<div class="inline-loading"><div class="spinner"></div> Loading tenants…</div>`;
   try {
     const res = await authedFetch(`${ADMIN_API}/console/tenants`);
-    if (res.status === 403) {
-      showDenied(); return;
+    if (res.status === 403 || res.status === 503) {
+      const detail = await res.json().catch(() => ({}));
+      showDenied(detail);
+      return;
     }
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
@@ -801,11 +809,17 @@ function showAuth() {
   $('app').hidden = true;
 }
 
-function showDenied() {
+function showDenied(detail) {
   $('loadingScreen').hidden = true;
   $('authScreen').hidden = true;
   $('deniedScreen').hidden = false;
   $('app').hidden = true;
+  // Surface the rejected user_id so the operator can copy it. Prefer the
+  // server's echoed value (proves what reached PLATFORM_OPERATORS for the
+  // comparison); fall back to clerk.user.id.
+  const uid = detail?.user_id || clerk?.user?.id || '—';
+  $('deniedUserId').textContent = uid;
+  $('deniedSignOutBtn').addEventListener('click', signOut, { once: true });
 }
 
 function showApp() {
@@ -840,7 +854,6 @@ function showApp() {
     if (!clerk.session) {
       showAuth();
       $('passkeyBtn').addEventListener('click', tryPasskeySignIn);
-      $('signOutBtn1').addEventListener('click', signOut);
       return;
     }
 

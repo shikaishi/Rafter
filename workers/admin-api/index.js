@@ -198,7 +198,11 @@ async function platformOperatorGate(request, env) {
     }, 503) };
   }
   if (!operators.includes(userId)) {
-    return { error: json({ ok: false, error: 'not_platform_operator' }, 403) };
+    // Include the rejected user_id in the response so the operator can copy
+    // their Clerk user_id into PLATFORM_OPERATORS if the allowlist was
+    // configured wrong. Not a privacy leak — the caller already knows their
+    // own JWT sub.
+    return { error: json({ ok: false, error: 'not_platform_operator', user_id: userId }, 403) };
   }
   return { payload, userId };
 }
