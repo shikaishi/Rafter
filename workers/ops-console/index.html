@@ -310,6 +310,171 @@ body {
 /* ===== Inline loading + empty ===== */
 .inline-loading { padding: 32px; text-align: center; color: var(--ops-muted); font-size: 12px; }
 .inline-loading .spinner { width: 18px; height: 18px; border-width: 2px; display: inline-block; vertical-align: middle; margin-right: 8px; }
+
+/* ===== RFT-123 Observability ===== */
+.summary-card.danger { background: #FEF2F2; border-color: rgba(185, 28, 28, 0.25); }
+.summary-card.danger .summary-label { color: var(--ops-danger); }
+.summary-card.danger .summary-number { color: var(--ops-danger); }
+.summary-card.danger .summary-sub { color: var(--ops-danger); opacity: 0.7; }
+
+.summary-card .breakdown-mini {
+  font-family: var(--font-mono); font-size: 10px; color: var(--ops-muted);
+  margin-top: 6px; line-height: 1.4;
+}
+
+.obs-controls {
+  display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; padding: 10px 14px; margin-bottom: 12px;
+}
+.obs-controls label { font-size: 11px; color: var(--ops-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.obs-controls select, .obs-controls input {
+  font-family: var(--font-mono); font-size: 12px;
+  border: 0.5px solid var(--ops-border); border-radius: 4px;
+  background: var(--ops-card); color: var(--ops-text);
+  padding: 5px 8px;
+}
+.obs-controls .refresh-status { font-size: 11px; color: var(--ops-muted); margin-left: auto; font-family: var(--font-mono); }
+.obs-controls .refresh-status.live { color: var(--ops-success); }
+
+.event-list { display: flex; flex-direction: column; gap: 2px; }
+.event-row {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 5px; padding: 9px 14px;
+  display: grid; grid-template-columns: 130px 150px 200px 1fr; gap: 14px;
+  align-items: center; font-size: 12px; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.event-row:hover { border-color: var(--ops-fern); }
+.event-row.expanded { border-color: var(--ops-moss); }
+.event-row .time { font-family: var(--font-mono); color: var(--ops-muted); font-size: 11px; }
+.event-row .type-cell { display: flex; align-items: center; gap: 6px; }
+.event-row .tenant { font-family: var(--font-mono); font-size: 11px; color: var(--ops-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.event-row .detail-preview {
+  font-family: var(--font-mono); font-size: 11px; color: var(--ops-muted);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+
+.event-badge {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 2px 8px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.04em;
+  white-space: nowrap;
+}
+.event-badge.t-quote_submitted     { background: var(--ops-tinted); color: var(--ops-success); }
+.event-badge.t-quote_amended       { background: #EFF6FF; color: #1E40AF; }
+.event-badge.t-cross_tenant_attempt { background: #FEF2F2; color: var(--ops-danger); }
+.event-badge.t-token_probe_ok      { background: #F3F4F6; color: var(--ops-muted); }
+.event-badge.t-token_probe_failed  { background: #FEF6E7; color: var(--ops-warn); }
+.event-badge.t-onboarding_started  { background: #F3F4F6; color: var(--ops-muted); }
+.event-badge.t-onboarding_completed { background: var(--ops-tinted); color: var(--ops-success); }
+.event-badge.t-sync_completed      { background: var(--ops-tinted); color: var(--ops-success); }
+.event-badge.t-make_scenario_unhealthy { background: #FEF6E7; color: var(--ops-warn); }
+.event-badge.t-rft27_probe         { background: #F3F4F6; color: var(--ops-muted); }
+.event-badge.t-default             { background: #F3F4F6; color: var(--ops-muted); }
+
+.event-expanded {
+  background: var(--ops-tinted); border: 0.5px solid var(--ops-border);
+  border-top: none; border-radius: 0 0 5px 5px;
+  padding: 12px 14px; margin-top: -2px; margin-bottom: 2px;
+  font-family: var(--font-mono); font-size: 11px;
+}
+.event-expanded .json-block {
+  background: var(--ops-deepest); color: var(--ops-mist);
+  padding: 10px; border-radius: 4px;
+  white-space: pre-wrap; word-break: break-word;
+  max-height: 320px; overflow-y: auto;
+}
+
+.cross-tenant-box {
+  background: #FEF2F2; border: 1px solid rgba(185, 28, 28, 0.4);
+  border-radius: 6px; padding: 16px; margin-top: 20px;
+}
+.cross-tenant-box h3 {
+  margin: 0 0 10px; font-size: 13px; font-weight: 700;
+  color: var(--ops-danger); display: inline-flex; align-items: center; gap: 8px;
+}
+.cross-tenant-box h3 .ti { font-size: 18px; }
+.cta-row {
+  display: grid; grid-template-columns: 150px 160px 130px 1fr; gap: 12px;
+  padding: 8px 0; border-bottom: 0.5px dashed rgba(185, 28, 28, 0.2);
+  font-family: var(--font-mono); font-size: 11px;
+}
+.cta-row:last-child { border-bottom: none; }
+.cta-row .cta-time { color: var(--ops-muted); }
+.cta-row .cta-endpoint { color: var(--ops-danger); font-weight: 600; }
+.cta-row .cta-ip { color: var(--ops-text); }
+.cta-row .cta-detail { color: var(--ops-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* ===== RFT-124 Team & access ===== */
+.team-section { margin-bottom: 24px; }
+.team-section-head {
+  display: flex; align-items: center; gap: 10px;
+  margin-bottom: 12px;
+}
+.team-section-head .env-pill {
+  display: inline-flex; align-items: center; gap: 4px;
+  padding: 4px 10px; border-radius: 4px;
+  font-family: var(--font-mono); font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.team-section-head .env-pill.prod  { background: var(--ops-canopy); color: var(--ops-mint); }
+.team-section-head .env-pill.dev   { background: #FEF6E7; color: var(--ops-warn); }
+.team-section-head .env-pill.bvt   { background: #EFF6FF; color: #1E40AF; }
+.team-section-head .env-pill.unset { background: #F3F4F6; color: var(--ops-muted); }
+.team-section-head .count { font-size: 11px; color: var(--ops-muted); font-family: var(--font-mono); }
+
+.org-card {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; margin-bottom: 10px; overflow: hidden;
+}
+.org-head { padding: 12px 16px 10px; border-bottom: 0.5px solid var(--ops-border); }
+.org-name { font-size: 14px; font-weight: 500; color: var(--ops-text); }
+.org-meta { font-family: var(--font-mono); font-size: 11px; color: var(--ops-muted); margin-top: 2px; }
+.org-body { padding: 12px 16px; display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+.org-body h4 {
+  margin: 0 0 8px; font-size: 11px; font-weight: 600;
+  color: var(--ops-fern); text-transform: uppercase; letter-spacing: 0.05em;
+}
+.member-row, .invite-row {
+  display: flex; align-items: center; gap: 10px;
+  padding: 6px 0; border-bottom: 0.5px dashed var(--ops-border);
+  font-size: 12px;
+}
+.member-row:last-child, .invite-row:last-child { border-bottom: none; }
+.member-identity { flex: 1; min-width: 0; }
+.member-name { color: var(--ops-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-email { font-family: var(--font-mono); font-size: 10px; color: var(--ops-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.member-when { font-family: var(--font-mono); font-size: 10px; color: var(--ops-muted); flex-shrink: 0; }
+.role-badge {
+  display: inline-flex; align-items: center;
+  padding: 2px 7px; border-radius: 4px;
+  font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.04em; flex-shrink: 0;
+}
+.role-badge.admin  { background: var(--ops-tinted); color: var(--ops-success); }
+.role-badge.member { background: #EFF6FF; color: #1E40AF; }
+.role-badge.guest  { background: #F3F4F6; color: var(--ops-muted); }
+.role-badge.pending { background: #FEF6E7; color: var(--ops-warn); }
+.team-empty { color: var(--ops-muted); font-size: 12px; padding: 8px 0; font-style: italic; }
+
+.unbound-card {
+  background: var(--ops-tinted); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; padding: 12px 16px; margin-bottom: 16px;
+}
+.unbound-card h3 {
+  margin: 0 0 6px; font-size: 12px; font-weight: 600;
+  color: var(--ops-warn); display: inline-flex; align-items: center; gap: 6px;
+}
+.unbound-row {
+  display: grid; grid-template-columns: 110px 140px 1fr 80px; gap: 12px;
+  padding: 5px 0; font-family: var(--font-mono); font-size: 11px;
+}
+.unbound-row .uu { color: var(--ops-muted); }
+.unbound-row .sl { color: var(--ops-text); }
+.unbound-row .co { color: var(--ops-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.unbound-row .ev { color: var(--ops-muted); }
 </style>
 </head>
 <body>
@@ -397,7 +562,63 @@ body {
         </div>
       </div>
 
-      <!-- COMING-SOON view template (cloned per non-tenants nav item) -->
+      <!-- OBSERVABILITY VIEW (RFT-123) -->
+      <div id="view-observability" hidden>
+        <div class="view-header">
+          <h1>Observability</h1>
+          <div class="meta" id="obsMeta">…</div>
+        </div>
+
+        <div class="summary-row">
+          <div class="summary-card"><div class="summary-label">Events (24h)</div><div class="summary-number" id="obsEvents24h">0</div><div class="summary-sub">across all tenants</div></div>
+          <div class="summary-card"><div class="summary-label">Events (7d)</div><div class="summary-number" id="obsEvents7d">0</div><div class="summary-sub" id="obsEvents7dSub">—</div></div>
+          <div class="summary-card" id="obsCtaCard"><div class="summary-label">Cross-tenant attempts (7d)</div><div class="summary-number" id="obsCta">0</div><div class="summary-sub">RFT-96 alerts</div></div>
+          <div class="summary-card"><div class="summary-label">Event types (7d)</div><div class="summary-number" id="obsTypesCount">0</div><div class="breakdown-mini" id="obsTypesBreakdown">—</div></div>
+        </div>
+
+        <div class="obs-controls">
+          <label>tenant</label>
+          <select id="obsFilterTenant"><option value="">— all —</option></select>
+          <label>type</label>
+          <select id="obsFilterType"><option value="">— all —</option></select>
+          <label>since</label>
+          <select id="obsFilterSince">
+            <option value="24h">last 24h</option>
+            <option value="7d" selected>last 7d</option>
+            <option value="30d">last 30d</option>
+          </select>
+          <span class="refresh-status" id="obsRefreshStatus">—</span>
+        </div>
+
+        <div class="event-list" id="obsEventList">
+          <div class="inline-loading"><div class="spinner"></div> Loading events…</div>
+        </div>
+
+        <div id="obsCtaSection" hidden></div>
+      </div>
+
+      <!-- TEAM & ACCESS VIEW (RFT-124) -->
+      <div id="view-team" hidden>
+        <div class="view-header">
+          <h1>Team &amp; access</h1>
+          <div class="meta" id="teamMeta">…</div>
+        </div>
+
+        <div class="summary-row">
+          <div class="summary-card"><div class="summary-label">Clerk orgs</div><div class="summary-number" id="teamTotalOrgs">0</div><div class="summary-sub">linked to tenants</div></div>
+          <div class="summary-card"><div class="summary-label">Members</div><div class="summary-number" id="teamTotalMembers">0</div><div class="summary-sub">across all orgs</div></div>
+          <div class="summary-card"><div class="summary-label">Pending invites</div><div class="summary-number" id="teamTotalInvites">0</div><div class="summary-sub">awaiting accept</div></div>
+          <div class="summary-card"><div class="summary-label">Unbound tenants</div><div class="summary-number" id="teamUnbound">0</div><div class="summary-sub">no Clerk org</div></div>
+        </div>
+
+        <div id="teamOrgGroups">
+          <div class="inline-loading"><div class="spinner"></div> Loading orgs…</div>
+        </div>
+
+        <div id="teamUnboundSection" hidden></div>
+      </div>
+
+      <!-- COMING-SOON view template (placeholder for unwired nav items) -->
       <div id="view-placeholder" hidden>
         <div class="coming-soon">
           <i class="ti" id="placeholderIcon"></i>
@@ -782,17 +1003,365 @@ function openTeardownModal(t) {
   });
 }
 
+// ─── Observability view (RFT-123) ─────────────────────────────────────────────
+
+let OBS_REFRESH_TIMER = null;
+let OBS_LAST_LOAD_AT = null;
+
+const SINCE_PRESETS = {
+  '24h': () => new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(),
+  '7d':  () => new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString(),
+  '30d': () => new Date(Date.now() - 30 * 24 * 60 * 60 * 1000).toISOString(),
+};
+
+function obsBadgeClass(type) {
+  // Map known event_type values to a CSS class; fall back to default styling.
+  const known = new Set([
+    'quote_submitted','quote_amended','cross_tenant_attempt',
+    'token_probe_ok','token_probe_failed',
+    'onboarding_started','onboarding_completed',
+    'sync_completed','make_scenario_unhealthy','rft27_probe',
+  ]);
+  return known.has(type) ? `t-${type}` : 't-default';
+}
+
+function shortPayloadPreview(payload) {
+  if (!payload) return '';
+  try {
+    const s = typeof payload === 'string' ? payload : JSON.stringify(payload);
+    return s.length > 110 ? s.slice(0, 110) + '…' : s;
+  } catch { return ''; }
+}
+
+function tenantLabelForUuid(uuid) {
+  if (!uuid) return '—';
+  const t = TENANTS.find(t => t.uuid === uuid);
+  if (!t) return shortUuid(uuid);
+  return `${t.slug || '(no-slug)'} · ${shortUuid(uuid)}`;
+}
+
+async function loadObservabilitySummary() {
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/observability/summary`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    $('obsEvents24h').textContent = data.events_24h ?? 0;
+    $('obsEvents7d').textContent = data.events_7d ?? 0;
+    const cta = data.cross_tenant_attempts_7d ?? 0;
+    $('obsCta').textContent = cta;
+    $('obsCtaCard').classList.toggle('danger', cta > 0);
+
+    const types = Object.entries(data.by_type || {}).sort((a, b) => b[1] - a[1]);
+    $('obsTypesCount').textContent = types.length;
+    $('obsTypesBreakdown').innerHTML = types.slice(0, 4).map(([k, v]) => `${esc(k)}: ${v}`).join('<br>') || '—';
+
+    const topTenants = (data.by_tenant || []).slice(0, 3).map(t => `${esc(t.slug || shortUuid(t.uuid))}: ${t.event_count}`).join(' · ');
+    $('obsEvents7dSub').textContent = topTenants || '—';
+
+    // Populate type filter dropdown.
+    const typeSel = $('obsFilterType');
+    const current = typeSel.value;
+    typeSel.innerHTML = '<option value="">— all —</option>' + Object.keys(data.by_type || {}).map(k => `<option value="${esc(k)}">${esc(k)}</option>`).join('');
+    typeSel.value = current;
+  } catch (e) {
+    // Summary failure is non-fatal — the event feed below still tries.
+    console.warn('obs summary failed', e);
+  }
+}
+
+async function loadObservabilityEvents() {
+  const tenant = $('obsFilterTenant').value;
+  const type = $('obsFilterType').value;
+  const sinceKey = $('obsFilterSince').value;
+  const since = SINCE_PRESETS[sinceKey] ? SINCE_PRESETS[sinceKey]() : SINCE_PRESETS['7d']();
+
+  const qs = new URLSearchParams({ since, limit: '100' });
+  if (tenant) qs.set('tenant_uuid', tenant);
+  if (type) qs.set('event_type', type);
+
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/observability?${qs.toString()}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderObservabilityEvents(data.events || [], data.total_count || 0);
+    $('obsRefreshStatus').textContent = `loaded ${fmtRel(new Date().toISOString())} · ${data.events?.length || 0}/${data.total_count || 0}`;
+    $('obsRefreshStatus').classList.add('live');
+    OBS_LAST_LOAD_AT = Date.now();
+  } catch (e) {
+    $('obsEventList').innerHTML = `<div class="inline-loading" style="color:var(--ops-danger);">Could not load events: ${esc(e.message)}</div>`;
+    $('obsRefreshStatus').textContent = 'load failed';
+    $('obsRefreshStatus').classList.remove('live');
+  }
+}
+
+function renderObservabilityEvents(events, total) {
+  $('obsMeta').textContent = `${events.length} of ${total} events`;
+  const list = $('obsEventList');
+  list.innerHTML = '';
+  if (events.length === 0) {
+    list.innerHTML = '<div class="inline-loading">No events in this window.</div>';
+  } else {
+    for (const ev of events) {
+      list.appendChild(renderEventRow(ev));
+    }
+  }
+  // Cross-tenant attempts highlight box — only show if any in the current set.
+  const cta = events.filter(e => e.event_type === 'cross_tenant_attempt');
+  const ctaSec = $('obsCtaSection');
+  if (cta.length === 0) { ctaSec.hidden = true; ctaSec.innerHTML = ''; return; }
+  ctaSec.hidden = false;
+  ctaSec.innerHTML = `
+    <div class="cross-tenant-box">
+      <h3><i class="ti ti-shield-x"></i> Cross-tenant attempts in window — ${cta.length}</h3>
+      <div>
+        ${cta.map(e => {
+          const p = e.payload || {};
+          return `<div class="cta-row">
+            <span class="cta-time">${esc(fmtRel(e.occurred_at))}</span>
+            <span class="cta-endpoint">${esc((p.method || '') + ' ' + (p.endpoint || ''))}</span>
+            <span class="cta-ip">${esc(p.source_ip || '?')}</span>
+            <span class="cta-detail">requested ${esc(shortUuid(p.requested_uuid))} from scope ${esc(shortUuid(p.resolved_uuid))}${p.detail ? ' — ' + esc(String(p.detail).slice(0, 80)) : ''}</span>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderEventRow(ev) {
+  const row = document.createElement('div');
+  row.className = 'event-row';
+  row.dataset.id = ev.id;
+  row.innerHTML = `
+    <span class="time">${esc(fmtRel(ev.occurred_at))}</span>
+    <span class="type-cell">
+      <span class="event-badge ${obsBadgeClass(ev.event_type)}">${esc(ev.event_type)}</span>
+    </span>
+    <span class="tenant">${esc(tenantLabelForUuid(ev.client_uuid))}</span>
+    <span class="detail-preview">${esc(shortPayloadPreview(ev.payload))}</span>
+  `;
+  row.addEventListener('click', () => toggleEventRow(row, ev));
+  return row;
+}
+
+function toggleEventRow(row, ev) {
+  if (row.classList.contains('expanded')) {
+    row.classList.remove('expanded');
+    const x = row.nextElementSibling;
+    if (x && x.classList.contains('event-expanded')) x.remove();
+    return;
+  }
+  // Collapse any other expanded row first.
+  document.querySelectorAll('.event-row.expanded').forEach(r => {
+    r.classList.remove('expanded');
+    const x = r.nextElementSibling;
+    if (x && x.classList.contains('event-expanded')) x.remove();
+  });
+  row.classList.add('expanded');
+  const block = document.createElement('div');
+  block.className = 'event-expanded';
+  const json = ev.payload ? JSON.stringify(ev.payload, null, 2) : '(no payload)';
+  block.innerHTML = `
+    <div style="margin-bottom:8px;color:var(--ops-muted);">
+      <strong style="color:var(--ops-text);">id</strong> ${esc(ev.id || '?')} ·
+      <strong style="color:var(--ops-text);">occurred_at</strong> ${esc(ev.occurred_at)} ·
+      <strong style="color:var(--ops-text);">client_uuid</strong> ${esc(ev.client_uuid || '—')}
+    </div>
+    <div class="json-block">${esc(json)}</div>
+  `;
+  row.parentNode.insertBefore(block, row.nextSibling);
+}
+
+function populateObsTenantFilter() {
+  const sel = $('obsFilterTenant');
+  if (!sel) return;
+  const current = sel.value;
+  sel.innerHTML = '<option value="">— all —</option>' + TENANTS
+    .slice().sort((a, b) => (a.slug || '').localeCompare(b.slug || ''))
+    .map(t => `<option value="${esc(t.uuid)}">${esc(t.slug || shortUuid(t.uuid))} · ${esc(t.company_name || '(unnamed)')}</option>`).join('');
+  sel.value = current;
+}
+
+async function loadObservability() {
+  if (TENANTS.length === 0) {
+    // Tenants haven't been fetched yet (operator landed on Observability first).
+    try {
+      const r = await authedFetch(`${ADMIN_API}/console/tenants`);
+      if (r.ok) { const d = await r.json(); TENANTS = d.tenants || []; }
+    } catch {}
+  }
+  populateObsTenantFilter();
+  await Promise.all([loadObservabilitySummary(), loadObservabilityEvents()]);
+
+  // Auto-refresh every 60s while the view is active.
+  if (OBS_REFRESH_TIMER) clearInterval(OBS_REFRESH_TIMER);
+  OBS_REFRESH_TIMER = setInterval(() => {
+    if ($('view-observability').hidden) return;
+    loadObservabilityEvents();
+    // Refresh summary on a longer cadence — counts move slowly.
+    if (Date.now() - (OBS_LAST_LOAD_AT || 0) > 5 * 60 * 1000) loadObservabilitySummary();
+  }, 60 * 1000);
+}
+
+function wireObservabilityFilters() {
+  for (const id of ['obsFilterTenant', 'obsFilterType', 'obsFilterSince']) {
+    $(id).addEventListener('change', () => loadObservabilityEvents());
+  }
+}
+
+// ─── Team & access view (RFT-124) ─────────────────────────────────────────────
+
+const ENV_ORDER = ['prod', 'dev', 'bvt', 'unset'];
+
+async function loadTeam() {
+  $('teamOrgGroups').innerHTML = `<div class="inline-loading"><div class="spinner"></div> Loading orgs…</div>`;
+  $('teamUnboundSection').hidden = true;
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/team`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderTeam(data);
+  } catch (e) {
+    $('teamOrgGroups').innerHTML = `<div class="inline-loading" style="color:var(--ops-danger);">Could not load team: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderTeam(data) {
+  const s = data.summary || {};
+  $('teamMeta').textContent = `${s.total_orgs || 0} orgs · ${s.total_members || 0} members`;
+  $('teamTotalOrgs').textContent = s.total_orgs || 0;
+  $('teamTotalMembers').textContent = s.total_members || 0;
+  $('teamTotalInvites').textContent = s.total_pending_invites || 0;
+  $('teamUnbound').textContent = s.unbound_tenants || 0;
+
+  // Group orgs by tenant_environment.
+  const groups = { prod: [], dev: [], bvt: [], unset: [] };
+  for (const o of (data.orgs || [])) {
+    const e = o.tenant_environment || 'unset';
+    (groups[e] || groups.unset).push(o);
+  }
+
+  const root = $('teamOrgGroups');
+  root.innerHTML = '';
+  let rendered = 0;
+  for (const env of ENV_ORDER) {
+    const orgs = groups[env] || [];
+    if (orgs.length === 0) continue;
+    const section = document.createElement('div');
+    section.className = 'team-section';
+    section.innerHTML = `
+      <div class="team-section-head">
+        <span class="env-pill ${env}">${esc(env)}</span>
+        <span class="count">${orgs.length} ${orgs.length === 1 ? 'org' : 'orgs'}</span>
+      </div>
+      <div data-orgs></div>
+    `;
+    const orgRoot = section.querySelector('[data-orgs]');
+    for (const o of orgs) orgRoot.appendChild(renderOrgCard(o));
+    root.appendChild(section);
+    rendered++;
+  }
+  if (rendered === 0) {
+    root.innerHTML = '<div class="inline-loading">No linked Clerk orgs.</div>';
+  }
+
+  // Unbound section.
+  const unbound = data.unbound_tenants || [];
+  const sec = $('teamUnboundSection');
+  if (unbound.length === 0) { sec.hidden = true; sec.innerHTML = ''; return; }
+  sec.hidden = false;
+  sec.innerHTML = `
+    <div class="unbound-card">
+      <h3><i class="ti ti-unlink"></i> Unbound tenants — ${unbound.length}</h3>
+      <div style="color:var(--ops-muted);font-size:11px;margin-bottom:8px;">
+        These KV records have no Clerk org. They may be pre-Clerk records or orphans.
+      </div>
+      <div>
+        ${unbound.map(t => `
+          <div class="unbound-row">
+            <span class="uu">${esc(shortUuid(t.uuid))}</span>
+            <span class="sl">${esc(t.slug || '(no-slug)')}</span>
+            <span class="co">${esc(t.company || '(unnamed)')}</span>
+            <span class="ev">${esc(t.environment || 'unset')}</span>
+          </div>
+        `).join('')}
+      </div>
+    </div>
+  `;
+}
+
+function renderOrgCard(o) {
+  const card = document.createElement('div');
+  card.className = 'org-card';
+  const members = o.members || [];
+  const invites = o.pending_invites || [];
+  const memberRows = members.length === 0
+    ? '<div class="team-empty">No members.</div>'
+    : members.map(m => `
+        <div class="member-row">
+          <div class="member-identity">
+            <div class="member-name">${esc([m.first_name, m.last_name].filter(Boolean).join(' ') || m.email || '(unnamed)')}</div>
+            <div class="member-email">${esc(m.email || '—')}</div>
+          </div>
+          <span class="role-badge ${esc(roleClass(m.role))}">${esc((m.role || '').replace(/^org:/, '') || '—')}</span>
+          <span class="member-when">${esc(fmtRel(m.created_at))}</span>
+        </div>
+      `).join('');
+  const inviteRows = invites.length === 0
+    ? '<div class="team-empty">No pending invites.</div>'
+    : invites.map(i => `
+        <div class="invite-row">
+          <div class="member-identity">
+            <div class="member-name">${esc(i.email || '(no-email)')}</div>
+          </div>
+          <span class="role-badge ${esc(roleClass(i.role))}">${esc((i.role || '').replace(/^org:/, '') || '—')}</span>
+          <span class="role-badge pending">pending</span>
+          <span class="member-when">${esc(fmtRel(i.created_at))}</span>
+        </div>
+      `).join('');
+  card.innerHTML = `
+    <div class="org-head">
+      <div class="org-name">${esc(o.org_name || o.tenant_company || '(unnamed)')}</div>
+      <div class="org-meta">${esc(o.tenant_slug || '(no-slug)')} · ${esc(o.tenant_company || '')} · ${esc(o.org_id || '')}</div>
+    </div>
+    <div class="org-body">
+      <div>
+        <h4>Members · ${members.length}</h4>
+        ${memberRows}
+      </div>
+      <div>
+        <h4>Pending invites · ${invites.length}</h4>
+        ${inviteRows}
+      </div>
+    </div>
+  `;
+  return card;
+}
+
+function roleClass(role) {
+  if (!role) return 'guest';
+  const r = String(role).toLowerCase().replace(/^org:/, '');
+  if (r === 'admin') return 'admin';
+  if (r === 'member') return 'member';
+  return 'guest';
+}
+
 // ─── Nav routing ──────────────────────────────────────────────────────────────
+
+const WIRED_VIEWS = new Set(['tenants', 'observability', 'team']);
 
 function setView(viewKey) {
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === viewKey));
-  const tenantsView = $('view-tenants');
+  // Hide all wired views first; show the active one.
+  $('view-tenants').hidden = viewKey !== 'tenants';
+  $('view-observability').hidden = viewKey !== 'observability';
+  $('view-team').hidden = viewKey !== 'team';
   const placeholderView = $('view-placeholder');
-  if (viewKey === 'tenants') {
-    tenantsView.hidden = false;
+  if (WIRED_VIEWS.has(viewKey)) {
     placeholderView.hidden = true;
+    if (viewKey === 'observability') loadObservability();
+    if (viewKey === 'team') loadTeam();
   } else {
-    tenantsView.hidden = true;
     placeholderView.hidden = false;
     const def = PLACEHOLDER_SECTIONS[viewKey] || { icon: 'ti-help', title: 'Coming soon' };
     $('placeholderIcon').className = `ti ${def.icon}`;
@@ -871,6 +1440,7 @@ function showApp() {
       n.addEventListener('click', () => setView(n.dataset.view));
     });
     $('signOutBtn2').addEventListener('click', signOut);
+    wireObservabilityFilters();
 
     showApp();
     setView('tenants');
