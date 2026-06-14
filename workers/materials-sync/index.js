@@ -1298,6 +1298,15 @@ async function handleStoreQuoteLink(request, env) {
     version: v.fields.version,
   }));
 
+  // RFT-90: emit observability event. Fire-and-forget — writeD1Event swallows
+  // its own errors, and the .catch is belt-and-braces so logging never breaks
+  // the submit path.
+  writeD1Event(env, "quote_submitted", v.fields.client_uuid, {
+    quote_ref: v.fields.quote_ref,
+    sm8_job_uuid: v.fields.sm8_job_uuid,
+    version: v.fields.version,
+  }).catch(() => {});
+
   return json({ ok: true, quote_ref: v.fields.quote_ref, version: v.fields.version, status: v.fields.status, updated_at: w.updated_at });
 }
 
@@ -1933,6 +1942,15 @@ async function handleAmendQuote(request, env) {
     console.error(JSON.stringify({ event: "amend_d1_write_failed_after_sm8_commit", parent_quote_ref, new_quote_ref, sm8_job_uuid, attachment_uuid: attach.attachment_uuid }));
     return w.error;
   }
+
+  // RFT-90: emit observability event. Fire-and-forget.
+  writeD1Event(env, "quote_amended", client_uuid, {
+    quote_ref: new_quote_ref,
+    parent_ref: parent_quote_ref,
+    sm8_job_uuid,
+    version: new_version,
+    attachment_uuid: attach.attachment_uuid,
+  }).catch(() => {});
 
   // Mark parent superseded (non-blocking — main write already succeeded).
   try {

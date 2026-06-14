@@ -128,7 +128,7 @@ build command is `exit 0`.
 | KV namespace ID | `7c7ad02d8136452eb6d03d1af89a684f` |
 | wrangler.toml binding | `binding = "RAFTER_CLIENTS", id = "7c7ad02d8136452eb6d03d1af89a684f"` |
 | D1 database | `rafter-events` — ID `39f38376-d163-439b-984d-2f0889e88d56` (built 2026-05-31) |
-| D1 database | `rafter-quotes` — quote payload persistence for edit/versioning (RFT-32). ID: TBD on creation (RFT-36). Durable retention — NOT on the `rafter-events` 90-day prune. |
+| D1 database | `rafter-quotes` — quote payload persistence for edit/versioning (RFT-32). ID: `71594968-73c4-490a-b4bc-a425b0400402`. Durable retention — NOT on the `rafter-events` 90-day prune. |
 
 Operational notes (KV tooling, W2W service bindings, KV key format, KV records table, KV record contents) → [docs/workers-reference.md](docs/workers-reference.md).
 
