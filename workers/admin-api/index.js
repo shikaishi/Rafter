@@ -55,7 +55,7 @@ export default {
     if (deleteClientMatch) {
       const { error, payload } = await requireClerkJWT(request, env);
       if (error) return withCors(error);
-      return withCors(await handleDeleteClient(deleteClientMatch[1], env, payload));
+      return withCors(await handleDeleteClient(deleteClientMatch[1], request, env, payload));
     }
     if (pathname.startsWith('/admin/')) {
       const authErr = requireBearer(request, env);
@@ -147,6 +147,81 @@ function extractOrgRole(jwtPayload) {
   if (typeof jwtPayload?.o?.rol === 'string') return `org:${jwtPayload.o.rol}`;
   if (typeof jwtPayload?.org_role === 'string') return jwtPayload.org_role;
   return null;
+}
+
+// ── RFT-96: cross-tenant attempt observability ───────────────────────────────
+// Three sinks per attempt: console.log for log retention, D1 row for query,
+// Telegram alert for live paging. All fire-and-forget — never block or fail
+// the 4xx response that triggered them. Telegram + D1 errors are swallowed
+// inside the helpers; the outer .catch on the call site is belt-and-braces.
+// TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secrets gracefully no-op when unset
+// (log-only path during the rollout window before the secrets are bound).
+async function sendTelegramAlert(text, env) {
+  const token = env.TELEGRAM_BOT_TOKEN;
+  const chatId = env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) {
+    console.error(JSON.stringify({ event: 'telegram_alert_skipped', reason: 'TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID not set' }));
+    return;
+  }
+  const truncated = text.length > 4096 ? text.slice(0, 4093) + '…' : text;
+  try {
+    const res = await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ chat_id: chatId, text: truncated }),
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      console.error(JSON.stringify({ event: 'telegram_send_failed', status: res.status, body: body.slice(0, 200) }));
+    }
+  } catch (e) {
+    console.error(JSON.stringify({ event: 'telegram_send_error', error: e.message }));
+  }
+}
+
+async function writeD1Event(env, eventType, clientUuid, payload) {
+  if (!env.RAFTER_EVENTS) return;
+  try {
+    await env.RAFTER_EVENTS.prepare(
+      'INSERT INTO events (id, client_uuid, event_type, occurred_at, payload) VALUES (?, ?, ?, ?, ?)'
+    ).bind(
+      crypto.randomUUID(),
+      clientUuid || null,
+      eventType,
+      new Date().toISOString(),
+      payload ? JSON.stringify(payload) : null
+    ).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: 'd1_write_failed', eventType, error: e.message }));
+  }
+}
+
+function logCrossTenantAttempt(env, request, details) {
+  const event = {
+    event: 'cross_tenant_attempt',
+    worker: 'admin-api',
+    endpoint: details.endpoint || '',
+    method: details.method || '',
+    requested_uuid: details.requested_uuid || null,
+    resolved_uuid: details.resolved_uuid || null,
+    detail: details.detail || null,
+    source_ip: request?.headers?.get?.('cf-connecting-ip') || null,
+    user_agent: (request?.headers?.get?.('user-agent') || '').slice(0, 120),
+    occurred_at: new Date().toISOString(),
+  };
+  console.log(JSON.stringify(event));
+  writeD1Event(env, 'cross_tenant_attempt', event.resolved_uuid, event).catch(() => {});
+  sendCrossTenantTelegram(env, event).catch(() => {});
+}
+
+function sendCrossTenantTelegram(env, ev) {
+  const short = (u) => u ? String(u).slice(0, 8) : '?';
+  const text =
+    `⚠️ Cross-tenant attempt (${ev.worker})\n` +
+    `${ev.method} ${ev.endpoint}\n` +
+    `requested ${short(ev.requested_uuid)} from scope ${short(ev.resolved_uuid)}\n` +
+    `ip ${ev.source_ip || '?'}` + (ev.detail ? `\ndetail: ${String(ev.detail).slice(0, 200)}` : '');
+  return sendTelegramAlert(text, env);
 }
 
 // ── RFT-70 Option C race lock ────────────────────────────────────────────────
@@ -446,6 +521,17 @@ async function handleVerifyTenant(request, env, jwtPayload) {
 
   // Cross-tenant check — the actual RFT-86 fix
   if (orgUuid !== resolvedTargetUuid) {
+    // RFT-96 — this is THE detector for the platform-wide cross-tenant gate.
+    // Every materials-sync / pdf endpoint that goes through requireFormJWT
+    // proxies here, so this single site catches the bulk of attempts. Source
+    // IP is the original caller's (service-binding fetches preserve it).
+    logCrossTenantAttempt(env, request, {
+      endpoint: '/form/verify-tenant',
+      method: 'POST',
+      requested_uuid: resolvedTargetUuid,
+      resolved_uuid: orgUuid,
+      detail: target_slug ? `via slug=${target_slug}` : 'via uuid',
+    });
     return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
   }
 
@@ -713,7 +799,11 @@ async function handleSettingsPhotoDelete(uuid, request, env) {
   const key = body?.key;
   if (typeof key !== 'string' || !key) return json({ ok: false, error: 'missing_key' }, 400);
   const prefix = `clients/${uuid}/photos/`;
-  if (!key.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  if (!key.startsWith(prefix)) {
+    const keyPrefix = key.match(/^clients\/([0-9a-f-]{36})\//i)?.[1] || null;
+    logCrossTenantAttempt(env, request, { endpoint: '/settings/photos/delete', method: 'POST', requested_uuid: keyPrefix, resolved_uuid: uuid, detail: `key=${key.slice(0, 120)}` });
+    return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  }
   await env.RAFTER_ASSETS.delete(key);
   const category = categoryFromKey(key, prefix);
   if (category) {
@@ -736,7 +826,11 @@ async function handleSettingsPhotoRecategorise(uuid, request, env) {
   if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
 
   const prefix = `clients/${uuid}/photos/`;
-  if (!fromKey.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  if (!fromKey.startsWith(prefix)) {
+    const keyPrefix = fromKey.match(/^clients\/([0-9a-f-]{36})\//i)?.[1] || null;
+    logCrossTenantAttempt(env, request, { endpoint: '/settings/photos/recategorise', method: 'POST', requested_uuid: keyPrefix, resolved_uuid: uuid, detail: `key=${fromKey.slice(0, 120)}` });
+    return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  }
 
   const fromCategory = categoryFromKey(fromKey, prefix);
   if (!fromCategory) return json({ ok: false, error: 'invalid_key_shape' }, 400);
@@ -773,7 +867,11 @@ async function handleSettingsPhotoCopy(uuid, request, env) {
   if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
 
   const prefix = `clients/${uuid}/photos/`;
-  if (!fromKey.startsWith(prefix)) return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  if (!fromKey.startsWith(prefix)) {
+    const keyPrefix = fromKey.match(/^clients\/([0-9a-f-]{36})\//i)?.[1] || null;
+    logCrossTenantAttempt(env, request, { endpoint: '/settings/photos/copy', method: 'POST', requested_uuid: keyPrefix, resolved_uuid: uuid, detail: `key=${fromKey.slice(0, 120)}` });
+    return json({ ok: false, error: 'cross_tenant_forbidden' }, 403);
+  }
 
   const fromCategory = categoryFromKey(fromKey, prefix);
   if (!fromCategory) return json({ ok: false, error: 'invalid_key_shape' }, 400);
@@ -810,7 +908,12 @@ async function handleSettingsPhotoBulkDelete(uuid, request, env) {
   if (!Array.isArray(keys) || keys.length === 0) return json({ ok: false, error: 'missing_keys' }, 400);
   const prefix = `clients/${uuid}/photos/`;
   const scoped = keys.filter(k => typeof k === 'string' && k.startsWith(prefix));
-  if (scoped.length !== keys.length) return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  if (scoped.length !== keys.length) {
+    const bad = keys.find(k => typeof k === 'string' && !k.startsWith(prefix));
+    const keyPrefix = bad ? bad.match(/^clients\/([0-9a-f-]{36})\//i)?.[1] || null : null;
+    logCrossTenantAttempt(env, request, { endpoint: '/settings/photos/bulk-delete', method: 'POST', requested_uuid: keyPrefix, resolved_uuid: uuid, detail: `${keys.length - scoped.length} of ${keys.length} keys outside scope` });
+    return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  }
 
   let deleted = 0, failed = 0;
   for (const key of scoped) {
@@ -839,7 +942,12 @@ async function handleSettingsPhotoBulkRecategorise(uuid, request, env) {
   if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
   const prefix = `clients/${uuid}/photos/`;
   const scoped = keys.filter(k => typeof k === 'string' && k.startsWith(prefix));
-  if (scoped.length !== keys.length) return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  if (scoped.length !== keys.length) {
+    const bad = keys.find(k => typeof k === 'string' && !k.startsWith(prefix));
+    const keyPrefix = bad ? bad.match(/^clients\/([0-9a-f-]{36})\//i)?.[1] || null : null;
+    logCrossTenantAttempt(env, request, { endpoint: '/settings/photos/bulk-recategorise', method: 'POST', requested_uuid: keyPrefix, resolved_uuid: uuid, detail: `${keys.length - scoped.length} of ${keys.length} keys outside scope` });
+    return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  }
   const toCategory = sanitisePathSegment(toCategoryRaw);
 
   const moves = []; // [{ fromKey, toKey, fromCategory }]
@@ -886,7 +994,12 @@ async function handleSettingsPhotoBulkCopy(uuid, request, env) {
   if (typeof toCategoryRaw !== 'string' || !toCategoryRaw) return json({ ok: false, error: 'missing_to_category' }, 400);
   const prefix = `clients/${uuid}/photos/`;
   const scoped = keys.filter(k => typeof k === 'string' && k.startsWith(prefix));
-  if (scoped.length !== keys.length) return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  if (scoped.length !== keys.length) {
+    const bad = keys.find(k => typeof k === 'string' && !k.startsWith(prefix));
+    const keyPrefix = bad ? bad.match(/^clients\/([0-9a-f-]{36})\//i)?.[1] || null : null;
+    logCrossTenantAttempt(env, request, { endpoint: '/settings/photos/bulk-copy', method: 'POST', requested_uuid: keyPrefix, resolved_uuid: uuid, detail: `${keys.length - scoped.length} of ${keys.length} keys outside scope` });
+    return json({ ok: false, error: 'cross_tenant_forbidden', detail: 'some keys outside tenant scope' }, 403);
+  }
   const toCategory = sanitisePathSegment(toCategoryRaw);
 
   const copies = []; // [{ toKey }]
@@ -2567,7 +2680,7 @@ async function handleSync(uuid, env) {
 // Does NOT cascade to Clerk — the org membership / org itself stays until a
 // human deletes it in the Clerk dashboard. Surfaced in the response so the
 // caller knows there's a follow-up step.
-async function handleDeleteClient(uuid, env, jwtPayload) {
+async function handleDeleteClient(uuid, request, env, jwtPayload) {
   const gateErr = settingsAdminGate(jwtPayload);
   if (gateErr) return gateErr;
 
@@ -2576,7 +2689,10 @@ async function handleDeleteClient(uuid, env, jwtPayload) {
 
   const jwtUuid = await env.RAFTER_CLIENTS.get('clerk_org:' + orgId).catch(() => null);
   if (!jwtUuid) return json({ ok: false, error: 'no_tenant_for_org' }, 404);
-  if (jwtUuid !== uuid) return json({ ok: false, error: 'uuid_mismatch', detail: 'URL uuid does not match JWT org claim' }, 403);
+  if (jwtUuid !== uuid) {
+    logCrossTenantAttempt(env, request, { endpoint: '/admin/clients/{uuid}', method: 'DELETE', requested_uuid: uuid, resolved_uuid: jwtUuid, detail: 'URL uuid does not match JWT org claim' });
+    return json({ ok: false, error: 'uuid_mismatch', detail: 'URL uuid does not match JWT org claim' }, 403);
+  }
 
   const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
   if (!raw) return json({ ok: false, error: 'client_not_found', uuid }, 404);
