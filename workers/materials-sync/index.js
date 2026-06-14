@@ -378,6 +378,94 @@ async function handleRefreshMaterials(request, url, env) {
   return json({ ok: true, uuid, ...summary, ttl_seconds: MATERIALS_TTL_SECONDS });
 }
 
+// RFT-101 one-shot: rename legacy "NN Title Case" R2 folders to canonical
+// slugified folders within a single tenant. Hard-coded to Andy's uuid as
+// a belt-and-braces guard — even with the secret leaked this can only
+// touch the one tenant the migration was approved for. To be reverted
+// after the migration completes; not a long-lived primitive.
+const RFT101_ALLOWED_UUID = "0e604a45-84fd-4789-a2cb-662bcba51a8b";
+async function handleMigrateR2Photos(request, env) {
+  const secret = env.RAFTER_INTERNAL_SECRET;
+  if (!secret) return json({ error: "server_misconfigured" }, { status: 500 });
+  const provided = request.headers.get("x-rafter-secret") || "";
+  if (!constantTimeEqual(provided, secret)) return json({ error: "unauthorized" }, { status: 401 });
+  if (!env.RAFTER_ASSETS) return json({ error: "r2_not_bound" }, { status: 500 });
+
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ error: "invalid_json" }, { status: 400 }); }
+
+  const { uuid, mapping, dryRun } = body || {};
+  if (uuid !== RFT101_ALLOWED_UUID) return json({ error: "uuid_not_allowed" }, { status: 403 });
+  if (!Array.isArray(mapping) || mapping.length === 0) {
+    return json({ error: "mapping_required", detail: "expect non-empty array of {from, to}" }, { status: 400 });
+  }
+  for (const m of mapping) {
+    if (!m || typeof m.from !== "string" || typeof m.to !== "string" || !m.from || !m.to) {
+      return json({ error: "mapping_invalid", detail: "each entry needs string from + to" }, { status: 400 });
+    }
+  }
+
+  const report = [];
+  let totalCopied = 0, totalDeleted = 0, totalSkipped = 0, totalFailed = 0;
+
+  for (const { from, to } of mapping) {
+    const srcPrefix = `clients/${uuid}/photos/${from}/`;
+    const dstPrefix = `clients/${uuid}/photos/${to}/`;
+
+    const srcKeys = [];
+    let cursor;
+    do {
+      const page = await env.RAFTER_ASSETS.list({ prefix: srcPrefix, cursor, limit: 1000 });
+      for (const obj of page.objects) srcKeys.push(obj.key);
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+
+    let copied = 0, deleted = 0, skipped = 0, failed = 0;
+    const failures = [];
+
+    for (const oldKey of srcKeys) {
+      const filename = oldKey.slice(srcPrefix.length);
+      if (!filename) { skipped++; continue; }
+      const newKey = dstPrefix + filename;
+
+      if (dryRun) { copied++; continue; }
+
+      try {
+        const obj = await env.RAFTER_ASSETS.get(oldKey);
+        if (!obj) { failed++; failures.push({ oldKey, step: "get", detail: "not_found" }); continue; }
+        const buf = await obj.arrayBuffer();
+        await env.RAFTER_ASSETS.put(newKey, buf, { httpMetadata: obj.httpMetadata });
+
+        // Verify the new object actually landed before deleting the source.
+        const verify = await env.RAFTER_ASSETS.head(newKey);
+        if (!verify) { failed++; failures.push({ oldKey, newKey, step: "verify", detail: "head_missing" }); continue; }
+
+        await env.RAFTER_ASSETS.delete(oldKey);
+        copied++;
+        deleted++;
+      } catch (e) {
+        failed++;
+        failures.push({ oldKey, step: "exception", detail: e.message });
+      }
+    }
+
+    report.push({ from, to, listed: srcKeys.length, copied, deleted, skipped, failed, failures: failures.slice(0, 5) });
+    totalCopied += copied;
+    totalDeleted += deleted;
+    totalSkipped += skipped;
+    totalFailed += failed;
+  }
+
+  return json({
+    ok: totalFailed === 0,
+    dryRun: !!dryRun,
+    uuid,
+    totals: { copied: totalCopied, deleted: totalDeleted, skipped: totalSkipped, failed: totalFailed },
+    report,
+  });
+}
+
 async function handleCopyR2Photos(request, url, env) {
   const secret = env.RAFTER_INTERNAL_SECRET;
   if (!secret) return json({ error: "server_misconfigured" }, { status: 500 });
@@ -2019,6 +2107,8 @@ async function route(request, env) {
   if (method === "GET" && path === "/refresh-materials") return handleRefreshMaterials(request, url, env);
   // /get-form-token retired RFT-87 scope (a) — replaced by Clerk JWT direct on every endpoint.
   if (method === "POST" && path === "/copy-r2-photos") return handleCopyR2Photos(request, url, env);
+  // RFT-101 one-shot — revert after migration completes (see handleMigrateR2Photos comment).
+  if (method === "POST" && path === "/admin/migrate-r2-photos") return handleMigrateR2Photos(request, env);
   if (method === "GET" && path === "/health") return json({ ok: true });
   if (method === "POST" && path === "/send-test-alert") return handleSendTestAlert(request, env);
   if (method === "POST" && path === "/store-draft") return handleStoreDraft(request, env);
