@@ -243,6 +243,35 @@
     display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
   }
   .amend-discard:hover { text-decoration: underline; }
+  /* RFT-98 — draft resume banner. Shape mirrors .amend-banner so the operator
+     gets a consistent "you-are-mid-something" affordance. Colour palette
+     swapped to neutral blue (vs amend's amber) so the two are distinguishable
+     at a glance if both ever co-exist. */
+  .draft-banner {
+    background: rgba(46,134,171,0.10); border: 1px solid rgba(46,134,171,0.35);
+    border-radius: 8px; padding: 10px 14px; margin: 0 0 16px 0;
+    display: flex; align-items: center; gap: 8px; font-size: 13px; color: #1B4F72;
+  }
+  .draft-banner > span { flex: 1; }
+  .draft-banner a {
+    color: #1B4F72; text-decoration: none; font-size: 12px; font-weight: 700;
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+    margin-left: 12px;
+  }
+  .draft-banner a:hover { text-decoration: underline; }
+  /* RFT-98 — Save Draft button + status indicator inside footer-actions. */
+  .btn-outline {
+    background: transparent; border: 1px solid var(--border, #D4D0C8); color: var(--text, #1C1C1C);
+    padding: 8px 14px; border-radius: 8px; font-weight: 600; font-size: 13px;
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  }
+  .btn-outline:hover { background: rgba(0,0,0,0.03); }
+  .btn-outline:disabled { opacity: 0.5; cursor: not-allowed; }
+  .draft-saved-indicator {
+    font-size: 11px; color: rgba(28,28,28,0.55); margin-left: 4px; margin-right: auto;
+    white-space: nowrap; display: inline-flex; align-items: center; gap: 4px;
+  }
+  .draft-saved-indicator.error { color: #B33A3A; }
 
   /* ===== SECTION HEADER BAR =====
      Top corners rounded to match .card's 12px. Without this, Section 1's
@@ -920,6 +949,16 @@
     <a href="#" class="amend-discard" onclick="event.preventDefault(); startNewQuote();"><i class="ti ti-x"></i> Discard changes</a>
   </div>
 
+  <!-- RFT-98 — DRAFT RESUME BANNER (shown on boot when an unsubmitted draft
+       exists for this tenant). Mutually exclusive with the amend banner —
+       a quote is either amending a submitted parent OR resuming a draft. -->
+  <div id="draftBanner" class="draft-banner" style="display:none;">
+    <i class="ti ti-device-floppy"></i>
+    <span>You have an unsaved draft from <strong id="draftBannerWhen">earlier</strong>.</span>
+    <a href="#" id="draftResumeBtn"><i class="ti ti-arrow-back-up"></i> Resume</a>
+    <a href="#" id="draftDiscardBtn"><i class="ti ti-x"></i> Discard</a>
+  </div>
+
   <!-- RFT-120 — stale-materials banner. Shown only when the materials load
        fails on form boot (token expired, sync never ran, etc.). Operator
        has no manual refresh; sync health lives in Settings → ServiceM8
@@ -1006,6 +1045,11 @@
   <footer class="card footer">
     <div class="summary"><i class="ti ti-check"></i><span id="footerSummary">0 sections · $0.00 inc. GST</span></div>
     <div class="footer-actions">
+      <!-- RFT-98 — Save Draft + last-saved indicator. Tertiary: lower visual
+           weight than Preview/Submit. Disabled until at least one section is
+           selected (auto-save has the same precondition). -->
+      <button class="btn-outline" id="saveDraftBtn" type="button" disabled><i class="ti ti-device-floppy"></i>Save draft</button>
+      <span class="draft-saved-indicator" id="draftSavedIndicator"></span>
       <button class="btn btn-secondary" id="previewBtn" type="button"><i class="ti ti-eye"></i>Preview PDF</button>
       <button class="btn btn-secondary" id="submitJobBtn" type="button"><i class="ti ti-briefcase"></i>Submit Job Only</button>
       <button class="btn btn-primary" id="submitEmailBtn" type="button"><i class="ti ti-mail"></i>Submit &amp; Send Quote</button>
@@ -1196,6 +1240,10 @@ const state = {
   // submission. doSubmit branches to amend op against the same SM8 job.
   amendOf: null,        // parent quote_ref
   amendParentVersion: 0,
+  // RFT-98 — draft save state.
+  resumedFromDraft: false,    // true when current quote_ref came from /draft/{ref} status=draft
+  draftLastSavedAt: null,     // Date — last successful save
+  draftSaveInFlight: false,
 };
 
 // ===== UTILITIES =====
@@ -1476,6 +1524,12 @@ async function boot() {
   renderTotals();
   bindEvents();
 
+  // RFT-98 — boot-time draft check. Runs AFTER rehydrate so the resume
+  // banner is suppressed for the draft already being edited (the
+  // !state.resumedFromDraft || ref-mismatch guard inside checkDraftBanner
+  // handles this). Also skipped in amend mode.
+  checkDraftBanner();
+
   // Maps autocomplete may not yet be ready; if it is, attach now.
   if (window.google && window.google.maps && window.google.maps.places) initAutocomplete();
 }
@@ -1637,27 +1691,45 @@ async function rehydrateFromDraft(quoteRef) {
       }));
     }
 
-    // KEEP the original quote_ref as the parent for now — a fresh one is
-    // issued at amend submit time.
-    state.quoteRef = p.quote_ref || state.quoteRef;
+    // Branch on row status. Submitted/superseded rows go into amend mode;
+    // draft rows resume in normal (non-amend) mode so a save+submit on the
+    // same quote_ref upserts the draft into a real submission (backend
+    // cleans the draft row in handleStoreQuoteLink).
+    const isDraft = data.status === "draft";
 
-    // Mark amend mode.
-    state.amendOf = quoteRef;
-    state.amendParentVersion = data.version || 1;
-    // RFT-103: display the PARENT human filename in the "you are amending"
-    // banner (no Q- timestamps on the operator surface). The pill below
-    // shows the NEW version's human filename.
-    $("amendOfRef").textContent = buildHumanQuoteName({
-      client_name: state.clientName,
-      proposal_date: state.proposalDate,
-      version: state.amendParentVersion,
-    });
-    updateQuoteRefPill();
-    $("amendBanner").style.display = "flex";
-    $("amendJobBtn").style.display = "inline-flex";
-    $("amendEmailBtn").style.display = "inline-flex";
-    $("submitJobBtn").style.display = "none";
-    $("submitEmailBtn").style.display = "none";
+    if (isDraft) {
+      // RFT-98 — resume an unsubmitted draft. Keep the draft's quote_ref so
+      // subsequent saves upsert the same row and the eventual submit issues
+      // the quote under that ref.
+      state.quoteRef = p.quote_ref || quoteRef;
+      state.resumedFromDraft = true;
+      state.amendOf = null;
+      state.amendParentVersion = 0;
+      // RFT-103: no quote-ref pill for fresh/draft work — pill is amend-only.
+      updateQuoteRefPill();
+    } else {
+      // KEEP the original quote_ref as the parent for now — a fresh one is
+      // issued at amend submit time.
+      state.quoteRef = p.quote_ref || state.quoteRef;
+
+      // Mark amend mode.
+      state.amendOf = quoteRef;
+      state.amendParentVersion = data.version || 1;
+      // RFT-103: display the PARENT human filename in the "you are amending"
+      // banner (no Q- timestamps on the operator surface). The pill below
+      // shows the NEW version's human filename.
+      $("amendOfRef").textContent = buildHumanQuoteName({
+        client_name: state.clientName,
+        proposal_date: state.proposalDate,
+        version: state.amendParentVersion,
+      });
+      updateQuoteRefPill();
+      $("amendBanner").style.display = "flex";
+      $("amendJobBtn").style.display = "inline-flex";
+      $("amendEmailBtn").style.display = "inline-flex";
+      $("submitJobBtn").style.display = "none";
+      $("submitEmailBtn").style.display = "none";
+    }
 
     // Populate input fields directly (not all are state-driven on render).
     $("clientName").value    = state.clientName || "";
@@ -1670,6 +1742,154 @@ async function rehydrateFromDraft(quoteRef) {
   } catch (e) {
     toast("Could not load that quote. Starting a new one.", "err");
     return false;
+  }
+}
+
+// ===== RFT-98 — DRAFT SAVE / RESUME / DISCARD =====
+//
+// A draft is the in-progress quote builder state persisted to rafter-quotes
+// with status='draft' and no sm8_job_uuid. The operator can save manually
+// (Save draft button) or via 60s debounced auto-save after any input change.
+// Drafts are listed on boot via /drafts?status=draft and surfaced via the
+// resume banner. On successful submit, the backend cleans the draft row.
+
+function formatRelTime(ts) {
+  const t = (ts instanceof Date) ? ts : new Date(ts);
+  if (isNaN(t.getTime())) return "earlier";
+  const mins = Math.floor((Date.now() - t.getTime()) / 60000);
+  if (mins < 1) return "just now";
+  if (mins < 60) return `${mins} min ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? "" : "s"} ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days} day${days === 1 ? "" : "s"} ago`;
+  return t.toLocaleDateString();
+}
+
+function formatTimeShort(ts) {
+  const t = (ts instanceof Date) ? ts : new Date(ts);
+  if (isNaN(t.getTime())) return "";
+  return t.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+}
+
+function updateSaveDraftBtnState() {
+  const btn = $("saveDraftBtn");
+  if (!btn) return;
+  // Draft save requires at least one section (matches auto-save guard).
+  // Hidden entirely in amend mode — amend has its own submit-as-version
+  // flow and "drafting an amend" isn't a thing on rafter-quotes.
+  if (state.amendOf) { btn.style.display = "none"; $("draftSavedIndicator").textContent = ""; return; }
+  btn.style.display = "";
+  btn.disabled = state.sections.length === 0 || state.draftSaveInFlight;
+}
+
+async function saveDraft({ manual } = {}) {
+  if (state.sections.length === 0) return false;
+  if (state.draftSaveInFlight) return false;
+  state.draftSaveInFlight = true;
+  updateSaveDraftBtnState();
+  const indicator = $("draftSavedIndicator");
+  if (manual && indicator) { indicator.textContent = "Saving…"; indicator.classList.remove("error"); }
+
+  try {
+    // buildPayload returns a comprehensive submission shape; for draft we
+    // strip mode/sendEmail concerns server-side (validateDraftFields just
+    // reads quote_ref + client_uuid + payload). Reusing buildPayload keeps
+    // the draft payload identical in shape to the eventual submit.
+    const payload = buildPayload("draft", false);
+    const body = {
+      quote_ref: state.quoteRef,
+      client_uuid: state.clientUuid,
+      payload,
+    };
+    const r = await authedFetch(`${API}/store-draft`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}`);
+    state.draftLastSavedAt = new Date();
+    if (indicator) {
+      indicator.textContent = `Draft saved ${formatTimeShort(state.draftLastSavedAt)}`;
+      indicator.classList.remove("error");
+    }
+    if (manual) toast(`Draft saved (${state.quoteRef})`, "ok");
+    return true;
+  } catch (e) {
+    if (indicator) {
+      indicator.textContent = "Couldn't save draft";
+      indicator.classList.add("error");
+    }
+    if (manual) toast("Could not save draft. Try again.", "err");
+    return false;
+  } finally {
+    state.draftSaveInFlight = false;
+    updateSaveDraftBtnState();
+  }
+}
+
+// Debounced auto-save. 60s after the last input event, save silently. Guard
+// inside saveDraft itself catches the "no sections yet" case so the
+// debounce can fire whenever; cheap.
+const autoSaveDraft = debounce(() => { saveDraft({ manual: false }); }, 60000);
+
+function scheduleAutoSave() {
+  if (state.amendOf) return; // RFT-98: draft surface is non-amend only
+  autoSaveDraft();
+}
+
+async function checkDraftBanner() {
+  // Skip entirely in amend mode — a draft banner on top of an amend would be
+  // visually confusing and the resume action wouldn't make sense.
+  if (state.amendOf) return;
+  try {
+    const r = await authedFetch(`${API}/drafts?client_uuid=${encodeURIComponent(state.clientUuid)}&status=draft&limit=1`);
+    if (!r.ok) return;
+    const data = await r.json();
+    const drafts = data.results || [];
+    if (!drafts.length) return;
+    const top = drafts[0];
+    // Don't show the banner for the draft we're already inside of (e.g. user
+    // navigated to ?quote_ref=Q-DRAFT and the resume path already ran).
+    if (state.resumedFromDraft && top.quote_ref === state.quoteRef) return;
+    $("draftBannerWhen").textContent = formatRelTime(top.updated_at);
+    $("draftBanner").style.display = "flex";
+    // Stash the ref so Resume/Discard know which draft to act on.
+    $("draftBanner").dataset.quoteRef = top.quote_ref;
+  } catch {
+    // Network blip — banner just doesn't appear. Don't bother the operator.
+  }
+}
+
+async function resumeDraft() {
+  const ref = $("draftBanner").dataset.quoteRef;
+  if (!ref) return;
+  $("draftBanner").style.display = "none";
+  const ok = await rehydrateFromDraft(ref);
+  if (ok) {
+    // Re-render derived UI now that state has been replayed.
+    renderSections();
+    renderTotals();
+    if ($("proposalType")) $("proposalType").value = state.proposalType;
+    if ($("proposalDate")) $("proposalDate").value = state.proposalDate;
+    toast("Draft resumed", "ok");
+  }
+}
+
+async function discardDraftBanner() {
+  const ref = $("draftBanner").dataset.quoteRef;
+  if (!ref) return;
+  $("draftBanner").style.display = "none";
+  try {
+    const r = await authedFetch(`${API}/draft/${encodeURIComponent(ref)}?client_uuid=${encodeURIComponent(state.clientUuid)}`, {
+      method: "DELETE",
+    });
+    if (!r.ok && r.status !== 404) throw new Error(`HTTP ${r.status}`);
+    toast("Draft discarded", "ok");
+  } catch {
+    toast("Could not discard draft.", "err");
+    // Restore banner so the operator can retry.
+    $("draftBanner").style.display = "flex";
   }
 }
 
@@ -2003,6 +2223,10 @@ function renderSections() {
   list.innerHTML = "";
   state.sections.forEach((s) => list.appendChild(renderOneSection(s)));
   list.querySelectorAll('.ws-textarea').forEach(autoResize);
+  // RFT-98 — sections array drives the Save Draft enabled state.
+  updateSaveDraftBtnState();
+  // Section adds/removes/edits also count as input for auto-save purposes.
+  scheduleAutoSave();
 }
 
 function renderOneSection(s) {
@@ -2599,6 +2823,20 @@ function bindEvents() {
     const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
     window.location.href = `/${encodeURIComponent(slug)}?find=1`;
   });
+
+  // RFT-98 — Save draft button + auto-save on any input/change in the form.
+  // appMain encompasses every quote-builder input; one delegated listener
+  // covers section line items, photos, header fields without re-wiring per
+  // element when sections render/re-render.
+  $("saveDraftBtn").addEventListener("click", () => saveDraft({ manual: true }));
+  const appMain = $("appMain");
+  if (appMain) {
+    appMain.addEventListener("input", scheduleAutoSave);
+    appMain.addEventListener("change", scheduleAutoSave);
+  }
+  $("draftResumeBtn").addEventListener("click", (e) => { e.preventDefault(); resumeDraft(); });
+  $("draftDiscardBtn").addEventListener("click", (e) => { e.preventDefault(); discardDraftBanner(); });
+  updateSaveDraftBtnState();
 }
 
 // ===== GOOGLE MAPS AUTOCOMPLETE =====
