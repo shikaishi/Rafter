@@ -237,6 +237,12 @@
     border-radius: 8px; padding: 10px 14px; margin: 0 0 16px 0;
     display: flex; align-items: center; gap: 8px; font-size: 13px; color: #8a5a00;
   }
+  .amend-banner > span { flex: 1; }
+  .amend-discard {
+    color: #8a5a00; text-decoration: none; font-size: 12px;
+    display: inline-flex; align-items: center; gap: 4px; white-space: nowrap;
+  }
+  .amend-discard:hover { text-decoration: underline; }
 
   /* ===== SECTION HEADER BAR =====
      Top corners rounded to match .card's 12px. Without this, Section 1's
@@ -905,9 +911,13 @@
   </header>
 
   <!-- AMEND-MODE BANNER (shown when rehydrated from a stored quote) -->
+  <!-- RFT-82 #2: Discard link strips ?quote_ref= and loads a blank form via
+       startNewQuote(). No confirm — the original quote is untouched in D1
+       until the operator actually re-submits. -->
   <div id="amendBanner" class="amend-banner" style="display:none;">
     <i class="ti ti-history"></i>
     <span>You are amending <strong id="amendOfRef">—</strong>. Re-sending creates a new version on the same ServiceM8 job.</span>
+    <a href="#" class="amend-discard" onclick="event.preventDefault(); startNewQuote();"><i class="ti ti-x"></i> Discard changes</a>
   </div>
 
   <!-- RFT-120 — stale-materials banner. Shown only when the materials load
