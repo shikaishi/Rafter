@@ -1859,7 +1859,16 @@ function enterPhotoStep() {
   pillsContainer.innerHTML = '';
   const sectionNames = Array.from(document.querySelectorAll('#section-list .rep-name'))
     .map(el => el.value.trim()).filter(Boolean);
-  const categories = [...new Set([...sectionNames, 'General'])];
+  // RFT-79 #2: suppress the auto-injected "General" pill when the operator
+  // already created a catch-all section (Miscellaneous, MISC, any case).
+  // Same regex as the form's MISC pill suppression (index.html:2115) so the
+  // two surfaces decide consistently. Otherwise photos split between
+  // "General" and the operator's own catch-all and neither surface knows
+  // they're competing.
+  const hasOperatorCatchAll = sectionNames.some((n) => /^misc(ellan(e?)ous)?$/i.test((n || "").trim()));
+  const categories = hasOperatorCatchAll
+    ? [...new Set(sectionNames)]
+    : [...new Set([...sectionNames, 'General'])];
   _photoSelectedCategory = categories[0] || 'General';
   categories.forEach((name, i) => {
     const btn = document.createElement('button');
