@@ -5,11 +5,10 @@ workers_dev = true
 # RFT-121 — ops.deepgreensea.au is the platform operator console. Custom
 # domain bound to this Worker with Assets. The Worker itself serves static
 # files only; all data is fetched in the browser from admin-api
-# /console/* (RFT-122). DNS prereq: a CNAME for ops.deepgreensea.au must
-# be in place before this can deploy — uncomment routes once that's done.
-# routes = [
-#   { pattern = "ops.deepgreensea.au", custom_domain = true }
-# ]
+# /console/* (RFT-122). DNS is already configured (AAAA 100:: proxied).
+routes = [
+  { pattern = "ops.deepgreensea.au", custom_domain = true }
+]
 
 [assets]
 directory = "."
