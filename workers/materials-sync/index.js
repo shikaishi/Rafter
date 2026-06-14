@@ -33,7 +33,7 @@ function corsHeaders(request) {
   const allow = ALLOWED_ORIGINS.has(origin) ? origin : "https://rafter.deepgreensea.au";
   return {
     "access-control-allow-origin": allow,
-    "access-control-allow-methods": "GET, POST, OPTIONS",
+    "access-control-allow-methods": "GET, POST, DELETE, OPTIONS",
     "access-control-allow-headers": "Content-Type, Authorization, x-rafter-secret",
     "vary": "Origin",
   };
@@ -967,37 +967,44 @@ async function handleClientConfig(request, url, env) {
   });
 }
 
-// ─── RFT-32 / RFT-37: rafter-quotes draft persistence ────────────────────────
+// ─── RFT-32 / RFT-37 / RFT-98: rafter-quotes draft + quote persistence ───────
 // Bounded-stateful: SM8 stays system-of-record for issued quotes; rafter-quotes
 // D1 persists buildPayload() JSON verbatim so quotes can be rehydrated into the
 // form and amended onto the same SM8 job (Path B versioned amend).
 //
-// AUTH (two gates, same write):
-//   • /store-draft, /draft/{ref}, /drafts — x-rafter-secret (RAFTER_INTERNAL_SECRET),
-//     mirrors /client-config and /render-email. Internal worker-to-worker calls
-//     and rafter form's privileged ops use this. The form reaches these via the
-//     same internal-secret path that gates /render-email.
-//   • /store-quote-link — Bearer MAKE_STORE_TOKEN_SECRET, matches /store-token's
-//     Make→worker pattern. This is the Make callback after SM8 job-create — Make
-//     is the only caller that knows the new SM8 job UUID, so it's the only path
-//     for the initial post-submit write (Path A).
+// Two row classes, same table, distinguished by `status`:
+//   • status='draft' — pre-submission save (RFT-98). No sm8_job_uuid yet
+//     because SM8 has not been called. Version always 1, parent_ref null.
+//     Excluded from the operator finder; surfaced only by ?status=draft.
+//   • status='submitted' / 'superseded' — post-submission row (RFT-32). Has
+//     sm8_job_uuid. Surfaced by the finder; superseded by amend writes.
+//
+// AUTH (three gates, same write surface):
+//   • /store-draft (POST), /draft/{ref} (DELETE) — Clerk form-JWT, target_uuid
+//     cross-checked against payload.client_uuid (RFT-98 — repurposed from the
+//     historic internal-secret debug endpoint, which had no real callers).
+//   • /draft/{ref} (GET), /drafts (GET) — Clerk form-JWT, target_uuid from
+//     the ?client_uuid query param.
+//   • /store-quote-link (POST) — Bearer MAKE_STORE_TOKEN_SECRET. Make→worker
+//     callback after SM8 job-create, the only caller that knows the new SM8
+//     job UUID. On success it cleans up the prior draft row (RFT-98).
 //
 // DELIBERATE PROPERTY — DO NOT "FIX" INTO A BLOCKING WRITE:
-// /store-draft is best-effort by design (RFT-32 RESUME BRIEF, 2026-06-06). The
-// CALLER must wrap the call in try/catch and continue on failure. A dropped
-// draft costs a future edit convenience; a blocked submit costs a live quote.
-// The submit path was just hardened (RFT-58/RFT-69) — never put a synchronous
-// failure mode in front of it. Consequence: rafter-quotes is best-effort, not
-// guaranteed-complete; a quote can reach the customer without being stored,
-// finder won't show it, self-corrects on next edit re-submit.
+// All draft writes are best-effort by design (RFT-32 RESUME BRIEF, 2026-06-06).
+// The CALLER must wrap the call in try/catch and continue on failure. A
+// dropped draft costs a future edit convenience; a blocked submit costs a
+// live quote. The submit path was just hardened (RFT-58/RFT-69) — never put a
+// synchronous failure mode in front of it. Consequence: rafter-quotes is
+// best-effort, not guaranteed-complete; a quote can reach the customer
+// without being stored, finder won't show it, self-corrects on next edit
+// re-submit.
 //
 // LOAD-BEARING CONSTRAINT — sm8_job_uuid (RFT-35): SM8 has NO job-search
-// fallback. Stored sm8_job_uuid is the SOLE linkage back to the SM8 job for
-// amendment. If it's null or wrong, amendment is impossible. /store-draft
-// validates the UUID is present + well-formed before writing; if absent, it
-// rejects with 400 and logs loudly — that condition means the upstream SM8
-// job-create leg failed, which is a real problem worth surfacing rather than
-// hiding behind a soft-null row.
+// fallback. For submitted rows, stored sm8_job_uuid is the SOLE linkage back
+// to the SM8 job for amendment. If it's null or wrong on a submitted row,
+// amendment is impossible. validateQuoteFields enforces this for the
+// submitted-row path; validateDraftFields skips it for the draft-row path
+// (drafts have no SM8 job to link to).
 
 const QUOTE_REF_RE = /^Q-\d{8}-\d{4}$/;
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -1252,21 +1259,79 @@ async function writeQuoteRow(env, fields) {
   return { ok: true, updated_at: now };
 }
 
-async function handleStoreDraft(request, env) {
-  const denied = requireInternalSecret(request, env);
-  if (denied) return denied;
+// RFT-98 — draft validation. A draft is a pre-submission snapshot of the
+// quote builder: no sm8_job_uuid yet (SM8 job hasn't been created), version
+// is always 1, parent_ref is null (drafts can't be amended of). Status is
+// forced to 'draft' regardless of what the caller sends.
+function validateDraftFields(body) {
+  if (!body || typeof body !== "object") {
+    return { error: json({ error: "invalid_body" }, { status: 400 }) };
+  }
+  let { quote_ref, client_uuid, payload } = body;
+  if (typeof payload === "string") {
+    try { payload = JSON.parse(payload); }
+    catch { return { error: json({ error: "payload_not_json" }, { status: 400 }) }; }
+  }
+  if (!quote_ref || !QUOTE_REF_RE.test(quote_ref)) {
+    return { error: json({ error: "invalid_quote_ref", hint: "Q-YYYYMMDD-HHMM" }, { status: 400 }) };
+  }
+  if (!client_uuid || !UUID_RE.test(client_uuid)) {
+    return { error: json({ error: "invalid_client_uuid" }, { status: 400 }) };
+  }
+  if (!payload || typeof payload !== "object") {
+    return { error: json({ error: "missing_field", field: "payload" }, { status: 400 }) };
+  }
+  return { fields: { quote_ref, client_uuid, sm8_job_uuid: null, version: 1, parent_ref: null, status: "draft", payload } };
+}
 
+// RFT-98 — save / overwrite a draft from the operator form. Auth is the
+// form JWT (the operator's Clerk session, target_uuid cross-checked against
+// payload.client_uuid). Distinct from /store-quote-link which is the
+// Make→worker callback for a fully-submitted quote.
+async function handleStoreDraft(request, env) {
   let body;
   try { body = await request.json(); }
   catch { return json({ error: "invalid_json" }, { status: 400 }); }
 
-  const v = validateQuoteFields(body);
+  const v = validateDraftFields(body);
   if (v.error) return v.error;
+
+  const a = await requireFormJWT(request, env, { target_uuid: v.fields.client_uuid });
+  if (a.error) return a.error;
 
   const w = await writeQuoteRow(env, v.fields);
   if (w.error) return w.error;
 
-  return json({ ok: true, quote_ref: v.fields.quote_ref, version: v.fields.version, status: v.fields.status, updated_at: w.updated_at });
+  return json({ ok: true, quote_ref: v.fields.quote_ref, status: v.fields.status, updated_at: w.updated_at });
+}
+
+// RFT-98 — delete a draft. Status-gated on 'draft' so a stray DELETE can never
+// blow away a submitted/superseded row by accident. Composite WHERE enforces
+// tenant scoping at the query layer (RFT-92 F3 pattern).
+async function handleDeleteDraft(request, quote_ref, url, env) {
+  if (!env.RAFTER_QUOTES) {
+    return json({ error: "server_misconfigured", detail: "RAFTER_QUOTES binding not set" }, { status: 500 });
+  }
+  if (!QUOTE_REF_RE.test(quote_ref)) {
+    return json({ error: "invalid_quote_ref" }, { status: 400 });
+  }
+  const queriedUuid = url.searchParams.get("client_uuid");
+  if (!queriedUuid || !UUID_RE.test(queriedUuid)) {
+    return json({ error: "missing_client_uuid", detail: "client_uuid query param required" }, { status: 400 });
+  }
+  const a = await requireFormJWT(request, env, { target_uuid: queriedUuid });
+  if (a.error) return a.error;
+
+  try {
+    const res = await env.RAFTER_QUOTES.prepare(
+      "DELETE FROM quotes WHERE quote_ref = ? AND client_uuid = ? AND status = 'draft'"
+    ).bind(quote_ref, a.uuid).run();
+    const changes = res.meta?.changes ?? 0;
+    if (!changes) return json({ ok: false, error: "draft_not_found", quote_ref }, { status: 404 });
+    return json({ ok: true, deleted: true, quote_ref });
+  } catch (e) {
+    return json({ error: "d1_write_failed", detail: e.message }, { status: 502 });
+  }
 }
 
 // /store-quote-link — Make callback after SM8 job-create. Same write logic as
@@ -1306,6 +1371,20 @@ async function handleStoreQuoteLink(request, env) {
     sm8_job_uuid: v.fields.sm8_job_uuid,
     version: v.fields.version,
   }).catch(() => {});
+
+  // RFT-98: if a draft row exists for this quote_ref, the quote is now
+  // submitted and the draft is stale. Quote_ref+status='draft' is unique by
+  // construction (writeQuoteRow upserts; submit just overwrote status), so
+  // this is a no-op when there was no prior draft. Fire-and-forget — never
+  // block the submit response on draft cleanup.
+  // Belt-and-braces note: writeQuoteRow used ON CONFLICT(quote_ref) DO
+  // UPDATE on the row above, so the prior 'draft' row was already promoted
+  // to 'submitted'. This DELETE handles the unlikely race where two refs
+  // collided — keeping the safety property "no draft row for a submitted
+  // quote_ref" without depending on the upsert.
+  env.RAFTER_QUOTES.prepare(
+    "DELETE FROM quotes WHERE quote_ref = ? AND client_uuid = ? AND status = 'draft'"
+  ).bind(v.fields.quote_ref, v.fields.client_uuid).run().catch(() => {});
 
   return json({ ok: true, quote_ref: v.fields.quote_ref, version: v.fields.version, status: v.fields.status, updated_at: w.updated_at });
 }
@@ -1404,6 +1483,15 @@ async function handleListDrafts(request, url, env) {
     return json({ error: "invalid_sm8_job_uuid" }, { status: 400 });
   }
 
+  // RFT-98 — status filter. Drafts must NOT bleed into the finder by default
+  // (operator finder is for amend-an-issued-quote, drafts are pre-submission).
+  // ?status=draft surfaces the draft set for the boot-time resume banner.
+  // ?status omitted → 'submitted' (the historic /drafts behaviour).
+  const statusFilter = (url.searchParams.get("status") || "submitted").toLowerCase();
+  if (!["draft", "submitted"].includes(statusFilter)) {
+    return json({ error: "invalid_status", hint: "draft | submitted" }, { status: 400 });
+  }
+
   // Fetch a working set, then filter q in-worker. For small per-tenant
   // datasets (a tradie produces tens to low-hundreds of quotes/year) this is
   // faster and simpler than JSON1 + a per-field index. Reconsider if a single
@@ -1415,12 +1503,12 @@ async function handleListDrafts(request, url, env) {
     let stmt;
     if (sm8_job_uuid) {
       stmt = env.RAFTER_QUOTES.prepare(
-        "SELECT * FROM quotes WHERE client_uuid = ? AND sm8_job_uuid = ? ORDER BY updated_at DESC LIMIT ?"
-      ).bind(client_uuid, sm8_job_uuid, workingLimit);
+        "SELECT * FROM quotes WHERE client_uuid = ? AND sm8_job_uuid = ? AND status = ? ORDER BY updated_at DESC LIMIT ?"
+      ).bind(client_uuid, sm8_job_uuid, statusFilter, workingLimit);
     } else {
       stmt = env.RAFTER_QUOTES.prepare(
-        "SELECT * FROM quotes WHERE client_uuid = ? ORDER BY updated_at DESC LIMIT ?"
-      ).bind(client_uuid, workingLimit);
+        "SELECT * FROM quotes WHERE client_uuid = ? AND status = ? ORDER BY updated_at DESC LIMIT ?"
+      ).bind(client_uuid, statusFilter, workingLimit);
     }
     const res = await stmt.all();
     rows = res.results || [];
@@ -1435,8 +1523,12 @@ async function handleListDrafts(request, url, env) {
   // Single batched OData GET — tradie working set is bounded. If the SM8 read
   // fails, degrade to empty result rather than surface potentially-dead rows
   // (data-integrity over availability).
+  // RFT-98: skip the liveness check for the draft set — drafts by definition
+  // have no SM8 job to be alive.
   let liveSummaries = summaries;
-  const uniqueJobUuids = [...new Set(summaries.map((s) => s.sm8_job_uuid).filter(Boolean))];
+  const uniqueJobUuids = statusFilter === "draft"
+    ? []
+    : [...new Set(summaries.map((s) => s.sm8_job_uuid).filter(Boolean))];
   if (uniqueJobUuids.length) {
     let accessToken;
     try { accessToken = await refreshTokenIfNeeded(client_uuid, env); }
@@ -2027,6 +2119,9 @@ async function route(request, env) {
   if (method === "GET" && path === "/drafts") return handleListDrafts(request, url, env);
   const draftMatch = method === "GET" && /^\/draft\/(Q-\d{8}-\d{4})$/.exec(path);
   if (draftMatch) return handleGetDraft(request, draftMatch[1], url, env);
+  // RFT-98 — DELETE /draft/{ref}, draft-only (status-gated in the handler).
+  const draftDeleteMatch = method === "DELETE" && /^\/draft\/(Q-\d{8}-\d{4})$/.exec(path);
+  if (draftDeleteMatch) return handleDeleteDraft(request, draftDeleteMatch[1], url, env);
 
   const clientMatch = method === "GET" && /^\/client\/([0-9a-f-]{36})$/i.exec(path);
   if (clientMatch) return handleReadClient(request, clientMatch[1], env);
