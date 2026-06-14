@@ -16,21 +16,33 @@ const REQUIRED_FIELDS = [
 
 // ── Main handler ─────────────────────────────────────────────────────────────
 
-// Allow onboarding.html (rafter.deepgreensea.au) to call this worker cross-origin.
-// Any endpoint that onboarding.html fetches with an Authorization header requires
-// a CORS preflight — OPTIONS must return 204 with the allow headers, and the real
-// response must include Access-Control-Allow-Origin.
-const CORS_ORIGIN = 'https://rafter.deepgreensea.au';
-const CORS_PREFLIGHT_HEADERS = {
-  'Access-Control-Allow-Origin': CORS_ORIGIN,
-  'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Authorization, Content-Type',
-  'Access-Control-Max-Age': '86400',
-};
-
-function withCors(response) {
+// CORS — two browser origins call admin-api cross-origin:
+//   • rafter.deepgreensea.au — onboarding, settings, the operator form
+//   • ops.deepgreensea.au   — the platform-operator console (RFT-121/122)
+// Both need preflight and the matching Access-Control-Allow-Origin echo on
+// the real response (browsers reject a wildcard when credentials are sent).
+// The fallback when an unknown Origin sends a preflight is the rafter
+// domain — this is defence-in-depth, not a security boundary (the auth
+// gates downstream are the real check).
+const ALLOWED_ORIGINS = new Set([
+  'https://rafter.deepgreensea.au',
+  'https://ops.deepgreensea.au',
+]);
+function resolveOrigin(request) {
+  const o = request.headers.get('Origin') || '';
+  return ALLOWED_ORIGINS.has(o) ? o : 'https://rafter.deepgreensea.au';
+}
+function corsPreflightHeaders(request) {
+  return {
+    'Access-Control-Allow-Origin': resolveOrigin(request),
+    'Access-Control-Allow-Methods': 'GET, POST, DELETE, OPTIONS',
+    'Access-Control-Allow-Headers': 'Authorization, Content-Type',
+    'Access-Control-Max-Age': '86400',
+  };
+}
+function withCors(response, request) {
   const r = new Response(response.body, response);
-  r.headers.set('Access-Control-Allow-Origin', CORS_ORIGIN);
+  r.headers.set('Access-Control-Allow-Origin', resolveOrigin(request));
   return r;
 }
 
@@ -40,8 +52,8 @@ export default {
     const { pathname } = url;
 
     // CORS preflight — must be handled before any auth check
-    if (request.method === 'OPTIONS' && (pathname.startsWith('/onboarding/') || pathname.startsWith('/form/') || pathname.startsWith('/settings/') || pathname.match(/^\/admin\/clients\/[0-9a-f-]{36}$/i))) {
-      return new Response(null, { status: 204, headers: CORS_PREFLIGHT_HEADERS });
+    if (request.method === 'OPTIONS' && (pathname.startsWith('/onboarding/') || pathname.startsWith('/form/') || pathname.startsWith('/settings/') || pathname.startsWith('/console/') || pathname.match(/^\/admin\/clients\/[0-9a-f-]{36}$/i))) {
+      return new Response(null, { status: 204, headers: corsPreflightHeaders(request) });
     }
 
     if (request.method === 'POST' && pathname === '/webhooks/clerk') {
@@ -54,18 +66,28 @@ export default {
     const deleteClientMatch = request.method === 'DELETE' && pathname.match(/^\/admin\/clients\/([0-9a-f-]{36})$/i);
     if (deleteClientMatch) {
       const { error, payload } = await requireClerkJWT(request, env);
-      if (error) return withCors(error);
-      return withCors(await handleDeleteClient(deleteClientMatch[1], request, env, payload));
+      if (error) return withCors(error, request);
+      return withCors(await handleDeleteClient(deleteClientMatch[1], request, env, payload), request);
     }
     if (pathname.startsWith('/admin/')) {
       const authErr = requireBearer(request, env);
       if (authErr) return authErr;
       return handleAdmin(request, env, url);
     }
+    // RFT-122 — platform operator console surface. Separate auth gate from
+    // /settings/* (which is org:admin) and from /admin/* (which is admin bearer).
+    // platformOperatorGate checks Clerk JWT + sub against PLATFORM_OPERATORS
+    // allowlist. Decoupled from org membership so the platform operator can
+    // see all tenants regardless of which orgs they belong to.
+    if ((request.method === 'POST' || request.method === 'GET') && pathname.startsWith('/console/')) {
+      const gate = await platformOperatorGate(request, env);
+      if (gate.error) return withCors(gate.error, request);
+      return withCors(await handleConsole(request, env, url, gate.payload, gate.userId), request);
+    }
     if ((request.method === 'POST' || request.method === 'GET') && pathname.startsWith('/onboarding/')) {
       const { error, payload } = await requireClerkJWT(request, env);
-      if (error) return withCors(error);
-      return withCors(await handleOnboarding(request, env, url, payload));
+      if (error) return withCors(error, request);
+      return withCors(await handleOnboarding(request, env, url, payload), request);
     }
     // RFT-87 commit 7: public tenant-mode lookup. Form calls this BEFORE
     // knowing whether to demand a Clerk session — answer comes from the
@@ -73,7 +95,7 @@ export default {
     // side-effect (replaces the retired /resolve-slug function).
     const tenantModeMatch = request.method === 'GET' && pathname.match(/^\/form\/tenant-mode\/([a-z0-9-]+)$/i);
     if (tenantModeMatch) {
-      return withCors(await handleTenantMode(tenantModeMatch[1], env));
+      return withCors(await handleTenantMode(tenantModeMatch[1], env), request);
     }
     // RFT-87 scope (a): /form/* is the verification surface other workers
     // proxy form requests through. Same Clerk-JWT auth as /onboarding/*; the
@@ -81,16 +103,16 @@ export default {
     // /form is for runtime tenant-ownership verification from the operator form.
     if ((request.method === 'POST' || request.method === 'GET') && pathname.startsWith('/form/')) {
       const { error, payload } = await requireClerkJWT(request, env);
-      if (error) return withCors(error);
-      return withCors(await handleForm(request, env, url, payload));
+      if (error) return withCors(error, request);
+      return withCors(await handleForm(request, env, url, payload), request);
     }
     // RFT-63: /settings/* is the post-onboarding tenant config surface. Same
     // Clerk-JWT gate as /onboarding/*, plus an org:admin role requirement at
     // the handler layer (per RFT-63 decision — start closed, loosen later).
     if (pathname.startsWith('/settings/')) {
       const { error, payload } = await requireClerkJWT(request, env);
-      if (error) return withCors(error);
-      return withCors(await handleSettings(request, env, url, payload));
+      if (error) return withCors(error, request);
+      return withCors(await handleSettings(request, env, url, payload), request);
     }
     return new Response('Not Found', { status: 404 });
   },
@@ -111,9 +133,14 @@ async function requireClerkJWT(request, env) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return { error: json({ ok: false, error: 'Missing authorization' }, 401) };
   try {
+    // RFT-122 — CLERK_AUTHORIZED_PARTY supports comma-separated values so
+    // both rafter.deepgreensea.au (operator form) and ops.deepgreensea.au
+    // (platform console) can present valid JWTs from the same Clerk instance.
+    const parties = (env.CLERK_AUTHORIZED_PARTY || '')
+      .split(',').map(s => s.trim()).filter(Boolean);
     const payload = await verifyToken(token, {
       jwtKey: env.CLERK_JWT_KEY,
-      authorizedParties: env.CLERK_AUTHORIZED_PARTY ? [env.CLERK_AUTHORIZED_PARTY] : undefined,
+      authorizedParties: parties.length ? parties : undefined,
     });
     return { payload };
   } catch {
@@ -147,6 +174,33 @@ function extractOrgRole(jwtPayload) {
   if (typeof jwtPayload?.o?.rol === 'string') return `org:${jwtPayload.o.rol}`;
   if (typeof jwtPayload?.org_role === 'string') return jwtPayload.org_role;
   return null;
+}
+
+// ── RFT-122: platform operator gate ──────────────────────────────────────────
+// Identity check for the /console/* route class. Orthogonal to org:admin —
+// platform operators see all tenants regardless of which Clerk org they
+// belong to. PLATFORM_OPERATORS env var is a comma-separated list of Clerk
+// user IDs (the `sub` claim on the JWT). Until set, every /console/* call
+// returns 403 — fail-closed is the intended posture for a brand-new admin
+// surface, deliberately so the rollout window doesn't leave a wide-open
+// "see everything" surface.
+async function platformOperatorGate(request, env) {
+  const { error, payload } = await requireClerkJWT(request, env);
+  if (error) return { error };
+  const userId = payload?.sub;
+  if (!userId) return { error: json({ ok: false, error: 'no_sub_in_jwt' }, 401) };
+  const operators = (env.PLATFORM_OPERATORS || '')
+    .split(',').map(s => s.trim()).filter(Boolean);
+  if (!operators.length) {
+    return { error: json({
+      ok: false, error: 'platform_operators_not_configured',
+      detail: 'Set PLATFORM_OPERATORS via wrangler secret put — comma-separated Clerk user IDs.',
+    }, 503) };
+  }
+  if (!operators.includes(userId)) {
+    return { error: json({ ok: false, error: 'not_platform_operator' }, 403) };
+  }
+  return { payload, userId };
 }
 
 // ── RFT-96: cross-tenant attempt observability ───────────────────────────────
@@ -2662,6 +2716,375 @@ async function handleSync(uuid, env) {
     await writeEvent(env, 'sync_failed', uuid, { error: err.message });
     return json({ ok: false, error: err.message }, 500);
   }
+}
+
+// ── RFT-122: Platform operator console (/console/*) ─────────────────────────
+//
+// Cross-tenant admin surface. Platform operators see every tenant regardless
+// of org membership; teardown deletes Clerk org + R2 + D1 + KV in one call.
+//
+// Endpoints (all gated by platformOperatorGate):
+//   GET  /console/tenants                       — list, with Clerk + D1 aggregates
+//   GET  /console/tenants/:uuid                 — single-tenant detail
+//   POST /console/tenants/:uuid/teardown        — full nuke (prod requires confirm_slug)
+//   POST /console/tenants/:uuid/environment     — set environment tag
+//   POST /console/backfill-environment          — one-shot dev+bvt env field write
+
+const CLERK_API_BASE = 'https://api.clerk.com';
+const VALID_ENVIRONMENTS = new Set(['dev', 'bvt', 'prod']);
+
+async function clerkFetch(env, path, init = {}) {
+  if (!env.CLERK_SECRET_KEY) {
+    return { ok: false, status: 503, error: 'clerk_secret_key_not_set' };
+  }
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `Bearer ${env.CLERK_SECRET_KEY}`);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  try {
+    const res = await fetch(`${CLERK_API_BASE}${path}`, { ...init, headers });
+    let data = null;
+    const text = await res.text();
+    if (text) {
+      try { data = JSON.parse(text); } catch { data = { _raw: text.slice(0, 200) }; }
+    }
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, error: e.message };
+  }
+}
+
+async function handleConsole(request, env, url, jwtPayload, userId) {
+  const { method } = request;
+  const path = url.pathname;
+
+  if (method === 'GET' && path === '/console/tenants') {
+    return handleConsoleTenants(env);
+  }
+  if (method === 'POST' && path === '/console/backfill-environment') {
+    return handleConsoleBackfillEnvironment(env);
+  }
+  const tenantMatch = path.match(/^\/console\/tenants\/([0-9a-f-]{36})(\/[a-z-]+)?$/i);
+  if (tenantMatch) {
+    const [, uuid, action] = tenantMatch;
+    if (method === 'GET' && !action) return handleConsoleTenantDetail(uuid, env);
+    if (method === 'POST' && action === '/teardown') return handleConsoleTeardown(uuid, request, env, userId);
+    if (method === 'POST' && action === '/environment') return handleConsoleSetEnvironment(uuid, request, env);
+  }
+  return json({ ok: false, error: 'console_route_not_found', path }, 404);
+}
+
+// GET /console/tenants — cross-tenant list with enrichment. KV scan is the
+// authoritative source of tenants; Clerk + D1 lookups degrade gracefully (a
+// per-tenant fetch failure returns null for that tenant's enriched fields,
+// not a 500 for the whole list).
+async function handleConsoleTenants(env) {
+  const tenants = [];
+  let cursor;
+  do {
+    const page = await env.RAFTER_CLIENTS.list({ prefix: CLIENT_PREFIX, cursor, limit: 1000 });
+    for (const k of page.keys) {
+      const uuid = k.name.slice(CLIENT_PREFIX.length);
+      if (!/^[0-9a-f-]{36}$/i.test(uuid)) continue;
+      tenants.push({ uuid });
+    }
+    cursor = page.list_complete ? undefined : page.cursor;
+  } while (cursor);
+
+  // Enrich each tenant. Bounded fan-out (Promise.all over the per-tenant set);
+  // tradie working set is on the order of tens, so a flat parallel resolve is
+  // fine. Reconsider if the platform crosses ~200 tenants.
+  await Promise.all(tenants.map((t) => enrichTenantSummary(t, env)));
+
+  // Aggregate counts for the console summary cards (computed here so the UI
+  // doesn't have to re-derive — keeps the console rendering trivial).
+  const aggregates = {
+    total: tenants.length,
+    by_environment: { dev: 0, bvt: 0, prod: 0, unset: 0 },
+    sm8_connected: tenants.filter(t => t.sm8_connected).length,
+    quotes_last_7d: tenants.reduce((acc, t) => acc + (t.quotes_last_7d || 0), 0),
+    drafts_total: tenants.reduce((acc, t) => acc + (t.drafts || 0), 0),
+  };
+  for (const t of tenants) {
+    const env_ = t.environment && VALID_ENVIRONMENTS.has(t.environment) ? t.environment : 'unset';
+    aggregates.by_environment[env_] += 1;
+  }
+
+  return json({ ok: true, tenants, aggregates });
+}
+
+async function enrichTenantSummary(t, env) {
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + t.uuid).catch(() => null);
+  if (!raw) { t.error = 'kv_record_missing'; return; }
+  let rec;
+  try { rec = JSON.parse(raw); }
+  catch { t.error = 'kv_record_corrupt'; return; }
+
+  t.slug = rec.slug || '';
+  t.company_name = rec.company_name || '';
+  t.environment = rec.environment || null;
+  t.gate_enforced = rec.gate_enforced !== false; // default true (RFT-87 b flip)
+  t.sm8_connected = !!rec.access_token;
+  t.token_expires_at = rec.expires_at || null;
+  t.materials_synced_at = rec.materials_synced_at || null;
+  t.clerk_org_id = rec.clerk_org_id || null;
+  t.created_at = rec.connected_at || null;
+
+  // Clerk org enrichment — best effort, never a hard failure.
+  if (t.clerk_org_id) {
+    const orgRes = await clerkFetch(env, `/v1/organizations/${encodeURIComponent(t.clerk_org_id)}`);
+    if (orgRes.ok && orgRes.data) {
+      t.clerk = {
+        name: orgRes.data.name || '',
+        members_count: orgRes.data.members_count ?? null,
+        slug: orgRes.data.slug || '',
+      };
+    } else {
+      t.clerk = null;
+      t.clerk_error = orgRes.error || `clerk_${orgRes.status}`;
+    }
+  } else {
+    t.clerk = null;
+  }
+
+  // D1 aggregates — events + quotes counts.
+  if (env.RAFTER_EVENTS) {
+    try {
+      const cutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const ev = await env.RAFTER_EVENTS.prepare(
+        `SELECT
+           (SELECT MAX(occurred_at) FROM events WHERE client_uuid = ?1 AND event_type = 'quote_submitted') AS last_submit,
+           (SELECT COUNT(*) FROM events WHERE client_uuid = ?1 AND event_type = 'quote_submitted') AS submit_count,
+           (SELECT COUNT(*) FROM events WHERE client_uuid = ?1 AND event_type = 'quote_submitted' AND occurred_at >= ?2) AS submit_7d`
+      ).bind(t.uuid, cutoff).first();
+      t.last_quote_submitted_at = ev?.last_submit || null;
+      t.quotes_total = ev?.submit_count ?? 0;
+      t.quotes_last_7d = ev?.submit_7d ?? 0;
+    } catch (e) {
+      t.events_error = e.message;
+    }
+  }
+  if (env.RAFTER_QUOTES) {
+    try {
+      const q = await env.RAFTER_QUOTES.prepare(
+        `SELECT
+           COUNT(*) AS total,
+           SUM(CASE WHEN status = 'draft' THEN 1 ELSE 0 END) AS drafts,
+           SUM(CASE WHEN status = 'submitted' THEN 1 ELSE 0 END) AS submitted,
+           SUM(CASE WHEN status = 'superseded' THEN 1 ELSE 0 END) AS superseded
+         FROM quotes WHERE client_uuid = ?1`
+      ).bind(t.uuid).first();
+      t.quotes_in_d1 = q?.total ?? 0;
+      t.drafts = q?.drafts ?? 0;
+      t.submitted_in_d1 = q?.submitted ?? 0;
+      t.superseded_in_d1 = q?.superseded ?? 0;
+    } catch (e) {
+      t.quotes_error = e.message;
+    }
+  }
+}
+
+// GET /console/tenants/:uuid — single-tenant detail. Same shape as the list
+// entry plus R2 stats + last-10 events + last-10 quotes.
+async function handleConsoleTenantDetail(uuid, env) {
+  const t = { uuid };
+  await enrichTenantSummary(t, env);
+  if (t.error) return json({ ok: false, error: t.error, uuid }, 404);
+
+  // R2 stats — count + total bytes + per-category breakdown.
+  if (env.RAFTER_ASSETS) {
+    const prefix = `clients/${uuid}/photos/`;
+    let count = 0, bytes = 0;
+    const byCategory = {};
+    let cursor;
+    do {
+      const page = await env.RAFTER_ASSETS.list({ prefix, cursor, limit: 1000 });
+      for (const obj of page.objects) {
+        count += 1;
+        bytes += obj.size || 0;
+        const rest = obj.key.slice(prefix.length);
+        const slash = rest.indexOf('/');
+        const cat = slash >= 0 ? rest.slice(0, slash) : '_root';
+        byCategory[cat] = (byCategory[cat] || 0) + 1;
+      }
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+    t.r2 = { photo_count: count, photo_bytes: bytes, by_category: byCategory };
+  }
+
+  // Last 10 events.
+  if (env.RAFTER_EVENTS) {
+    try {
+      const res = await env.RAFTER_EVENTS.prepare(
+        'SELECT id, event_type, occurred_at, payload FROM events WHERE client_uuid = ? ORDER BY occurred_at DESC LIMIT 10'
+      ).bind(uuid).all();
+      t.recent_events = (res.results || []).map(r => {
+        let payload = null;
+        try { payload = r.payload ? JSON.parse(r.payload) : null; } catch { payload = { _raw: (r.payload || '').slice(0, 200) }; }
+        return { id: r.id, event_type: r.event_type, occurred_at: r.occurred_at, payload };
+      });
+    } catch (e) { t.events_error = e.message; t.recent_events = []; }
+  }
+
+  // Last 10 quotes.
+  if (env.RAFTER_QUOTES) {
+    try {
+      const res = await env.RAFTER_QUOTES.prepare(
+        'SELECT quote_ref, status, version, sm8_job_uuid, created_at, updated_at FROM quotes WHERE client_uuid = ? ORDER BY updated_at DESC LIMIT 10'
+      ).bind(uuid).all();
+      t.recent_quotes = res.results || [];
+    } catch (e) { t.quotes_error = e.message; t.recent_quotes = []; }
+  }
+
+  return json({ ok: true, tenant: t });
+}
+
+// POST /console/tenants/:uuid/teardown — full platform-side teardown. Same
+// ordered cleanup as RFT-30 plus the Clerk org delete (platform operator can
+// delete the Clerk side; tenant self-teardown cannot). Prod environment
+// requires confirm_slug match to dodge a wrong-tenant clobber.
+async function handleConsoleTeardown(uuid, request, env, operatorUserId) {
+  const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + uuid).catch(() => null);
+  if (!raw) return json({ ok: false, error: 'client_not_found', uuid }, 404);
+  let record;
+  try { record = JSON.parse(raw); }
+  catch { return json({ ok: false, error: 'client_record_corrupt' }, 500); }
+
+  const environment = record.environment || null;
+  const slug = record.slug || null;
+  const clerkOrgId = record.clerk_org_id || null;
+
+  // Prod safety gate. Dev/BVT are test environments — destructive is fine.
+  // Prod requires the caller to type the slug as confirmation (Linear-style
+  // delete-repo prompt). If environment isn't set yet, treat as prod
+  // (fail-safe).
+  if (environment !== 'dev' && environment !== 'bvt') {
+    let body = null;
+    try { body = await request.json(); } catch {}
+    const confirmSlug = body?.confirm_slug;
+    if (!confirmSlug || confirmSlug !== slug) {
+      return json({
+        ok: false, error: 'prod_confirmation_required',
+        detail: `Type the tenant's slug as body.confirm_slug to confirm. environment=${environment ?? 'unset'} (treated as prod).`,
+        expected: slug,
+      }, 400);
+    }
+  }
+
+  const report = {
+    uuid, slug, environment,
+    clerk_org_deleted: false,
+    clerk_error: null,
+    r2_objects_deleted: 0,
+    quotes_deleted: 0,
+    events_deleted: 0,
+    operator_user_id: operatorUserId,
+    at: new Date().toISOString(),
+  };
+
+  // 1. Clerk org delete — best effort. A Clerk failure does NOT stop the
+  //    KV/R2/D1 cleanup; the operator can re-issue the Clerk delete from
+  //    the dashboard if it didn't take.
+  if (clerkOrgId) {
+    const del = await clerkFetch(env, `/v1/organizations/${encodeURIComponent(clerkOrgId)}`, { method: 'DELETE' });
+    report.clerk_org_deleted = del.ok;
+    if (!del.ok) report.clerk_error = del.error || `clerk_${del.status}`;
+    console.log(JSON.stringify({ event: 'console_clerk_org_delete', uuid, clerkOrgId, ok: del.ok, status: del.status }));
+  }
+
+  // 2. R2 — list and batch-delete under the tenant prefix.
+  if (env.RAFTER_ASSETS) {
+    const r2Prefix = `clients/${uuid}/`;
+    let cursor;
+    do {
+      const page = await env.RAFTER_ASSETS.list({ prefix: r2Prefix, cursor, limit: 1000 });
+      if (page.objects.length === 0) break;
+      const keys = page.objects.map((o) => o.key);
+      await env.RAFTER_ASSETS.delete(keys);
+      report.r2_objects_deleted += keys.length;
+      cursor = page.truncated ? page.cursor : undefined;
+    } while (cursor);
+  }
+
+  // 3. D1 rafter-quotes — all rows.
+  if (env.RAFTER_QUOTES) {
+    try {
+      const res = await env.RAFTER_QUOTES.prepare('DELETE FROM quotes WHERE client_uuid = ?').bind(uuid).run();
+      report.quotes_deleted = res.meta?.changes ?? 0;
+    } catch (e) { report.quotes_error = e.message; }
+  }
+
+  // 4. D1 rafter-events — all rows.
+  if (env.RAFTER_EVENTS) {
+    try {
+      const res = await env.RAFTER_EVENTS.prepare('DELETE FROM events WHERE client_uuid = ?').bind(uuid).run();
+      report.events_deleted = res.meta?.changes ?? 0;
+    } catch (e) { report.events_error = e.message; }
+  }
+
+  // 5. KV reverse indexes + canonical record. canonical LAST so a partial-
+  //    failure leaves a discoverable record for retry, not orphan indexes.
+  if (record.slug) await env.RAFTER_CLIENTS.delete(SLUG_PREFIX + record.slug).catch(() => {});
+  if (clerkOrgId) await env.RAFTER_CLIENTS.delete('clerk_org:' + clerkOrgId).catch(() => {});
+  await env.RAFTER_CLIENTS.delete(CLIENT_PREFIX + uuid);
+
+  // 6. Telegram alert — fire-and-forget. Console teardown is a paging event
+  //    (irreversible action on production data, even for dev/bvt — operator
+  //    error visibility wins over alert noise).
+  const tg =
+    `🗑️ Tenant torn down (${environment || 'unset'})\n` +
+    `slug=${slug || '?'} uuid=${uuid}\n` +
+    `clerk_org=${report.clerk_org_deleted ? 'deleted' : (clerkOrgId ? 'failed' : 'none')}\n` +
+    `r2=${report.r2_objects_deleted} quotes=${report.quotes_deleted} events=${report.events_deleted}\n` +
+    `by ${operatorUserId}`;
+  sendTelegramAlert(tg, env).catch(() => {});
+
+  return json({ ok: true, torn_down: true, ...report });
+}
+
+// POST /console/tenants/:uuid/environment — set environment tag.
+async function handleConsoleSetEnvironment(uuid, request, env) {
+  let body;
+  try { body = await request.json(); }
+  catch { return json({ ok: false, error: 'invalid_json' }, 400); }
+  const environment = body?.environment;
+  if (!VALID_ENVIRONMENTS.has(environment)) {
+    return json({ ok: false, error: 'invalid_environment', allowed: [...VALID_ENVIRONMENTS] }, 400);
+  }
+  const ok = await mutateClientRecord(uuid, env, (rec) => { rec.environment = environment; });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, uuid, environment });
+}
+
+// POST /console/backfill-environment — one-shot. Sets environment on the
+// two legacy non-prod tenants (dev + bvt). Andy's record is INTENTIONALLY
+// not included; Will sets it via /console/tenants/:uuid/environment after
+// review. New tenants set the field at provision time (separate ticket).
+const BACKFILL_TARGETS = [
+  { uuid: '010895db-e06c-465d-bce9-2424477be15b', environment: 'dev' },
+  { uuid: 'df902850-7e48-4e7a-8f2c-b3a65b6881da', environment: 'bvt' },
+];
+async function handleConsoleBackfillEnvironment(env) {
+  const report = [];
+  for (const target of BACKFILL_TARGETS) {
+    const raw = await env.RAFTER_CLIENTS.get(CLIENT_PREFIX + target.uuid).catch(() => null);
+    if (!raw) { report.push({ ...target, action: 'skipped_not_found' }); continue; }
+    let rec;
+    try { rec = JSON.parse(raw); }
+    catch { report.push({ ...target, action: 'skipped_corrupt' }); continue; }
+    if (rec.environment === target.environment) {
+      report.push({ ...target, action: 'noop_already_set' });
+      continue;
+    }
+    const previous = rec.environment ?? null;
+    const ok = await mutateClientRecord(target.uuid, env, (r) => { r.environment = target.environment; });
+    report.push({ ...target, action: ok ? 'set' : 'failed', previous });
+  }
+  return json({
+    ok: true,
+    targets_attempted: BACKFILL_TARGETS.length,
+    report,
+    note: "Andy's record (0e604a45-…) is excluded — set via POST /console/tenants/{uuid}/environment after explicit review.",
+  });
 }
 
 // ── Tenant teardown (RFT-30) ─────────────────────────────────────────────────
