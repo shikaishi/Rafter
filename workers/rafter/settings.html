@@ -1081,6 +1081,7 @@ const PANE_RENDERERS = {
   'credentials':        () => renderCredentialsCard(),
   'email-template':     () => renderEmailTemplateCard(),
   'branding':           () => renderBrandingCard(),
+  'quote-title':        () => renderQuoteTitleCard(),
   'sm8-connection':     () => renderSm8ConnectionCard(),
 };
 const PANE_WIRERS = {
@@ -1091,6 +1092,7 @@ const PANE_WIRERS = {
   'credentials':        wireCredentialsPane,
   'email-template':     wireEmailTemplatePane,
   'branding':           wireBrandingPane,
+  'quote-title':        wireQuoteTitlePane,
   'sm8-connection':     wireSm8ConnectionPane,
 };
 function rerenderCard(pane) {
@@ -1261,6 +1263,7 @@ function renderConfigCards() {
     renderCredentialsCard(),
     renderEmailTemplateCard(),
     renderBrandingCard(),
+    renderQuoteTitleCard(),
     renderSm8ConnectionCard(),
   ].join('');
 
@@ -1281,6 +1284,7 @@ function renderConfigCards() {
   wireCredentialsPane(root);
   wireEmailTemplatePane(root);
   wireBrandingPane(root);
+  wireQuoteTitlePane(root);
   wireSm8ConnectionPane(root);
 }
 
@@ -2407,6 +2411,162 @@ async function resetBranding() {
     if (status) { status.textContent = 'Reset to default'; status.className = 'config-save-status ok'; }
     toast('Branding reset', 'ok');
     rerenderCard('branding');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't reset: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Reset failed: ${e.message || e}`, 'err');
+  }
+}
+
+// ─── RFT-67: Quote title format ──────────────────────────────────────────────
+//
+// Per-tenant override for the PDF cover title. Pdf worker substitutes merge
+// tags ({type}, {customer}, {street}, {suburb}, {ref}, {date}) at render
+// time and falls back to the platform default ("{type} — {street}, {suburb}")
+// when the field is empty.
+
+const QUOTE_TITLE_PLATFORM_DEFAULT = '{type} — {street}, {suburb}';
+const QUOTE_TITLE_TAGS = ['type', 'customer', 'street', 'suburb', 'ref', 'date'];
+const QUOTE_TITLE_PREVIEW_SAMPLE = {
+  type: 'Quote',
+  customer: 'Sample Customer',
+  client_name: 'Sample Customer',
+  street: '12 Sample Street',
+  suburb: 'Brunswick',
+  ref: 'Q-20260614-1430',
+  date: '14 June 2026',
+};
+
+function renderQuoteTitleCard() {
+  const current = (state.config?.quote_title_format || '').trim();
+  const expanded = configCardOpen('quote-title');
+  const summaryText = current || `Platform default — ${QUOTE_TITLE_PLATFORM_DEFAULT}`;
+  return `
+    <div class="config-card${expanded ? ' expanded' : ''}" data-pane="quote-title">
+      <div class="config-card-head" data-action="toggle-config">
+        <div class="config-card-titles">
+          <div class="config-card-title">Quote title format</div>
+          <div class="config-card-summary${current ? '' : ' empty'}">${esc(summaryText)}</div>
+        </div>
+        <i class="ti ti-chevron-down config-card-chevron"></i>
+      </div>
+      <div class="config-card-body">
+        <div style="font-size:12px;color:var(--rf-muted);margin-bottom:10px;">
+          The title that appears on the PDF cover. Leave empty to use the platform default
+          (<code style="font-size:11px;background:var(--rf-row-bg);padding:1px 4px;border-radius:3px;">${esc(QUOTE_TITLE_PLATFORM_DEFAULT)}</code>).
+          Click a tag below to insert it at the cursor.
+        </div>
+        <div class="merge-fields" id="qt-tag-row" style="margin-bottom:10px;">
+          <span style="font-size:11px;color:var(--rf-muted);align-self:center;">Insert:</span>
+          ${QUOTE_TITLE_TAGS.map(t => `<span class="merge-tag" data-qt-tag="${esc(t)}">{${esc(t)}}</span>`).join('')}
+        </div>
+        <div class="config-field">
+          <label for="cfg-quote_title_format">Format</label>
+          <input type="text" id="cfg-quote_title_format" value="${esc(current)}" placeholder="${esc(QUOTE_TITLE_PLATFORM_DEFAULT)}" maxlength="200" autocomplete="off">
+        </div>
+        <div class="config-field">
+          <label>Preview</label>
+          <div id="cfg-quote_title_preview" style="font-family:'Playfair Display',serif;font-size:18px;color:var(--rf-green);padding:10px 12px;background:var(--rf-row-bg);border-radius:6px;min-height:32px;">${esc(applyQuoteTitleSubs(current || QUOTE_TITLE_PLATFORM_DEFAULT))}</div>
+          <div class="config-field-hint">Rendered with sample data — your real quotes substitute the customer's details.</div>
+        </div>
+        <div class="config-actions">
+          <button class="btn primary" data-action="save-quote-title"><i class="ti ti-check"></i>Save</button>
+          <button class="btn" data-action="reset-quote-title" style="margin-left:4px;"><i class="ti ti-restore"></i>Reset to default</button>
+          <span class="config-save-status" data-status="quote-title"></span>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function applyQuoteTitleSubs(fmt) {
+  if (!fmt) return '';
+  return fmt
+    .replace(/\{(type|customer|client_name|street|suburb|ref|date)\}/g, (_, k) => QUOTE_TITLE_PREVIEW_SAMPLE[k] ?? '')
+    .replace(/\s+,/g, ',')
+    .replace(/,\s*,/g, ',')
+    .replace(/^[\s,—-]+|[\s,—-]+$/g, '')
+    .replace(/\s{2,}/g, ' ')
+    .trim();
+}
+
+function wireQuoteTitlePane(root) {
+  const card = root.querySelector('.config-card[data-pane="quote-title"]');
+  if (!card) return;
+  const input = card.querySelector('#cfg-quote_title_format');
+  const preview = card.querySelector('#cfg-quote_title_preview');
+
+  // Merge tag pill click → insert at cursor.
+  card.querySelectorAll('[data-qt-tag]').forEach(pill => {
+    pill.addEventListener('click', () => {
+      const tag = `{${pill.dataset.qtTag}}`;
+      const start = input.selectionStart ?? input.value.length;
+      const end = input.selectionEnd ?? input.value.length;
+      input.value = input.value.slice(0, start) + tag + input.value.slice(end);
+      const pos = start + tag.length;
+      input.setSelectionRange(pos, pos);
+      input.focus();
+      preview.textContent = applyQuoteTitleSubs(input.value || QUOTE_TITLE_PLATFORM_DEFAULT);
+    });
+  });
+
+  // Live preview as the operator types.
+  if (input && preview) {
+    input.addEventListener('input', () => {
+      preview.textContent = applyQuoteTitleSubs(input.value || QUOTE_TITLE_PLATFORM_DEFAULT);
+    });
+  }
+
+  const saveBtn = card.querySelector('[data-action="save-quote-title"]');
+  if (saveBtn) saveBtn.addEventListener('click', saveQuoteTitle);
+  const resetBtn = card.querySelector('[data-action="reset-quote-title"]');
+  if (resetBtn) resetBtn.addEventListener('click', resetQuoteTitle);
+}
+
+async function saveQuoteTitle() {
+  const status = document.querySelector('[data-status="quote-title"]');
+  const btn = document.querySelector('[data-action="save-quote-title"]');
+  if (!btn) return;
+  const fmt = ($('cfg-quote_title_format')?.value || '').trim();
+  btn.disabled = true;
+  const orig = btn.innerHTML;
+  btn.innerHTML = '<i class="ti ti-loader-2"></i>Saving…';
+  if (status) { status.textContent = ''; status.className = 'config-save-status'; }
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/quote-title`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quote_title_format: fmt }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `save_${res.status}`);
+    state.config.quote_title_format = fmt;
+    if (status) { status.textContent = 'Saved'; status.className = 'config-save-status ok'; }
+    toast('Quote title format saved', 'ok');
+    rerenderCard('quote-title');
+  } catch (e) {
+    if (status) { status.textContent = `Couldn't save: ${e.message || e}`; status.className = 'config-save-status err'; }
+    toast(`Save failed: ${e.message || e}`, 'err');
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = orig;
+  }
+}
+
+async function resetQuoteTitle() {
+  if (!confirm('Reset quote title to the platform default? This clears any custom format.')) return;
+  const status = document.querySelector('[data-status="quote-title"]');
+  try {
+    const res = await authedFetch(`${ADMIN_API}/settings/config/quote-title`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ quote_title_format: '' }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || `reset_${res.status}`);
+    state.config.quote_title_format = '';
+    if (status) { status.textContent = 'Reset to default'; status.className = 'config-save-status ok'; }
+    toast('Quote title reset to default', 'ok');
+    rerenderCard('quote-title');
   } catch (e) {
     if (status) { status.textContent = `Couldn't reset: ${e.message || e}`; status.className = 'config-save-status err'; }
     toast(`Reset failed: ${e.message || e}`, 'err');

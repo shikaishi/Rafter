@@ -507,6 +507,7 @@ async function handleSettings(request, env, url, jwtPayload) {
   if (method === 'POST' && path === '/settings/config/credentials')        return handleSettingsConfigCredentials(uuid, request, env);
   if (method === 'POST' && path === '/settings/config/email-template')     return handleSettingsConfigEmailTemplate(uuid, request, env);
   if (method === 'POST' && path === '/settings/config/branding')           return handleSettingsConfigBranding(uuid, request, env);
+  if (method === 'POST' && path === '/settings/config/quote-title')        return handleSettingsConfigQuoteTitle(uuid, request, env);
   // RFT-102 Phase 3: branding-presets read proxies the pdf worker's PRESETS
   // table via the PDF_WORKER service binding. Single-source — never inline
   // the palette list into settings.html (swatch-vs-PDF drift is the worst
@@ -595,6 +596,7 @@ async function handleSettingsState(uuid, env) {
       terms_and_conditions: Array.isArray(record.terms_and_conditions) ? record.terms_and_conditions : [],
       email_template:       record.email_template || '',
       branding:             record.branding ?? null,
+      quote_title_format:   record.quote_title_format || '',
     },
     // RFT-118 follow-up: SM8 connection health for the Settings →
     // ServiceM8 connection pane. connected is server-derived (boolean —
@@ -1580,6 +1582,32 @@ async function handleSettingsConfigBranding(uuid, request, env) {
   });
   if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
   return json({ ok: true, keys: Object.keys(updates) });
+}
+
+// RFT-67 — per-tenant quote_title_format. Single scalar string. The pdf
+// worker substitutes merge tags ({type}, {customer}, {client_name}, {street},
+// {suburb}, {ref}, {date}) when rendering the PDF cover. Empty string OR
+// null clears the override — buildJobTitle then falls back to the platform
+// default ("{type} — {street}, {suburb}"). Max length capped low so the
+// cover stays legible; the renderer also collapses double-separators when
+// any tag substitutes to "".
+async function handleSettingsConfigQuoteTitle(uuid, request, env) {
+  const body = await parseBody(request);
+  if (!body) return json({ ok: false, error: 'invalid_json' }, 400);
+  const reject = rejectForbiddenConfigKeys(body);
+  if (reject) return reject;
+
+  if (body.quote_title_format === undefined) {
+    return json({ ok: false, error: 'missing_quote_title_format' }, 400);
+  }
+  const { fields, errors } = pickStringFields(body, ['quote_title_format'], { maxLen: 200 });
+  if (errors.length) return json({ ok: false, error: 'invalid_quote_title_format', errors }, 400);
+
+  const ok = await mutateClientRecord(uuid, env, (record) => {
+    record.quote_title_format = fields.quote_title_format || '';
+  });
+  if (!ok) return json({ ok: false, error: 'client_not_found' }, 404);
+  return json({ ok: true, quote_title_format: fields.quote_title_format });
 }
 
 // GET /settings/branding-presets — proxies the pdf worker's PRESETS table

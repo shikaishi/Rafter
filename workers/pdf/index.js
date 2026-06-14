@@ -441,7 +441,7 @@ function buildHtml({ payload, client, logoDataUrl, photoMap }) {
   const siteAddress = formatSiteAddress(payload.site_address);
   const palette = resolveBranding(client.branding);
   const proposalLabels = buildProposalTypeLabels(client.proposal_types);
-  const jobTitle = buildJobTitle(payload, proposalLabels);
+  const jobTitle = buildJobTitle(payload, proposalLabels, client);
 
   // RFT-32: prominent version marker on PDF face for v>1. Approval-risk
   // mitigation — if a customer signs the PDF, the document itself must state
@@ -940,11 +940,32 @@ function formatSiteAddress(addr) {
   return String(addr).replace(/,\s*Australia\s*$/i, "").trim();
 }
 
-function buildJobTitle(payload, labels) {
+function buildJobTitle(payload, labels, client) {
   if (payload.job_title) return payload.job_title;
   const typeLabel = (labels && labels[payload.proposal_type]) || "Proposal";
   const street = payload.street_address || parseStreet(payload.site_address);
   const suburb = payload.suburb || parseSuburb(payload.site_address);
+
+  // RFT-67 — per-tenant quote_title_format with merge tags. Falls back to the
+  // platform default ("{typeLabel} — {street}, {suburb}") when unset or
+  // resolves to empty after substitution (defensive — an operator who clears
+  // the format should never produce a blank cover).
+  const fmt = (client && typeof client.quote_title_format === "string" && client.quote_title_format.trim()) || "";
+  if (fmt) {
+    const customer = payload.client_name || "";
+    const ref = payload.quote_ref || "";
+    const date = payload.proposal_date || "";
+    const subs = { type: typeLabel, customer, client_name: customer, street, suburb, ref, date };
+    const rendered = fmt
+      .replace(/\{(type|customer|client_name|street|suburb|ref|date)\}/g, (_, k) => subs[k] ?? "")
+      .replace(/\s+,/g, ",")     // collapse "{customer}, {street}" with customer=""
+      .replace(/,\s*,/g, ",")
+      .replace(/^[\s,—-]+|[\s,—-]+$/g, "") // strip leading/trailing separators
+      .replace(/\s{2,}/g, " ")
+      .trim();
+    if (rendered) return rendered;
+  }
+
   const location = [street, suburb].filter(Boolean).join(", ");
   return location ? `${typeLabel} — ${location}` : typeLabel;
 }
