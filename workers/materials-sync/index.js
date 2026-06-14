@@ -549,7 +549,21 @@ async function handleGetPhoto(request, url, env) {
   // closed; R2 paths embed random-suffixed filenames so per-key guessing is
   // impractical. Follow-up to convert <img src> sites to blob-loaded fetches
   // (or a signed-URL pattern) tracked separately.
-  if (!key.startsWith(PHOTO_PREFIX(uuid))) return new Response("forbidden", { status: 403 });
+  if (!key.startsWith(PHOTO_PREFIX(uuid))) {
+    // RFT-96 — pairing the uuid in the query with an R2 key for a different
+    // tenant is the textbook cross-tenant pattern this alert was built for.
+    // resolved_uuid is what the key would belong to (derived from the key
+    // prefix when shape matches); requested_uuid is the uuid query param.
+    const keyPrefix = key.match(/^clients\/([0-9a-f-]{36})\/photos\//i)?.[1] || null;
+    logCrossTenantAttempt(env, request, {
+      endpoint: "/photo",
+      method: "GET",
+      requested_uuid: uuid,
+      resolved_uuid: keyPrefix,
+      detail: `key=${key.slice(0, 120)}`,
+    });
+    return new Response("forbidden", { status: 403 });
+  }
   const obj = await env.RAFTER_ASSETS.get(key);
   if (!obj) return new Response("not_found", { status: 404 });
   const mime = obj.httpMetadata?.contentType || mimeFromKey(key);
@@ -739,6 +753,40 @@ async function sendTelegramAlert(text, env) {
   } catch (e) {
     console.error(JSON.stringify({ event: "telegram_send_error", error: e.message }));
   }
+}
+
+// RFT-96 — cross-tenant attempt observability. Fire-and-forget — never
+// blocks or fails the 4xx response. console.log captures the structured
+// event for log retention; writeD1Event persists for retrospective queries;
+// sendTelegramAlert pages the on-call channel. Telegram + D1 errors are
+// swallowed inside their helpers, so the outer .catch is belt-and-braces
+// against any rejection that escapes them.
+function logCrossTenantAttempt(env, request, details) {
+  const event = {
+    event: "cross_tenant_attempt",
+    worker: "materials-sync",
+    endpoint: details.endpoint || "",
+    method: details.method || "",
+    requested_uuid: details.requested_uuid || null,
+    resolved_uuid: details.resolved_uuid || null,
+    detail: details.detail || null,
+    source_ip: request?.headers?.get?.("cf-connecting-ip") || null,
+    user_agent: (request?.headers?.get?.("user-agent") || "").slice(0, 120),
+    occurred_at: new Date().toISOString(),
+  };
+  console.log(JSON.stringify(event));
+  writeD1Event(env, "cross_tenant_attempt", event.resolved_uuid, event).catch(() => {});
+  sendCrossTenantTelegram(env, event).catch(() => {});
+}
+
+function sendCrossTenantTelegram(env, ev) {
+  const short = (u) => u ? String(u).slice(0, 8) : "?";
+  const text =
+    `⚠️ Cross-tenant attempt (${ev.worker})\n` +
+    `${ev.method} ${ev.endpoint}\n` +
+    `requested ${short(ev.requested_uuid)} from scope ${short(ev.resolved_uuid)}\n` +
+    `ip ${ev.source_ip || "?"}` + (ev.detail ? `\ndetail: ${String(ev.detail).slice(0, 200)}` : "");
+  return sendTelegramAlert(text, env);
 }
 
 // writeD1Event: append a row to rafter-events.events.
@@ -1438,6 +1486,16 @@ async function handleGetDraft(request, quote_ref, url, env) {
   // Composite WHERE above already enforces tenant scoping at the query layer
   // (RFT-92 audit Finding F3). Belt-and-braces row check kept as defence-in-depth:
   if (row.client_uuid !== a.uuid) {
+    // RFT-96 — if this branch ever fires, the composite WHERE returned a row
+    // outside scope, which is a structural alert (D1 query failure, not a
+    // typical cross-tenant attempt). Worth paging on regardless.
+    logCrossTenantAttempt(env, request, {
+      endpoint: "/draft/{ref}",
+      method: "GET",
+      requested_uuid: row.client_uuid,
+      resolved_uuid: a.uuid,
+      detail: `quote_ref=${quote_ref} — D1 row returned despite composite WHERE`,
+    });
     return json({ error: "draft_not_found", quote_ref }, { status: 404 });
   }
 
