@@ -705,6 +705,7 @@ async function handleSettingsState(uuid, env) {
     name: t.name || '',
     text: t.text || '',
     sm8_template_uuid: t.sm8_template_uuid || '',
+    source: t.source || 'sm8', // RFT-125 — 'rafter' for Rafter-managed sections
   }));
 
   // Photos grouped by R2 category prefix, sorted by photo_order from the KV
@@ -1251,24 +1252,36 @@ async function handleSettingsSectionsSync(uuid, env) {
 
   const existing = Array.isArray(record.templates) ? record.templates.slice() : [];
 
-  // Safeguard: SM8 came back empty while Rafter has templates. Almost
-  // certainly a token blip or OAuth misconfig on SM8's side. Refuse rather
-  // than wipe the tenant on one bad response.
-  if (activeTemplates.length === 0 && existing.length > 0) {
+  // RFT-125 — Rafter-managed sections (source: "rafter") are outside the SM8
+  // mirror's scope. Separate them up front; the SM8 diff only operates on
+  // SM8-derived entries. Rafter-managed entries are stitched back into the
+  // survivors list at the end with their order preserved.
+  const isRafterManaged = (e) => e && e.source === 'rafter';
+  const rafterManaged = existing.filter(isRafterManaged);
+  const sm8Existing = existing.filter(e => !isRafterManaged(e));
+
+  // Safeguard: SM8 came back empty while Rafter has SM8-derived templates.
+  // Almost certainly a token blip or OAuth misconfig on SM8's side. Refuse
+  // rather than wipe the tenant on one bad response. Rafter-managed
+  // sections are excluded from the count — a tenant with only a
+  // Miscellaneous (source: rafter) entry has no SM8 templates to lose, so
+  // this branch must not fire and block the sync.
+  if (activeTemplates.length === 0 && sm8Existing.length > 0) {
     return json({
       ok: false,
       error: 'sm8_returned_empty_with_existing_local',
       code: 'EMPTY_SM8_REFUSE_WIPE',
-      detail: `SM8 reported 0 active templates but Rafter has ${existing.length}. Refusing to wipe. Re-check the SM8 OAuth grant and retry.`,
+      detail: `SM8 reported 0 active templates but Rafter has ${sm8Existing.length}. Refusing to wipe. Re-check the SM8 OAuth grant and retry.`,
     }, 502);
   }
 
-  // First-run uuid backfill: any Rafter entry without sm8_template_uuid
-  // gets matched to an SM8 entry by name. One-time migration from
-  // name-keyed to uuid-keyed identity. After this, uuid alone drives the
-  // diff — including rename detection.
+  // First-run uuid backfill: any SM8-derived Rafter entry without
+  // sm8_template_uuid gets matched to an SM8 entry by name. One-time
+  // migration from name-keyed to uuid-keyed identity. After this, uuid
+  // alone drives the diff — including rename detection. Rafter-managed
+  // entries (source: "rafter") are skipped — they never get an SM8 uuid.
   const sm8ByName = new Map(activeTemplates.map(t => [t.name.trim(), t]));
-  for (const entry of existing) {
+  for (const entry of sm8Existing) {
     if (!entry.sm8_template_uuid) {
       const match = sm8ByName.get((entry.name || '').trim());
       if (match) entry.sm8_template_uuid = match.uuid;
@@ -1276,11 +1289,12 @@ async function handleSettingsSectionsSync(uuid, env) {
   }
 
   const existingByUuid = new Map();
-  for (const entry of existing) {
+  for (const entry of sm8Existing) {
     if (entry.sm8_template_uuid) existingByUuid.set(entry.sm8_template_uuid, entry);
   }
 
-  // Diff
+  // Diff — operates on sm8Existing only. Rafter-managed entries skip the
+  // entire add/update/remove machinery and are merged back at write time.
   const toAdd = [];
   const toUpdate = []; // [{ rafterEntry, sm8Tpl, isRename }]
   const unchanged = [];
@@ -1299,11 +1313,15 @@ async function handleSettingsSectionsSync(uuid, env) {
     }
   }
   const activeUuidSet = new Set(activeTemplates.map(t => t.uuid));
-  const toRemove = existing.filter(e => !e.sm8_template_uuid || !activeUuidSet.has(e.sm8_template_uuid));
+  // toRemove: SM8-derived entries whose sm8_template_uuid is gone (or never
+  // backfilled). Rafter-managed entries are NOT eligible for removal — they
+  // sit alongside the SM8 mirror, not inside it.
+  const toRemove = sm8Existing.filter(e => !e.sm8_template_uuid || !activeUuidSet.has(e.sm8_template_uuid));
 
-  // Working copy that drops removed rows up front. Add/update mutate the
-  // surviving rows in place; ADD appends new rows. Writes back at the end.
-  const survivors = existing.filter(e => !toRemove.includes(e));
+  // Working copy holds the SM8-derived survivors. Rafter-managed entries are
+  // appended below after the SM8 diff completes; their relative order is
+  // preserved from the existing record.
+  const survivors = sm8Existing.filter(e => !toRemove.includes(e));
 
   const createdJobUuids = [];
   const added = [];
@@ -1397,6 +1415,23 @@ async function handleSettingsSectionsSync(uuid, env) {
       added.push(sm8Tpl.name);
     }
     if (newEntries.length) survivors.unshift(...newEntries);
+
+    // RFT-125 — re-attach Rafter-managed sections (source: "rafter") that
+    // sat outside the SM8 mirror diff. They append after the SM8-derived
+    // survivors so admin-set drag order on SM8 sections isn't disturbed.
+    // Their own relative order among themselves is preserved.
+    if (rafterManaged.length) survivors.push(...rafterManaged);
+
+    // RFT-125 — auto-Miscellaneous fallback. If the post-sync templates list
+    // is empty (SM8 had 0 templates AND there were no Rafter-managed
+    // entries — i.e. a never-onboarded-prior tenant whose SM8 has no
+    // templates yet), inject one Miscellaneous so the form picker has at
+    // least one bucket. The EMPTY_SM8_REFUSE_WIPE guard above ensures
+    // we don't hit this branch via a token blip.
+    if (survivors.length === 0) {
+      survivors.push(DEFAULT_MISC_TEMPLATE());
+      added.push('Miscellaneous (auto-injected)');
+    }
 
     // photo_order defence in depth — drop entries for slugs no section now
     // claims. Covers cases where a remove or rename touched a slug that the
@@ -2528,6 +2563,21 @@ async function handleProvision(body, env) {
   }
 }
 
+// RFT-125 — single source of truth for the Rafter-managed Miscellaneous
+// template shape. Used by provisionClient (first-time onboarding) and
+// handleSettingsSectionsSync (auto-injected when SM8 returns 0 and the
+// tenant has nothing). `source: "rafter"` is the load-bearing flag —
+// sections.sync filters these out of the SM8-mirror toRemove list so they
+// survive every sync regardless of what SM8 says.
+function DEFAULT_MISC_TEMPLATE() {
+  return {
+    name: 'Miscellaneous',
+    text: '',
+    sm8_template_uuid: null,
+    source: 'rafter',
+  };
+}
+
 async function provisionClient(body, env) {
   // UUID resolution: explicit → clerk_org reverse lookup → new random
   // Clerk_org lookup ensures webhook stub + form submission share the same UUID (REQ-On-13 merge-safe)
@@ -2569,6 +2619,15 @@ async function provisionClient(body, env) {
       normalised[k] = Array.isArray(v) ? v.join('/') : v;
     }
     record.payment_thresholds = normalised;
+  }
+
+  // RFT-125 — auto-Miscellaneous for empty-template tenants. If the new record
+  // has zero templates (typical pre-SM8-sync state) inject a Rafter-managed
+  // Miscellaneous section so the form picker + photo picker have at least
+  // one bucket from day one. `source: "rafter"` marks it as outside the D11
+  // SM8 mirror — handleSettingsSectionsSync preserves these during sync.
+  if (!Array.isArray(record.templates) || record.templates.length === 0) {
+    record.templates = [DEFAULT_MISC_TEMPLATE()];
   }
 
   // REQ-On-29: uniqueness guard before any write — fail fast so no partial state is left
