@@ -361,14 +361,50 @@ textarea { resize: vertical; min-height: 68px; }
   background: var(--rf-row-bg);
 }
 .brand-preview-label { font-size: 11px; color: var(--rf-muted); margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.05em; }
-.brand-preview-bars { display: flex; gap: 6px; margin-bottom: 8px; }
-.brand-preview-bar {
-  flex: 1; padding: 8px 0; text-align: center; border-radius: 4px;
-  font-size: 11px; font-weight: 700;
+/* RFT-126 — mini-quote mockup. Same shape as settings.html so the operator
+   sees palette in context (header band, section heading, total footer)
+   rather than abstract colour swatches. */
+.mini-quote {
+  background: #fff; border: 0.5px solid var(--rf-border);
+  border-radius: 4px; overflow: hidden;
+  width: 100%; max-width: 380px; margin: 0 auto;
+  font-family: 'Mulish', sans-serif;
 }
-.brand-preview-sample {
-  padding: 10px 12px; border-radius: 4px; font-size: 13px;
+.mini-header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; color: #fff;
 }
+.mini-co { display: flex; align-items: center; gap: 8px; }
+.mini-logo { width: 18px; height: 18px; background: rgba(255,255,255,0.22); border-radius: 3px; flex-shrink: 0; }
+.mini-co-name { font-size: 12px; font-weight: 500; }
+.mini-quote-label { font-size: 10px; opacity: 0.72; letter-spacing: 0.08em; }
+.mini-details {
+  display: flex; gap: 16px; padding: 10px 14px;
+  border-bottom: 0.5px solid var(--rf-divider);
+}
+.mini-col { flex: 1; min-width: 0; }
+.mini-col-right { text-align: right; }
+.mini-col-label { font-size: 10px; color: var(--rf-muted); text-transform: uppercase; letter-spacing: 0.04em; }
+.mini-col-val { font-size: 12px; color: var(--rf-text); margin-top: 2px; font-weight: 500; }
+.mini-section-heading {
+  padding: 6px 14px; font-size: 10px; color: #fff; font-weight: 500;
+  text-transform: uppercase; letter-spacing: 0.06em;
+}
+.mini-scope { padding: 8px 14px; font-size: 10px; color: var(--rf-muted); line-height: 1.5; }
+.mini-scope > div { margin-bottom: 2px; }
+.mini-items { padding: 4px 14px 8px; }
+.mini-item-row {
+  display: flex; justify-content: space-between;
+  padding: 4px 0; font-size: 10px;
+  border-bottom: 0.5px dashed var(--rf-divider);
+}
+.mini-item-row:last-child { border-bottom: none; }
+.mini-footer {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 8px 14px;
+}
+.mini-total-label { font-size: 10px; font-weight: 500; letter-spacing: 0.04em; }
+.mini-total-value { font-size: 14px; font-weight: 500; }
 
 /* ===== Step 1 — connect ===== */
 .connect-hero { padding: 40px 24px; text-align: center; }
@@ -1050,13 +1086,37 @@ function renderBrandingPanel() {
     </div>
     <div class="brand-preview">
       <div class="brand-preview-label">Live preview</div>
-      <div class="brand-preview-bars">
-        <div class="brand-preview-bar" id="br-prev-primary" style="background:${esc(pd.primary)};color:#fff;">Primary</div>
-        <div class="brand-preview-bar" id="br-prev-accent" style="background:${esc(pd.accent)};color:#fff;">Accent</div>
-        <div class="brand-preview-bar" id="br-prev-background" style="background:${esc(pd.background)};color:var(--rf-text);border:0.5px solid var(--rf-divider);">Background</div>
-      </div>
-      <div class="brand-preview-sample" id="br-prev-sample" style="background:${esc(pd.background)};border-left:3px solid ${esc(pd.accent)};">
-        <strong style="color:${esc(pd.primary)};">Sample quote heading</strong> — body text on the chosen background.
+      <div class="mini-quote">
+        <div class="mini-header" id="br-mini-header" style="background:${esc(pd.primary)};">
+          <div class="mini-co">
+            <span class="mini-logo"></span>
+            <span class="mini-co-name">Your Company</span>
+          </div>
+          <span class="mini-quote-label">QUOTE</span>
+        </div>
+        <div class="mini-details">
+          <div class="mini-col">
+            <div class="mini-col-label">Prepared for</div>
+            <div class="mini-col-val">J. Smith</div>
+          </div>
+          <div class="mini-col mini-col-right">
+            <div class="mini-col-label">Date</div>
+            <div class="mini-col-val">14 Jun 2026</div>
+          </div>
+        </div>
+        <div class="mini-section-heading" id="br-mini-section" style="background:${esc(pd.accent)};">Section heading</div>
+        <div class="mini-scope">
+          <div>Works description line one</div>
+          <div>Prepare and complete to specification</div>
+        </div>
+        <div class="mini-items">
+          <div class="mini-item-row"><span>Item A &times; 4 units</span><span>$320.00</span></div>
+          <div class="mini-item-row"><span>Item B &times; 2 units</span><span>$180.00</span></div>
+        </div>
+        <div class="mini-footer" id="br-mini-footer" style="background:${esc(pd.background)};">
+          <span class="mini-total-label" id="br-mini-total-label" style="color:${esc(pd.primary)};">TOTAL (INC. GST)</span>
+          <span class="mini-total-value" id="br-mini-total-value" style="color:${esc(pd.primary)};">$550.00</span>
+        </div>
       </div>
     </div>
   `;
@@ -1117,19 +1177,18 @@ function updateBrandingPreview() {
       if (v) palette[k] = v;
     }
   }
-  const pp = document.getElementById('br-prev-primary');
-  const pa = document.getElementById('br-prev-accent');
-  const pb = document.getElementById('br-prev-background');
-  const ps = document.getElementById('br-prev-sample');
-  if (pp) pp.style.background = palette.primary;
-  if (pa) pa.style.background = palette.accent;
-  if (pb) pb.style.background = palette.background;
-  if (ps) {
-    ps.style.background = palette.background;
-    ps.style.borderLeftColor = palette.accent;
-    const strong = ps.querySelector('strong');
-    if (strong) strong.style.color = palette.primary;
-  }
+  // RFT-126 — mini-quote palette swap. Same element-by-element apply as
+  // settings.html, just with the onboarding-side id prefix.
+  const header     = document.getElementById('br-mini-header');
+  const section    = document.getElementById('br-mini-section');
+  const footer     = document.getElementById('br-mini-footer');
+  const totalVal   = document.getElementById('br-mini-total-value');
+  const totalLabel = document.getElementById('br-mini-total-label');
+  if (header)     header.style.background = palette.primary;
+  if (section)    section.style.background = palette.accent;
+  if (footer)     footer.style.background = palette.background;
+  if (totalVal)   totalVal.style.color    = palette.primary;
+  if (totalLabel) totalLabel.style.color  = palette.primary;
 }
 
 function buildBrandingPayload() {
