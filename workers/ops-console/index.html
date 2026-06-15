@@ -1148,8 +1148,11 @@ async function setEnvironment(uuid, environment, t) {
 // ─── Teardown modal ───────────────────────────────────────────────────────────
 
 function openTeardownModal(t) {
+  // RFT-132 — only env === 'prod' demands slug-typing confirmation.
+  // dev / bvt / unset / null all get the simpler "are you sure?" confirm.
+  // The backend was relaxed to match (admin-api handleConsoleTeardown).
   const env = t.environment || 'unset';
-  const isProd = env !== 'dev' && env !== 'bvt';
+  const isProd = env === 'prod';
   const slug = t.slug || '';
 
   const backdrop = document.createElement('div');
@@ -1160,21 +1163,22 @@ function openTeardownModal(t) {
         <h2><i class="ti ti-alert-triangle"></i> Tear down ${esc(t.company_name || slug || shortUuid(t.uuid))}</h2>
       </div>
       <div class="modal-body">
-        <p>This will permanently delete:</p>
-        <ul style="margin:0 0 12px 18px;color:var(--ops-muted);font-size:12px;">
-          <li>Clerk organization (${esc(t.clerk_org_id || 'none')})</li>
-          <li>All R2 photos (${(t.r2?.photo_count ?? '?')} files)</li>
-          <li>All D1 quote rows (${t.quotes_total ?? '?'} total)</li>
-          <li>All D1 events</li>
-          <li>KV tenant record + reverse indexes</li>
-        </ul>
         ${isProd ? `
+          <p>This will permanently delete:</p>
+          <ul style="margin:0 0 12px 18px;color:var(--ops-muted);font-size:12px;">
+            <li>Clerk organization (${esc(t.clerk_org_id || 'none')})</li>
+            <li>All R2 photos (${(t.r2?.photo_count ?? '?')} files)</li>
+            <li>All D1 quote rows (${t.quotes_total ?? '?'} total)</li>
+            <li>All D1 events</li>
+            <li>KV tenant record + reverse indexes</li>
+          </ul>
           <div class="warn-box">
             <strong>Production tenant.</strong> Type the slug <code>${esc(slug)}</code> to confirm.
           </div>
           <input type="text" id="teardownConfirm" placeholder="Type the slug to confirm" autocomplete="off">
         ` : `
-          <p style="color:var(--ops-muted);font-size:12px;">${esc(env)} tenant — no slug confirmation required.</p>
+          <p>Tear down <strong>${esc(t.company_name || slug || shortUuid(t.uuid))}</strong>? This is permanent.</p>
+          <p style="color:var(--ops-muted);font-size:12px;">Removes the Clerk org, all R2 photos, D1 quotes + events, and the KV record. <code>${esc(env)}</code> tenant — no slug confirmation required.</p>
         `}
       </div>
       <div class="modal-foot">
@@ -1211,12 +1215,17 @@ function openTeardownModal(t) {
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw new Error(data.error || `HTTP ${res.status}`);
       backdrop.remove();
-      // Remove the card from the list.
-      const card = document.querySelector(`.tenant-card[data-uuid="${t.uuid}"]`);
-      if (card) card.remove();
       toast(`Torn down: ${slug || shortUuid(t.uuid)} (R2 ${data.r2_objects_deleted}, quotes ${data.quotes_deleted}, events ${data.events_deleted}, Clerk ${data.clerk_org_deleted ? '✓' : '✗'})`, 'ok', 8000);
-      // Refresh aggregates.
-      loadTenants();
+      // RFT-132 — re-fetch and re-render rather than splicing the card from
+      // the DOM. Clean state from the server is the source of truth and
+      // avoids any "ghost" residue (collapsed detail panel, stale aggregates,
+      // env-sorted list re-shuffling). Fallback to reload if the refetch
+      // fails for any reason — at least the operator's view stays correct.
+      try {
+        await loadTenants();
+      } catch {
+        window.location.reload();
+      }
     } catch (e) {
       confirmBtn.textContent = 'Tear down';
       confirmBtn.disabled = false;

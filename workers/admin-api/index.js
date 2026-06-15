@@ -3037,11 +3037,15 @@ async function handleConsoleTeardown(uuid, request, env, operatorUserId) {
   const slug = record.slug || null;
   const clerkOrgId = record.clerk_org_id || null;
 
-  // Prod safety gate. Dev/BVT are test environments — destructive is fine.
-  // Prod requires the caller to type the slug as confirmation (Linear-style
-  // delete-repo prompt). If environment isn't set yet, treat as prod
-  // (fail-safe).
-  if (environment !== 'dev' && environment !== 'bvt') {
+  // Prod safety gate. Only environment === 'prod' demands the slug-typing
+  // confirmation (Linear-style delete-repo prompt). dev / bvt / unset all
+  // proceed with no second-factor — they're either explicitly non-prod or
+  // unconfigured tenants where teardown is the natural cleanup. The earlier
+  // "unset === prod fail-safe" was deliberately relaxed in RFT-132 once
+  // the orphan-cleanup pass left only tagged tenants in the live set;
+  // operators can still pre-tag a tenant via the env dropdown if they want
+  // the prod gate to fire.
+  if (environment === 'prod') {
     let body = null;
     try { body = await request.json(); } catch {}
     const confirmSlug = body?.confirm_slug;
