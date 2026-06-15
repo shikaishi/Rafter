@@ -89,6 +89,11 @@
   .sec-prose { padding: 10px 14px; font-size: 12px; color: var(--rf-muted); line-height: 1.5; white-space: pre-wrap; border-bottom: 0.5px solid var(--rf-divider); background: #FAFAF7; }
   .sec-prose-empty { font-style: italic; color: var(--rf-muted); }
   .sec-readonly-badge { font-size: 9px; color: var(--rf-muted); background: var(--rf-divider); padding: 2px 6px; border-radius: 10px; text-transform: uppercase; letter-spacing: 0.05em; font-weight: 600; }
+  /* RFT-125 — RAFTER badge for Rafter-managed sections (source: "rafter").
+     Visually distinct from the SM8 badge so the admin can tell at a glance
+     which sections are SM8-synced vs Rafter-managed (the latter survives
+     SM8 sync and is independently maintained). */
+  .sec-readonly-badge.rafter { color: var(--rf-green); background: rgba(132, 183, 65, 0.18); }
 
   .sec-photos { padding: 10px 14px; }
   .sec-photos-meta { font-size: 11px; color: var(--rf-muted); margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center; gap: 8px; }
@@ -610,21 +615,33 @@ function render() {
   for (const sec of state.sections) {
     const catSlug = slugify(sec.name);
     const photos = photoMap.get(catSlug) || [];
+    // RFT-125 — sectionId is a stable per-section identifier that works
+    // for both SM8-synced sections (uuid available) and Rafter-managed
+    // sections (no uuid; identifier derived from slug). state.expanded
+    // and the drag-reorder code key off this. Drag itself stays gated on
+    // sm8_template_uuid because /settings/sections/reorder takes uuids.
+    const isRafterManaged = sec.source === 'rafter';
     const secUuid = sec.sm8_template_uuid || '';
-    const isExpanded = secUuid && state.expanded.has(secUuid);
+    const secId = secUuid || ('rafter:' + catSlug);
+    const isExpanded = state.expanded.has(secId);
     const card = document.createElement('div');
     card.className = 'section-card' + (isExpanded ? ' expanded' : '');
     card.dataset.categorySlug = catSlug;
     card.dataset.sectionUuid = secUuid;
-    // Section drag is only enabled when no section is expanded (drag mode).
-    // CSS gates the visual cue, draggable attribute gates the actual handler.
+    card.dataset.sectionId = secId;
+    // Section drag is only enabled when no section is expanded (drag mode)
+    // AND the section is SM8-synced (rafter-managed sections aren't part
+    // of the SM8-uuid order list the reorder endpoint expects).
     card.draggable = !!secUuid && state.expanded.size === 0;
+    const badgeHtml = isRafterManaged
+      ? '<span class="sec-readonly-badge rafter" title="Rafter-managed section — survives SM8 sync">RAFTER</span>'
+      : '<span class="sec-readonly-badge" title="Section prose is read-only here — edit in ServiceM8 and sync">SM8</span>';
     card.innerHTML = `
       <div class="sec-head" data-action="toggle-sec">
         <i class="ti ti-grip-vertical sec-drag-handle" title="Drag to reorder"></i>
         <span class="sec-name">${esc(sec.name)}</span>
         <span class="sec-count">${photos.length} photo${photos.length === 1 ? '' : 's'}</span>
-        <span class="sec-readonly-badge" title="Section prose is read-only here — edit in ServiceM8 and sync">SM8</span>
+        ${badgeHtml}
         <i class="ti ti-chevron-down sec-chevron"></i>
       </div>
       <div class="sec-body">
@@ -666,10 +683,10 @@ function render() {
       // are inside .sec-body which is hidden when collapsed, but the cell
       // event handlers also stopPropagation, so we just guard the head.
       const card = head.closest('.section-card');
-      const secUuid = card?.dataset.sectionUuid;
-      if (!secUuid) return;
-      if (state.expanded.has(secUuid)) state.expanded.delete(secUuid);
-      else state.expanded.add(secUuid);
+      const secId = card?.dataset.sectionId;
+      if (!secId) return;
+      if (state.expanded.has(secId)) state.expanded.delete(secId);
+      else state.expanded.add(secId);
       render();
     });
   });
@@ -935,7 +952,12 @@ function updateSecControlsState() {
 }
 
 $('expandAllBtn').addEventListener('click', () => {
-  state.expanded = new Set(state.sections.map(s => s.sm8_template_uuid).filter(u => u));
+  // RFT-125 — use secId (stable across SM8/Rafter sources) instead of uuid
+  // so Rafter-managed sections expand alongside SM8-synced ones.
+  state.expanded = new Set(state.sections.map(s => {
+    const catSlug = slugify(s.name);
+    return s.sm8_template_uuid || ('rafter:' + catSlug);
+  }));
   render();
 });
 $('collapseAllBtn').addEventListener('click', () => {

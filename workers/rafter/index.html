@@ -431,6 +431,34 @@
   .chips-row {
     display: flex; flex-wrap: wrap; gap: 6px;
   }
+  /* RFT-125 — custom-section input. Sits below the chip row as a secondary
+     affordance — pre-defined templates are the primary path, custom is the
+     escape hatch for one-off ad-hoc sections. */
+  .custom-section-row {
+    display: flex; gap: 6px; align-items: center;
+    margin-top: 10px; padding-top: 10px;
+    border-top: 0.5px dashed var(--rf-divider);
+  }
+  .custom-section-input {
+    flex: 1; min-width: 140px; max-width: 320px;
+    padding: 7px 11px; font-size: 12px;
+    border: 0.5px solid var(--rf-border); border-radius: 6px;
+    font-family: inherit; color: var(--rf-text);
+  }
+  .custom-section-input:focus { outline: none; border-color: var(--rf-ocean); }
+  .custom-section-btn {
+    background: transparent; border: 0.5px solid var(--rf-border); color: var(--rf-text);
+    padding: 7px 12px; font-size: 12px; border-radius: 6px; cursor: pointer;
+    display: inline-flex; align-items: center; gap: 5px; font-weight: 600;
+    font-family: inherit;
+  }
+  .custom-section-btn:hover { border-color: var(--rf-ocean); }
+  .custom-section-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+  .custom-section-btn .ti { color: var(--rf-ocean); font-size: 14px; }
+  .ws-custom-tag {
+    font-size: 10px; color: var(--rf-muted); font-weight: 500;
+    text-transform: uppercase; letter-spacing: 0.04em; margin-left: 6px;
+  }
   .chip {
     /* RFT-78 #5: pill pattern shared by sections selector + photo picker.
        Smaller text, but tap target kept comfortable via padding + min-height
@@ -1011,6 +1039,14 @@
     <div class="chips-area">
       <div class="field-label" style="margin-bottom:8px;">Add sections</div>
       <div class="chips-row" id="chipsRow"></div>
+      <!-- RFT-125 — custom ad-hoc section. Operator types a name and the
+           section is added with empty scope + no Labour preload. Chipless
+           by design (custom sections don't appear in the chip row — they
+           live only in state.sections). -->
+      <div class="custom-section-row">
+        <input type="text" class="custom-section-input" id="customSectionInput" placeholder="Add a custom section…" maxlength="80" autocomplete="off">
+        <button type="button" class="custom-section-btn" id="customSectionBtn" disabled><i class="ti ti-plus"></i>Add</button>
+      </div>
     </div>
     <div class="sections-list" id="sectionsList"></div>
     <div class="section2-empty" id="section2Empty">Add a section above to start.</div>
@@ -1669,26 +1705,40 @@ async function rehydrateFromDraft(quoteRef) {
     // Sections — payload.form_sections is the canonical structured form. If
     // missing (older payload), fall back to derived sections + lineItems.
     if (Array.isArray(p.form_sections) && p.form_sections.length) {
-      state.sections = p.form_sections.map((fs) => ({
-        id: uid(),
-        name: fs.name || "",
-        templateKey: fs.name || "",
-        text: fs.text || "",
-        textOriginal: SCOPE_MAP[fs.name] || (fs.text || ""),
-        price: Number(fs.price) || 0,
-        lineItems: (fs.line_items || []).map((li) => ({
+      // RFT-125 — figure out which section names map to real templates in
+      // the tenant's current template set, and which are ad-hoc custom
+      // sections. Templates list is canonical; anything else is custom.
+      const tplNames = new Set(templateList().map(t => (t.name || t.key || '').trim()));
+      state.sections = p.form_sections.map((fs) => {
+        const fsName = (fs.name || "").trim();
+        const isTemplateBacked = fsName && tplNames.has(fsName);
+        // For template-backed sections, keep the legacy behaviour: templateKey
+        // equals the name so the chip in the chips row highlights as active.
+        // For unknown sections, mint a __custom_<uid> key so renderChips
+        // doesn't try to match it and renderOneSection renders the (custom)
+        // tag + hides the Reset button.
+        const tk = isTemplateBacked ? fsName : ('__custom_' + uid());
+        return {
           id: uid(),
-          name: li.name || "",
-          qty: Number(li.quantity) || 0,
-          unit: li.unit || "",
-          unitPrice: Number(li.unit_price) || 0,
-          sm8_uuid: li.sm8_uuid || null,
-        })),
-        photos: (fs.photos || []).slice(),
-        collapsed: false,
-        photoPanelOpen: false,
-        photoCat: "",
-      }));
+          name: fs.name || "",
+          templateKey: tk,
+          text: fs.text || "",
+          textOriginal: SCOPE_MAP[fs.name] || (fs.text || ""),
+          price: Number(fs.price) || 0,
+          lineItems: (fs.line_items || []).map((li) => ({
+            id: uid(),
+            name: li.name || "",
+            qty: Number(li.quantity) || 0,
+            unit: li.unit || "",
+            unitPrice: Number(li.unit_price) || 0,
+            sm8_uuid: li.sm8_uuid || null,
+          })),
+          photos: (fs.photos || []).slice(),
+          collapsed: false,
+          photoPanelOpen: false,
+          photoCat: "",
+        };
+      });
     }
 
     // Branch on row status. Submitted/superseded rows go into amend mode;
@@ -2176,6 +2226,31 @@ function toggleSection(key, name) {
   renderSections();
   renderTotals();
 }
+
+// RFT-125 — add an ad-hoc custom section. Distinct templateKey
+// (__custom_<uid>) ensures it never collides with a real template, never
+// gets a chip in renderChips (templateList lookup miss), and is recognised
+// as custom by the renderOneSection isCustom check.
+function addCustomSection(name) {
+  const trimmed = (name || "").trim();
+  if (!trimmed) return;
+  state.sections.push({
+    id: uid(),
+    templateKey: '__custom_' + uid(),
+    name: trimmed,
+    textOriginal: "",
+    text: "",
+    price: 0,
+    lineItems: [],
+    photos: [],
+    collapsed: false,
+    photoPanelOpen: false,
+    photoCat: defaultCategoryFor(trimmed),
+  });
+  renderChips();
+  renderSections();
+  renderTotals();
+}
 function defaultCategoryFor(sectionName) {
   if (!state.photos.length) return null;
   // RFT-78 #4: exact section-name → category match wins first. Photo categories
@@ -2231,10 +2306,17 @@ function renderSections() {
 
 function renderOneSection(s) {
   recomputeSectionPrice(s);
+  // RFT-125 — sections with a __custom_<uid> templateKey are operator-typed
+  // ad-hoc sections. They have no scope template, so the Reset button has
+  // nothing to reset to — hidden entirely. A small "(custom)" tag in the
+  // header tells the operator (and themselves on rehydrate) which sections
+  // are template-backed vs ad-hoc.
+  const isCustom = typeof s.templateKey === 'string' && s.templateKey.startsWith('__custom_');
+  const customTag = isCustom ? '<span class="ws-custom-tag">(custom)</span>' : '';
   const node = el(`<div class="work-section" data-id="${s.id}" draggable="true">
     <div class="ws-head">
       <span class="ws-handle ti ti-grip-vertical" title="Drag to reorder"></span>
-      <div class="ws-name">${escapeHtml(s.name)}</div>
+      <div class="ws-name">${escapeHtml(s.name)}${customTag}</div>
       <div class="ws-price-wrap">
         <span class="dollar">$</span>
         <span class="ws-price-input" data-role="price">${s.price.toFixed(2)}</span>
@@ -2247,13 +2329,15 @@ function renderOneSection(s) {
 
   const body = node.querySelector(".ws-body");
 
-  // Works description textarea (single field — goes to both PDF and SM8 job note)
-  const textWrap = el(`<div class="ws-field-block">
-    <div class="ws-field-header">
-      <label class="field-label" style="margin-bottom:0;">Works description</label>
+  // Works description textarea (single field — goes to both PDF and SM8 job note).
+  // Reset button hidden for custom sections (no template to reset to).
+  const resetBtnHtml = isCustom ? '' : `
       <button class="btn btn-outline" data-role="reset-text" title="Reset to default text" style="padding:4px 8px;font-size:11px;flex-shrink:0;">
         <i class="ti ti-rotate"></i>Reset
-      </button>
+      </button>`;
+  const textWrap = el(`<div class="ws-field-block">
+    <div class="ws-field-header">
+      <label class="field-label" style="margin-bottom:0;">Works description</label>${resetBtnHtml}
     </div>
     <textarea class="ws-textarea" data-role="text" placeholder="Works description…">${escapeHtml(s.text || "")}</textarea>
   </div>`);
@@ -2304,10 +2388,15 @@ function renderOneSection(s) {
     s.photoPanelOpen = !s.photoPanelOpen;
     renderSections();
   });
-  node.querySelector('[data-role="reset-text"]').addEventListener("click", () => {
-    s.text = s.textOriginal || "";
-    renderSections();
-  });
+  // Reset button is only rendered for template-backed sections — custom
+  // sections have no template prose to revert to (see isCustom branch above).
+  const resetBtn = node.querySelector('[data-role="reset-text"]');
+  if (resetBtn) {
+    resetBtn.addEventListener("click", () => {
+      s.text = s.textOriginal || "";
+      renderSections();
+    });
+  }
   node.querySelectorAll(".photo-thumb .x").forEach((x) => {
     x.addEventListener("click", () => {
       s.photos = s.photos.filter((k) => k !== x.dataset.key);
@@ -2837,6 +2926,28 @@ function bindEvents() {
   $("draftResumeBtn").addEventListener("click", (e) => { e.preventDefault(); resumeDraft(); });
   $("draftDiscardBtn").addEventListener("click", (e) => { e.preventDefault(); discardDraftBanner(); });
   updateSaveDraftBtnState();
+
+  // RFT-125 — custom-section input. Button enabled only when the input has
+  // non-whitespace text; click or Enter both add the section.
+  const customInput = $("customSectionInput");
+  const customBtn = $("customSectionBtn");
+  if (customInput && customBtn) {
+    const submitCustom = () => {
+      const name = customInput.value.trim();
+      if (!name) return;
+      addCustomSection(name);
+      customInput.value = "";
+      customBtn.disabled = true;
+      customInput.focus();
+    };
+    customInput.addEventListener("input", () => {
+      customBtn.disabled = !customInput.value.trim();
+    });
+    customInput.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !customBtn.disabled) { e.preventDefault(); submitCustom(); }
+    });
+    customBtn.addEventListener("click", submitCustom);
+  }
 }
 
 // ===== GOOGLE MAPS AUTOCOMPLETE =====
