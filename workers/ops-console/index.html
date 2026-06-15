@@ -475,6 +475,136 @@ body {
 .unbound-row .sl { color: var(--ops-text); }
 .unbound-row .co { color: var(--ops-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .unbound-row .ev { color: var(--ops-muted); }
+
+/* ===== RFT-127 Platform health ===== */
+.worker-card {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; padding: 14px 16px; margin-bottom: 10px;
+}
+.worker-card-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.worker-name { font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ops-text); flex: 1; }
+.error-rate-badge {
+  display: inline-flex; align-items: center; padding: 3px 8px;
+  border-radius: 4px; font-size: 10px; font-weight: 700;
+  font-family: var(--font-mono); text-transform: uppercase; letter-spacing: 0.04em;
+}
+.error-rate-badge.green { background: var(--ops-tinted); color: var(--ops-success); }
+.error-rate-badge.amber { background: #FEF6E7; color: var(--ops-warn); }
+.error-rate-badge.red   { background: #FEF2F2; color: var(--ops-danger); }
+.worker-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; margin-bottom: 10px; }
+.worker-stat-label { font-size: 10px; color: var(--ops-fern); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.worker-stat-value { font-family: var(--font-mono); font-size: 14px; color: var(--ops-text); margin-top: 2px; }
+.sparkline { display: flex; align-items: flex-end; gap: 2px; height: 36px; padding: 4px 0; border-top: 0.5px solid var(--ops-border); margin-top: 6px; }
+.sparkline-bar { flex: 1; background: var(--ops-mint); border-radius: 1px 1px 0 0; min-height: 2px; opacity: 0.85; }
+.sparkline-bar.errored { background: var(--ops-danger); }
+.sparkline-label { font-size: 9px; color: var(--ops-muted); font-family: var(--font-mono); margin-top: 4px; display: flex; justify-content: space-between; }
+.worker-deploys { display: flex; gap: 12px; flex-wrap: wrap; font-size: 10px; color: var(--ops-muted); font-family: var(--font-mono); margin-top: 8px; padding-top: 8px; border-top: 0.5px dashed var(--ops-border); }
+.worker-deploys .lbl { color: var(--ops-fern); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.storage-block {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; padding: 14px 16px; margin-top: 14px;
+}
+.storage-block h3 { margin: 0 0 10px; font-size: 11px; font-weight: 600; color: var(--ops-fern); text-transform: uppercase; letter-spacing: 0.05em; }
+.storage-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; }
+.storage-cell .label { font-size: 11px; color: var(--ops-muted); }
+.storage-cell .value { font-family: var(--font-mono); font-size: 13px; color: var(--ops-text); margin-top: 4px; }
+.unavailable { color: var(--ops-muted); font-style: italic; font-family: var(--font-sans); font-size: 11px; }
+
+/* ===== RFT-128 Issues ===== */
+.issue-controls { display: flex; gap: 6px; margin-bottom: 12px; align-items: center; }
+.issue-chip {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border); color: var(--ops-text);
+  padding: 5px 10px; border-radius: 4px; font-size: 11px; font-weight: 600;
+  cursor: pointer; font-family: var(--font-sans);
+}
+.issue-chip:hover { border-color: var(--ops-fern); }
+.issue-chip.active { background: var(--ops-bark); color: var(--ops-mist); border-color: var(--ops-bark); }
+.issue-row {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 5px; padding: 10px 14px; margin-bottom: 4px;
+  display: grid; grid-template-columns: 90px 1fr 100px 120px; gap: 12px;
+  align-items: center; font-size: 12px; cursor: pointer;
+  transition: border-color 0.15s;
+}
+.issue-row:hover { border-color: var(--ops-fern); }
+.issue-id { font-family: var(--font-mono); font-size: 11px; color: var(--ops-mint); font-weight: 600; }
+.issue-title { color: var(--ops-text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.issue-title .labels { display: inline-flex; gap: 4px; margin-left: 6px; }
+.label-pill {
+  display: inline-block; padding: 1px 6px; border-radius: 3px;
+  font-size: 9px; font-weight: 600; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.04em; vertical-align: middle;
+}
+.priority-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px;
+  border-radius: 4px; font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+}
+.priority-badge.urgent { background: #FEF2F2; color: var(--ops-danger); }
+.priority-badge.high   { background: #FEF6E7; color: var(--ops-warn); }
+.priority-badge.medium { background: #F3F4F6; color: var(--ops-text); }
+.priority-badge.low    { background: #F3F4F6; color: var(--ops-muted); }
+.priority-badge.none   { background: transparent; color: var(--ops-muted); border: 0.5px solid var(--ops-border); }
+.state-badge {
+  display: inline-flex; align-items: center; padding: 2px 8px;
+  border-radius: 4px; font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.04em; white-space: nowrap;
+}
+.state-badge.backlog   { background: #F3F4F6; color: var(--ops-muted); }
+.state-badge.unstarted { background: var(--ops-canopy); color: var(--ops-mint); opacity: 0.7; }
+.state-badge.started   { background: var(--ops-canopy); color: var(--ops-mint); }
+.state-badge.triage    { background: #FEF6E7; color: var(--ops-warn); }
+
+/* ===== RFT-129 Make scenarios ===== */
+.scenario-card {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; padding: 12px 16px; margin-bottom: 10px;
+}
+.scenario-card.errored { border-left: 3px solid var(--ops-danger); }
+.scenario-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
+.scenario-name { font-size: 13px; font-weight: 500; color: var(--ops-text); flex: 1; }
+.scenario-state {
+  display: inline-flex; align-items: center; padding: 3px 8px;
+  border-radius: 4px; font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.scenario-state.active { background: var(--ops-tinted); color: var(--ops-success); }
+.scenario-state.paused { background: #FEF6E7; color: var(--ops-warn); }
+.scenario-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 11px; }
+.usage-bar-wrap { margin-top: 16px; }
+.usage-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--ops-muted); margin-bottom: 4px; font-family: var(--font-mono); }
+.usage-bar-track { background: #F3F4F6; height: 8px; border-radius: 4px; overflow: hidden; }
+.usage-bar-fill { height: 100%; background: var(--ops-mint); transition: width 0.2s; }
+.usage-bar-fill.warn { background: var(--ops-warn); }
+.usage-bar-fill.danger { background: var(--ops-danger); }
+.usage-bar-meta { font-size: 10px; color: var(--ops-muted); font-family: var(--font-mono); margin-top: 4px; }
+
+/* ===== RFT-130 Cost & usage ===== */
+.provider-card {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; padding: 14px 16px; margin-bottom: 10px;
+}
+.provider-head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+.provider-name { font-size: 14px; font-weight: 500; color: var(--ops-text); flex: 1; }
+.provider-cost { font-family: var(--font-mono); font-size: 12px; color: var(--ops-text); }
+.headroom-badge {
+  display: inline-flex; align-items: center; padding: 3px 8px;
+  border-radius: 4px; font-size: 10px; font-weight: 700; font-family: var(--font-mono);
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.headroom-badge.ok       { background: var(--ops-tinted); color: var(--ops-success); }
+.headroom-badge.warning  { background: #FEF6E7; color: var(--ops-warn); }
+.headroom-badge.critical { background: #FEF2F2; color: var(--ops-danger); }
+.cost-table {
+  background: var(--ops-card); border: 0.5px solid var(--ops-border);
+  border-radius: 6px; overflow: hidden; margin-top: 14px;
+}
+.cost-table table { width: 100%; border-collapse: collapse; font-size: 12px; }
+.cost-table th, .cost-table td { padding: 8px 14px; text-align: left; border-bottom: 0.5px solid var(--ops-border); }
+.cost-table th { background: var(--ops-tinted); font-size: 10px; color: var(--ops-fern); font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+.cost-table td { font-family: var(--font-mono); }
+.cost-table tr:last-child td { border-bottom: none; font-weight: 600; }
+.cost-table .total-row td { background: var(--ops-tinted); }
 </style>
 </head>
 <body>
@@ -616,6 +746,81 @@ body {
         </div>
 
         <div id="teamUnboundSection" hidden></div>
+      </div>
+
+      <!-- PLATFORM HEALTH VIEW (RFT-127) -->
+      <div id="view-platform-health" hidden>
+        <div class="view-header">
+          <h1>Platform health</h1>
+          <div class="meta" id="phMeta">…</div>
+        </div>
+        <div class="summary-row">
+          <div class="summary-card"><div class="summary-label">Requests (7d)</div><div class="summary-number" id="phRequests7d">0</div><div class="summary-sub">across all workers</div></div>
+          <div class="summary-card" id="phErrorsCard"><div class="summary-label">Errors (7d)</div><div class="summary-number" id="phErrors7d">0</div><div class="summary-sub" id="phErrorRate">—</div></div>
+          <div class="summary-card"><div class="summary-label">Workers</div><div class="summary-number" id="phWorkerCount">0</div><div class="summary-sub" id="phWorkersSub">tracked</div></div>
+          <div class="summary-card"><div class="summary-label">D1 databases</div><div class="summary-number" id="phD1Count">0</div><div class="summary-sub" id="phStorageSub">+ KV + R2</div></div>
+        </div>
+        <div id="phWorkerList"><div class="inline-loading"><div class="spinner"></div> Loading workers…</div></div>
+        <div id="phStorageBlock"></div>
+      </div>
+
+      <!-- ISSUES VIEW (RFT-128) -->
+      <div id="view-issues" hidden>
+        <div class="view-header">
+          <h1>Issues</h1>
+          <div class="meta" id="iMeta">…</div>
+          <div class="actions">
+            <a class="btn-action" href="https://linear.app/deepgreensea/team/RFT/new" target="_blank" rel="noopener">
+              <i class="ti ti-plus"></i> Create issue
+            </a>
+          </div>
+        </div>
+        <div class="summary-row">
+          <div class="summary-card"><div class="summary-label">Open issues</div><div class="summary-number" id="iOpen">0</div><div class="summary-sub" id="iOpenSub">—</div></div>
+          <div class="summary-card" id="iUrgentCard"><div class="summary-label">Urgent + high</div><div class="summary-number" id="iUrgent">0</div><div class="summary-sub">needs attention</div></div>
+          <div class="summary-card"><div class="summary-label">In progress</div><div class="summary-number" id="iStarted">0</div><div class="summary-sub" id="iStartedSub">—</div></div>
+          <div class="summary-card"><div class="summary-label">Completed (7d)</div><div class="summary-number" id="iCompleted7d">0</div><div class="summary-sub">shipped this week</div></div>
+        </div>
+        <div class="issue-controls">
+          <button class="issue-chip active" data-filter="all">All</button>
+          <button class="issue-chip" data-filter="backlog">Backlog</button>
+          <button class="issue-chip" data-filter="unstarted">Todo</button>
+          <button class="issue-chip" data-filter="started">In Progress</button>
+        </div>
+        <div id="iList"><div class="inline-loading"><div class="spinner"></div> Loading issues…</div></div>
+      </div>
+
+      <!-- MAKE SCENARIOS VIEW (RFT-129) -->
+      <div id="view-make" hidden>
+        <div class="view-header">
+          <h1>Make scenarios</h1>
+          <div class="meta" id="mMeta">…</div>
+        </div>
+        <div class="summary-row">
+          <div class="summary-card"><div class="summary-label">Active / total</div><div class="summary-number" id="mActive">0/0</div><div class="summary-sub" id="mPaused">0 paused</div></div>
+          <div class="summary-card" id="mCreditsCard"><div class="summary-label">Credits used</div><div class="summary-number" id="mCredits">0</div><div class="summary-sub" id="mCreditsSub">of plan limit</div></div>
+          <div class="summary-card"><div class="summary-label">Operations (30d)</div><div class="summary-number" id="mOps">0</div><div class="summary-sub">across scenarios</div></div>
+          <div class="summary-card"><div class="summary-label">Plan reset</div><div class="summary-number" id="mResetDay" style="font-size:14px;">—</div><div class="summary-sub" id="mResetSub">—</div></div>
+        </div>
+        <div id="mPlanBar"></div>
+        <div id="mScenarioList"><div class="inline-loading"><div class="spinner"></div> Loading scenarios…</div></div>
+      </div>
+
+      <!-- COST & USAGE VIEW (RFT-130) -->
+      <div id="view-cost" hidden>
+        <div class="view-header">
+          <h1>Cost &amp; usage</h1>
+          <div class="meta" id="cMeta">…</div>
+        </div>
+        <div class="summary-row">
+          <div class="summary-card"><div class="summary-label">Monthly run-rate</div><div class="summary-number" id="cMonthly">$0</div><div class="summary-sub" id="cMonthlySub">USD + AUD</div></div>
+          <div class="summary-card" id="cAlertsCard"><div class="summary-label">Free-tier alerts</div><div class="summary-number" id="cAlerts">0</div><div class="summary-sub">approaching limits</div></div>
+          <div class="summary-card"><div class="summary-label">Providers</div><div class="summary-number" id="cProviders">0</div><div class="summary-sub">tracked</div></div>
+          <div class="summary-card"><div class="summary-label">Status</div><div class="summary-number" id="cWorstStatus" style="font-size:14px;">ok</div><div class="summary-sub">worst-case</div></div>
+        </div>
+        <div id="cAlertsList"></div>
+        <div id="cProviderList"><div class="inline-loading"><div class="spinner"></div> Loading providers…</div></div>
+        <div id="cBreakdown"></div>
       </div>
 
       <!-- COMING-SOON view template (placeholder for unwired nav items) -->
@@ -1346,9 +1551,291 @@ function roleClass(role) {
   return 'guest';
 }
 
+// ─── RFT-127 Platform health ──────────────────────────────────────────────────
+
+async function loadPlatformHealth() {
+  $('phWorkerList').innerHTML = '<div class="inline-loading"><div class="spinner"></div> Loading workers…</div>';
+  $('phStorageBlock').innerHTML = '';
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/platform-health`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderPlatformHealth(data);
+  } catch (e) {
+    $('phWorkerList').innerHTML = `<div class="inline-loading" style="color:var(--ops-danger);">Could not load: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderPlatformHealth(data) {
+  const workers = data.workers || [];
+  const totalReq = workers.reduce((a, w) => a + (w.requests_7d || 0), 0);
+  const totalErr = workers.reduce((a, w) => a + (w.errors_7d || 0), 0);
+  const rate = totalReq > 0 ? (totalErr / totalReq) * 100 : 0;
+  $('phRequests7d').textContent = totalReq.toLocaleString();
+  $('phErrors7d').textContent = totalErr.toLocaleString();
+  $('phErrorRate').textContent = `${rate.toFixed(2)}% error rate`;
+  $('phErrorsCard').classList.toggle('danger', totalErr > 0);
+  $('phWorkerCount').textContent = workers.length;
+  $('phMeta').textContent = `${workers.length} workers · 7-day window`;
+  $('phD1Count').textContent = (data.storage?.d1 || []).length;
+
+  $('phWorkerList').innerHTML = workers.map(renderWorkerCard).join('');
+  $('phStorageBlock').innerHTML = renderStorageBlock(data.storage || {});
+}
+
+function renderWorkerCard(w) {
+  const rate = w.error_rate ?? 0;
+  const pct = rate * 100;
+  const rateClass = pct >= 5 ? 'red' : pct >= 1 ? 'amber' : 'green';
+  const max = Math.max(1, ...(w.daily || []).map(d => d.requests || 0));
+  const sparkBars = (w.daily || []).map(d => {
+    const h = Math.max(2, Math.round(((d.requests || 0) / max) * 32));
+    const errored = (d.errors || 0) > 0;
+    return `<div class="sparkline-bar${errored ? ' errored' : ''}" style="height:${h}px" title="${esc(d.date)}: ${d.requests} req, ${d.errors} err"></div>`;
+  }).join('');
+  const dailyStart = w.daily?.[0]?.date || '';
+  const dailyEnd = w.daily?.[w.daily.length - 1]?.date || '';
+
+  const deploys = (w.recent_deploys || []).slice(0, 3).map(d =>
+    `<span><span class="lbl">deploy</span> <span>${esc((d.version_id || '').slice(0, 8))}</span> <span style="color:var(--ops-muted);">${esc(fmtRel(d.created_at))}</span></span>`
+  ).join('');
+
+  return `
+    <div class="worker-card">
+      <div class="worker-card-head">
+        <span class="worker-name">${esc(w.name)}</span>
+        <span class="error-rate-badge ${rateClass}">${pct.toFixed(2)}% err</span>
+      </div>
+      <div class="worker-stats">
+        <div><div class="worker-stat-label">requests 7d</div><div class="worker-stat-value">${(w.requests_7d || 0).toLocaleString()}</div></div>
+        <div><div class="worker-stat-label">errors 7d</div><div class="worker-stat-value">${(w.errors_7d || 0).toLocaleString()}</div></div>
+        <div><div class="worker-stat-label">p50 cpu</div><div class="worker-stat-value">${w.p50_cpu_ms != null ? w.p50_cpu_ms + ' ms' : '—'}</div></div>
+        <div><div class="worker-stat-label">p99 cpu</div><div class="worker-stat-value">${w.p99_cpu_ms != null ? w.p99_cpu_ms + ' ms' : '—'}</div></div>
+      </div>
+      ${sparkBars ? `<div class="sparkline">${sparkBars}</div><div class="sparkline-label"><span>${esc(dailyStart)}</span><span>${esc(dailyEnd)}</span></div>` : '<div class="unavailable">No analytics available yet</div>'}
+      ${deploys ? `<div class="worker-deploys">${deploys}</div>` : ''}
+    </div>
+  `;
+}
+
+function renderStorageBlock(s) {
+  const r2 = s.r2 ? `${esc(s.r2.bucket)} · ${s.r2.object_count != null ? s.r2.object_count + ' objects' : '<span class="unavailable">object count not exposed via REST</span>'}` : '<span class="unavailable">unavailable</span>';
+  const kv = s.kv ? `${s.kv.namespace_count} namespace${s.kv.namespace_count === 1 ? '' : 's'}` : '<span class="unavailable">unavailable</span>';
+  const d1 = (s.d1 && s.d1.length)
+    ? s.d1.map(db => `${esc(db.name)}: ${db.num_tables ?? '?'} tables, ${db.file_size_bytes != null ? fmtBytes(db.file_size_bytes) : '?'}`).join(' · ')
+    : '<span class="unavailable">unavailable</span>';
+  return `
+    <div class="storage-block">
+      <h3>Storage</h3>
+      <div class="storage-grid">
+        <div class="storage-cell"><div class="label">R2</div><div class="value">${r2}</div></div>
+        <div class="storage-cell"><div class="label">KV</div><div class="value">${kv}</div></div>
+        <div class="storage-cell"><div class="label">D1</div><div class="value">${d1}</div></div>
+      </div>
+    </div>
+  `;
+}
+
+// ─── RFT-128 Issues ───────────────────────────────────────────────────────────
+
+let ISSUES_DATA = null;
+let ISSUE_FILTER = 'all';
+
+async function loadIssues() {
+  $('iList').innerHTML = '<div class="inline-loading"><div class="spinner"></div> Loading issues…</div>';
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/issues`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    ISSUES_DATA = await res.json();
+    renderIssues();
+  } catch (e) {
+    $('iList').innerHTML = `<div class="inline-loading" style="color:var(--ops-danger);">Could not load: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderIssues() {
+  if (!ISSUES_DATA) return;
+  const s = ISSUES_DATA.summary || {};
+  const urgent = (s.by_priority?.urgent || 0) + (s.by_priority?.high || 0);
+  $('iOpen').textContent = s.total_open || 0;
+  $('iOpenSub').textContent = `${s.by_state?.backlog || 0} backlog · ${s.by_state?.unstarted || 0} todo · ${s.by_state?.started || 0} in-progress`;
+  $('iUrgent').textContent = urgent;
+  $('iUrgentCard').classList.toggle('danger', urgent > 0);
+  $('iStarted').textContent = s.by_state?.started || 0;
+  $('iStartedSub').textContent = 'started';
+  $('iCompleted7d').textContent = s.completed_7d || 0;
+  $('iMeta').textContent = `${s.total_open || 0} open · ${s.completed_7d || 0} completed (7d)`;
+
+  const all = ISSUES_DATA.issues || [];
+  const filtered = ISSUE_FILTER === 'all' ? all : all.filter(i => (i.state_type || '').toLowerCase() === ISSUE_FILTER);
+  const sorted = [...filtered].sort((a, b) => (a.priority || 99) - (b.priority || 99));
+  $('iList').innerHTML = sorted.map(renderIssueRow).join('') || '<div class="inline-loading">No issues match this filter.</div>';
+  $('iList').querySelectorAll('.issue-row').forEach(row => {
+    row.addEventListener('click', () => window.open(row.dataset.url, '_blank', 'noopener'));
+  });
+}
+
+function renderIssueRow(i) {
+  const pri = (i.priority_label || 'none').toLowerCase();
+  const st = (i.state_type || 'unstarted').toLowerCase();
+  const labels = (i.labels || []).slice(0, 3).map(l => `<span class="label-pill" style="background:${esc(l.color || '#888')}22;color:${esc(l.color || '#888')};">${esc(l.name)}</span>`).join('');
+  return `
+    <div class="issue-row" data-url="${esc(i.url || '#')}">
+      <span class="issue-id">${esc(i.identifier)}</span>
+      <span class="issue-title">${esc(i.title)}<span class="labels">${labels}</span></span>
+      <span class="priority-badge ${pri}">${esc(i.priority_label || '—')}</span>
+      <span class="state-badge ${st}">${esc(i.state || '—')}</span>
+    </div>
+  `;
+}
+
+function wireIssueFilters() {
+  document.querySelectorAll('.issue-chip[data-filter]').forEach(chip => {
+    chip.addEventListener('click', () => {
+      document.querySelectorAll('.issue-chip[data-filter]').forEach(c => c.classList.toggle('active', c === chip));
+      ISSUE_FILTER = chip.dataset.filter;
+      renderIssues();
+    });
+  });
+}
+
+// ─── RFT-129 Make scenarios ───────────────────────────────────────────────────
+
+async function loadMakeScenarios() {
+  $('mScenarioList').innerHTML = '<div class="inline-loading"><div class="spinner"></div> Loading scenarios…</div>';
+  $('mPlanBar').innerHTML = '';
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/make-scenarios`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderMakeScenarios(data);
+  } catch (e) {
+    $('mScenarioList').innerHTML = `<div class="inline-loading" style="color:var(--ops-danger);">Could not load: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderMakeScenarios(data) {
+  const s = data.summary || {};
+  const plan = data.plan || {};
+  $('mActive').textContent = `${s.active || 0}/${s.total_scenarios || 0}`;
+  $('mPaused').textContent = `${s.paused || 0} paused`;
+  $('mOps').textContent = (s.total_operations_30d || 0).toLocaleString();
+  $('mCredits').textContent = (plan.credits_used != null ? plan.credits_used.toLocaleString() : '—');
+  $('mCreditsSub').textContent = plan.credits_limit ? `of ${plan.credits_limit.toLocaleString()}` : 'of plan limit';
+  const pct = (plan.credits_limit && plan.credits_used != null) ? (plan.credits_used / plan.credits_limit) * 100 : null;
+  $('mCreditsCard').classList.toggle('danger', pct != null && pct >= 90);
+  $('mResetDay').textContent = plan.reset_date ? new Date(plan.reset_date).toLocaleDateString() : '—';
+  $('mResetSub').textContent = plan.reset_date ? fmtRel(plan.reset_date) : 'unknown';
+  $('mMeta').textContent = `${s.total_scenarios || 0} scenarios · ${data.cached ? 'cached' : 'live'}`;
+
+  $('mPlanBar').innerHTML = pct != null ? renderUsageBar('Plan credits', plan.credits_used, plan.credits_limit, pct) : '';
+  $('mScenarioList').innerHTML = (data.scenarios || []).map(renderScenarioCard).join('') || '<div class="inline-loading">No scenarios.</div>';
+}
+
+function renderUsageBar(label, current, limit, pct) {
+  const cls = pct >= 90 ? 'danger' : pct >= 70 ? 'warn' : '';
+  const width = Math.min(100, Math.max(0, pct));
+  return `
+    <div class="usage-bar-wrap">
+      <div class="usage-bar-label"><span>${esc(label)}</span><span>${pct.toFixed(1)}%</span></div>
+      <div class="usage-bar-track"><div class="usage-bar-fill ${cls}" style="width:${width}%"></div></div>
+      <div class="usage-bar-meta">${current.toLocaleString()} / ${limit.toLocaleString()}</div>
+    </div>
+  `;
+}
+
+function renderScenarioCard(sc) {
+  const state = sc.is_active ? 'active' : sc.is_paused ? 'paused' : 'paused';
+  return `
+    <div class="scenario-card">
+      <div class="scenario-head">
+        <span class="scenario-name">${esc(sc.name)}</span>
+        <span class="scenario-state ${state}">${state}</span>
+      </div>
+      <div class="scenario-stats">
+        <div><div class="worker-stat-label">last run</div><div class="worker-stat-value">${esc(fmtRel(sc.last_execution_at))}</div></div>
+        <div><div class="worker-stat-label">ops 30d</div><div class="worker-stat-value">${sc.operations_30d != null ? sc.operations_30d.toLocaleString() : '—'}</div></div>
+        <div><div class="worker-stat-label">credits 30d</div><div class="worker-stat-value">${sc.credits_30d != null ? sc.credits_30d.toLocaleString() : '—'}</div></div>
+        <div><div class="worker-stat-label">id</div><div class="worker-stat-value" style="font-size:11px;">${esc(String(sc.id))}</div></div>
+      </div>
+    </div>
+  `;
+}
+
+// ─── RFT-130 Cost & usage ─────────────────────────────────────────────────────
+
+async function loadCostUsage() {
+  $('cProviderList').innerHTML = '<div class="inline-loading"><div class="spinner"></div> Loading providers…</div>';
+  $('cAlertsList').innerHTML = '';
+  $('cBreakdown').innerHTML = '';
+  try {
+    const res = await authedFetch(`${ADMIN_API}/console/cost-usage`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    renderCostUsage(data);
+  } catch (e) {
+    $('cProviderList').innerHTML = `<div class="inline-loading" style="color:var(--ops-danger);">Could not load: ${esc(e.message)}</div>`;
+  }
+}
+
+function renderCostUsage(data) {
+  const providers = data.providers || [];
+  const alerts = data.free_tier_alerts || [];
+  $('cMonthly').textContent = `$${(data.monthly_total?.usd || 0).toFixed(2)}`;
+  $('cMonthlySub').textContent = `USD + A$${(data.monthly_total?.aud || 0).toFixed(2)}`;
+  $('cAlerts').textContent = alerts.length;
+  $('cAlertsCard').classList.toggle('danger', alerts.length > 0);
+  $('cProviders').textContent = providers.length;
+  const worst = providers.reduce((acc, p) => {
+    if (p.headroom_status === 'critical') return 'critical';
+    if (p.headroom_status === 'warning' && acc !== 'critical') return 'warning';
+    return acc;
+  }, 'ok');
+  $('cWorstStatus').textContent = worst;
+  $('cMeta').textContent = `${providers.length} providers`;
+
+  $('cAlertsList').innerHTML = alerts.length === 0 ? '' : `
+    <div class="cross-tenant-box" style="background:#FEF6E7;border-color:rgba(146,64,14,0.4);">
+      <h3 style="color:var(--ops-warn);"><i class="ti ti-alert-triangle"></i> Free-tier alerts — ${alerts.length}</h3>
+      ${alerts.map(a => `
+        <div class="cta-row" style="grid-template-columns:120px 200px 100px 1fr;color:var(--ops-text);">
+          <span class="cta-time" style="color:var(--ops-warn);">${esc(a.provider)}</span>
+          <span class="cta-endpoint" style="color:var(--ops-text);">${esc(a.metric)}</span>
+          <span class="cta-ip">${a.percentage}%</span>
+          <span class="cta-detail">${esc(a.message)}</span>
+        </div>
+      `).join('')}
+    </div>
+  `;
+
+  $('cProviderList').innerHTML = providers.map(p => `
+    <div class="provider-card">
+      <div class="provider-head">
+        <span class="provider-name">${esc(p.name)}</span>
+        <span class="provider-cost">${p.monthly_cost > 0 ? `${p.currency} $${p.monthly_cost.toFixed(2)}/mo` : 'free'}</span>
+        <span class="headroom-badge ${esc(p.headroom_status)}">${esc(p.headroom_status)}</span>
+      </div>
+      <div style="font-size:11px;color:var(--ops-muted);margin-bottom:8px;">${esc(p.plan)} · ${esc(p.notes || '')}</div>
+      ${p.usage && p.usage.percentage != null ? renderUsageBar(p.usage.metric, p.usage.current, p.usage.limit, p.usage.percentage) : (p.usage?.note ? `<div class="unavailable">${esc(p.usage.note)}</div>` : '')}
+    </div>
+  `).join('');
+
+  $('cBreakdown').innerHTML = `
+    <div class="cost-table">
+      <table>
+        <thead><tr><th>Provider</th><th>Plan</th><th>Monthly</th><th>Currency</th></tr></thead>
+        <tbody>
+          ${providers.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.plan)}</td><td>$${p.monthly_cost.toFixed(2)}</td><td>${esc(p.currency)}</td></tr>`).join('')}
+          <tr class="total-row"><td colspan="2">Total</td><td>$${(data.monthly_total?.usd || 0).toFixed(2)} USD + $${(data.monthly_total?.aud || 0).toFixed(2)} AUD</td><td>—</td></tr>
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
 // ─── Nav routing ──────────────────────────────────────────────────────────────
 
-const WIRED_VIEWS = new Set(['tenants', 'observability', 'team']);
+const WIRED_VIEWS = new Set(['tenants', 'observability', 'team', 'platform-health', 'issues', 'make', 'cost']);
 
 function setView(viewKey) {
   document.querySelectorAll('.nav-item').forEach((n) => n.classList.toggle('active', n.dataset.view === viewKey));
@@ -1356,11 +1843,19 @@ function setView(viewKey) {
   $('view-tenants').hidden = viewKey !== 'tenants';
   $('view-observability').hidden = viewKey !== 'observability';
   $('view-team').hidden = viewKey !== 'team';
+  $('view-platform-health').hidden = viewKey !== 'platform-health';
+  $('view-issues').hidden = viewKey !== 'issues';
+  $('view-make').hidden = viewKey !== 'make';
+  $('view-cost').hidden = viewKey !== 'cost';
   const placeholderView = $('view-placeholder');
   if (WIRED_VIEWS.has(viewKey)) {
     placeholderView.hidden = true;
-    if (viewKey === 'observability') loadObservability();
-    if (viewKey === 'team') loadTeam();
+    if (viewKey === 'observability')   loadObservability();
+    if (viewKey === 'team')             loadTeam();
+    if (viewKey === 'platform-health')  loadPlatformHealth();
+    if (viewKey === 'issues')           loadIssues();
+    if (viewKey === 'make')             loadMakeScenarios();
+    if (viewKey === 'cost')             loadCostUsage();
   } else {
     placeholderView.hidden = false;
     const def = PLACEHOLDER_SECTIONS[viewKey] || { icon: 'ti-help', title: 'Coming soon' };
@@ -1441,6 +1936,7 @@ function showApp() {
     });
     $('signOutBtn2').addEventListener('click', signOut);
     wireObservabilityFilters();
+    wireIssueFilters();
 
     showApp();
     setView('tenants');
