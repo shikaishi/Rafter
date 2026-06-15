@@ -622,6 +622,11 @@ body {
   <p>Platform operator sign-in required. Use your registered passkey.</p>
   <button id="passkeyBtn" class="btn-out"><i class="ti ti-fingerprint" style="font-size:14px;"></i> Sign in with passkey</button>
   <p id="passkeyHint" style="font-size:11px;opacity:0.6;"></p>
+  <!-- Hosted-UI fallback for when the passkey isn't enrolled on this device
+       yet (cross-device first sign-in, lost device, etc.). Sends the operator
+       to Clerk's hosted UI for email/Google sign-in, then redirects back. -->
+  <p style="font-size:11px;opacity:0.5;margin-top:18px;">No passkey on this device?</p>
+  <button id="hostedSignInBtn" class="btn-out"><i class="ti ti-mail" style="font-size:14px;"></i> Sign in via email</button>
 </div>
 
 <!-- Access denied (signed in but not a platform operator) -->
@@ -917,7 +922,19 @@ async function tryPasskeySignIn() {
     await window.Clerk.client.signIn.authenticateWithPasskey({ flow: 'discoverable' });
     location.reload();
   } catch (e) {
-    $('passkeyHint').textContent = 'Sign-in failed — make sure your passkey is registered with this account.';
+    $('passkeyHint').textContent = 'Sign-in failed — try email below, or make sure your passkey is registered with this account.';
+  }
+}
+
+function hostedSignIn() {
+  // Hands off to Clerk's hosted UI (accounts.deepgreensea.au) for email/
+  // Google sign-in, then returns to the current ops-console URL. Used when
+  // the device hasn't enrolled a passkey yet — cross-device first run, lost
+  // device, fresh laptop. Clerk handles the redirect back via redirectUrl.
+  try {
+    window.Clerk.redirectToSignIn({ redirectUrl: window.location.href });
+  } catch (e) {
+    $('passkeyHint').textContent = 'Hosted sign-in unavailable: ' + (e?.message || 'unknown error');
   }
 }
 
@@ -1918,6 +1935,7 @@ function showApp() {
     if (!clerk.session) {
       showAuth();
       $('passkeyBtn').addEventListener('click', tryPasskeySignIn);
+      $('hostedSignInBtn').addEventListener('click', hostedSignIn);
       return;
     }
 
