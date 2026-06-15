@@ -930,9 +930,20 @@ function hostedSignIn() {
   // Hands off to Clerk's hosted UI (accounts.deepgreensea.au) for email/
   // Google sign-in, then returns to the current ops-console URL. Used when
   // the device hasn't enrolled a passkey yet — cross-device first run, lost
-  // device, fresh laptop. Clerk handles the redirect back via redirectUrl.
+  // device, fresh laptop.
+  //
+  // signInForceRedirectUrl / signUpForceRedirectUrl: Clerk v6 names for the
+  // post-auth landing URL. Without these, Clerk's hosted UI uses its
+  // dashboard default (paths like /, /sign-in callback) which on this
+  // instance routes through whatever org-task the "Personal Accounts: OFF"
+  // policy fires before returning. Forcing ops.deepgreensea.au at every
+  // outbound hand-off keeps the round-trip predictable. (The runtime
+  // org-task resolver in the boot block below is the belt to this brace.)
   try {
-    window.Clerk.redirectToSignIn({ redirectUrl: window.location.href });
+    window.Clerk.redirectToSignIn({
+      signInForceRedirectUrl: 'https://ops.deepgreensea.au',
+      signUpForceRedirectUrl: 'https://ops.deepgreensea.au',
+    });
   } catch (e) {
     $('passkeyHint').textContent = 'Hosted sign-in unavailable: ' + (e?.message || 'unknown error');
   }
@@ -1930,8 +1941,45 @@ function showApp() {
         }, 80);
       });
     }
-    await window.Clerk.load();
+    // Force-redirect URLs at load time so every Clerk-internal flow
+    // (silent passkey, hosted UI, session-task completion) returns here.
+    await window.Clerk.load({
+      signInForceRedirectUrl: 'https://ops.deepgreensea.au',
+      signUpForceRedirectUrl: 'https://ops.deepgreensea.au',
+    });
     clerk = window.Clerk;
+
+    // The prod Clerk instance has "Personal Accounts: OFF (Membership
+    // required)". Any session that isn't already org-scoped boots into
+    // a `choose-organization` (or `create-organization`) session task,
+    // which Clerk's hosted UI enforces by routing through accounts.
+    // deepgreensea.au instead of returning to ops. The ops console
+    // doesn't care about org context — platformOperatorGate keys off
+    // the user_id claim alone — but the session JWT carries the
+    // pending-task state, so we still need to resolve it client-side
+    // before the page can boot cleanly.
+    //
+    // Resolution strategy: silently set the first available org
+    // membership as active. That satisfies `choose-organization` and
+    // makes the session "live" without bouncing through hosted UI.
+    // If the operator has no memberships, there's nothing to set
+    // active and we fall through — admin-api will reject the JWT,
+    // platformOperatorGate will return 403, and showDenied() will
+    // surface a meaningful message instead of an infinite redirect.
+    try {
+      if (clerk.session?.currentTask && clerk.user) {
+        const memberships = await clerk.user.getOrganizationMemberships();
+        const first = memberships?.data?.[0]?.organization
+                   || memberships?.[0]?.organization; // shape varies by clerk-js version
+        if (first?.id) {
+          await clerk.setActive({ organization: first.id });
+        }
+      }
+    } catch (e) {
+      // Non-fatal — proceed to the gate check, which will tell the
+      // operator exactly what's wrong if access is denied.
+      console.warn('ops-console: could not auto-resolve session task', e);
+    }
 
     if (!clerk.session) {
       // Try silent passkey first — same Surface-4 pattern as Rafter index.html.
