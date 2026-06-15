@@ -732,7 +732,12 @@ textarea { resize: vertical; min-height: 68px; }
 
   <!-- ── Step 3: Configure Rafter ── -->
   <div id="step-3" class="card step-panel" hidden>
-    <form id="onboarding-form" novalidate>
+    <!-- RFT-131: form keeps the <form> shell for semantic grouping +
+         autocomplete heuristics, but its submit event is fully blocked
+         below. The Set-up button is type="button" so implicit Enter-key
+         submission (the bug this commit fixes) can't fire it. handleSubmit
+         is wired via the button's click handler in bindBoot. -->
+    <form id="onboarding-form" novalidate onsubmit="event.preventDefault(); return false;">
 
       <!-- Bank Details -->
       <div class="section">
@@ -897,7 +902,7 @@ textarea { resize: vertical; min-height: 68px; }
         <button type="button" class="btn-secondary btn-back" data-back-to="2">
           <i class="ti ti-arrow-left"></i> Back
         </button>
-        <button type="submit" id="submit-btn" class="btn-primary">
+        <button type="button" id="submit-btn" class="btn-primary">
           <i class="ti ti-check"></i>
           Set up my account
         </button>
@@ -947,9 +952,17 @@ textarea { resize: vertical; min-height: 68px; }
     </div>
   </div><!-- /#step-4 -->
 
-  <!-- Result (shown after submission) -->
+  <!-- Result (shown after submission). RFT-131 — back button so an operator
+       who hit Done by mistake can return to the photo step and add more.
+       Steps 2/3/4 each have their own back button; the result-area is the
+       only "final" screen that was missing one. -->
   <div id="result-area" class="card" hidden>
     <div class="result-body" id="result-content"></div>
+    <div class="form-footer" style="border-top:1px solid var(--rf-divider);padding-top:16px;">
+      <button type="button" class="btn-secondary" id="result-back-btn">
+        <i class="ti ti-arrow-left"></i> Back to photo upload
+      </button>
+    </div>
   </div>
 
 </div><!-- /#state-form -->
@@ -2218,7 +2231,11 @@ function photoFilename(originalName) {
 
   document.getElementById('step2-continue').addEventListener('click', () => showStep(3));
   document.getElementById('prefill-retry').addEventListener('click', fetchSm8Prefill);
-  document.getElementById('onboarding-form').addEventListener('submit', e => handleSubmit(e, clerk));
+  // RFT-131 — bind handleSubmit to the button click ONLY. The form's submit
+  // event is blocked at the markup level (onsubmit returns false). Together
+  // these mean only an explicit click on the Set-up button can advance —
+  // Enter in any text input is a no-op.
+  document.getElementById('submit-btn').addEventListener('click', e => handleSubmit(e, clerk));
 
   // RFT-97 — back buttons on steps 2, 3, 4 (Step 1 has no back). Step state is
   // already in-memory (DOM values + repeater arrays), so showStep is a pure
@@ -2229,6 +2246,18 @@ function photoFilename(originalName) {
       if (Number.isFinite(n)) showStep(n);
     });
   });
+
+  // RFT-131 — back button on the result-area (post-Done screen). Hides the
+  // result and re-shows Step 4 so the operator can upload more photos if
+  // they hit Done prematurely. The provision write already happened — going
+  // back here is purely visual.
+  const resultBackBtn = document.getElementById('result-back-btn');
+  if (resultBackBtn) {
+    resultBackBtn.addEventListener('click', () => {
+      document.getElementById('result-area').hidden = true;
+      showStep(4);
+    });
+  }
 
   // RFT-66 — BSB auto-format (ports the pattern from settings.html).
   initBsbAutoFormat();
