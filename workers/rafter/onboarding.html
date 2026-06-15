@@ -2224,6 +2224,29 @@ function photoFilename(originalName) {
   initWebhookSelector();
   prefillFromParams();
 
+  // RFT-131 follow-up — defence in depth against autocomplete-induced
+  // step advance. The first-pass fix (form onsubmit + button type=button)
+  // covered keyboard Enter, but Chrome's autofill API + browser
+  // autocomplete-dropdown selection still managed to fire a synthetic
+  // submit/click on at least one path. Onboarding has zero input fields
+  // where Enter should produce any action — text fields are pure data
+  // entry, multi-line textareas obviously stay unaffected. Document-level
+  // keydown swallow on Enter for any input element is the simplest
+  // bulletproof gate: whatever code path the autofill was firing through
+  // can no longer reach a step-advance because the keystroke itself
+  // dies at capture phase.
+  document.addEventListener('keydown', (e) => {
+    if (e.key !== 'Enter') return;
+    const t = e.target;
+    if (!t || t.tagName !== 'INPUT') return; // textareas + buttons unaffected
+    e.preventDefault();
+    e.stopPropagation();
+    // Commit the typed value the same way Tab would — blur fires the
+    // input's own blur listeners (ABN checksum, phone validation, etc.)
+    // and closes any open browser autocomplete dropdown.
+    t.blur();
+  }, true); // capture phase — runs before any inner handler
+
   document.getElementById('step2-continue').addEventListener('click', () => showStep(3));
   document.getElementById('prefill-retry').addEventListener('click', fetchSm8Prefill);
   // RFT-131 — bind handleSubmit to the button click ONLY. The form's submit
