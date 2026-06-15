@@ -2835,6 +2835,18 @@ async function handleConsole(request, env, url, jwtPayload, userId) {
   if (method === 'GET' && path === '/console/team') {
     return handleConsoleTeam(env);
   }
+  if (method === 'GET' && path === '/console/platform-health') {
+    return handleConsolePlatformHealth(env);
+  }
+  if (method === 'GET' && path === '/console/issues') {
+    return handleConsoleIssues(env);
+  }
+  if (method === 'GET' && path === '/console/make-scenarios') {
+    return handleConsoleMakeScenarios(env);
+  }
+  if (method === 'GET' && path === '/console/cost-usage') {
+    return handleConsoleCostUsage(env);
+  }
   const tenantMatch = path.match(/^\/console\/tenants\/([0-9a-f-]{36})(\/[a-z-]+)?$/i);
   if (tenantMatch) {
     const [, uuid, action] = tenantMatch;
@@ -3445,6 +3457,465 @@ async function fetchOrgWithMembersAndInvites(env, tenant) {
   }
 
   return out;
+}
+
+// ── RFT-127: Platform health ─────────────────────────────────────────────────
+//
+// Cross-provider health view for the console. Pulls from Cloudflare REST +
+// GraphQL Analytics. Every external call wrapped in try/catch — a provider
+// outage degrades to nulls in the response, never 500s the whole endpoint.
+//
+// Required env (all optional — missing tokens produce null sections, not errors):
+//   CLOUDFLARE_ANALYTICS_TOKEN — Bearer token with Account.Workers Scripts:Read
+//                                + Account.Analytics:Read scopes
+//   CLOUDFLARE_ACCOUNT_ID      — account tag for analytics queries
+
+const TRACKED_WORKERS = ['rafter', 'rafter-pdf', 'rafter-materials-sync', 'rafter-admin-api', 'rafter-ops-console'];
+
+async function cfFetch(env, path, init = {}) {
+  if (!env.CLOUDFLARE_ANALYTICS_TOKEN) return { ok: false, status: 503, error: 'cloudflare_analytics_token_not_set' };
+  const headers = new Headers(init.headers || {});
+  headers.set('Authorization', `Bearer ${env.CLOUDFLARE_ANALYTICS_TOKEN}`);
+  if (init.body && !headers.has('Content-Type')) headers.set('Content-Type', 'application/json');
+  try {
+    const res = await fetch(`https://api.cloudflare.com${path}`, { ...init, headers });
+    let data = null;
+    const text = await res.text();
+    if (text) { try { data = JSON.parse(text); } catch { data = { _raw: text.slice(0, 200) }; } }
+    return { ok: res.ok, status: res.status, data };
+  } catch (e) {
+    return { ok: false, status: 0, error: e.message };
+  }
+}
+
+async function cfGraphQL(env, query, variables) {
+  if (!env.CLOUDFLARE_ANALYTICS_TOKEN) return { ok: false, error: 'cloudflare_analytics_token_not_set' };
+  try {
+    const res = await fetch('https://api.cloudflare.com/client/v4/graphql', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${env.CLOUDFLARE_ANALYTICS_TOKEN}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ query, variables }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return { ok: false, status: res.status, error: data?.errors?.[0]?.message || `http_${res.status}` };
+    if (data?.errors?.length) return { ok: false, status: res.status, error: data.errors[0].message };
+    return { ok: true, data: data?.data };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+async function handleConsolePlatformHealth(env) {
+  const accountId = env.CLOUDFLARE_ACCOUNT_ID || '';
+  const since = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+
+  // Per-worker analytics + deployments. Parallel fan-out — five workers,
+  // two requests each (analytics + deployments). Each call's failure stays
+  // local to that worker's entry.
+  const workers = await Promise.all(TRACKED_WORKERS.map(async (name) => {
+    const out = { name, requests_7d: null, errors_7d: null, error_rate: null, p50_cpu_ms: null, p99_cpu_ms: null, daily: [], recent_deploys: [] };
+
+    // GraphQL analytics. workersInvocationsAdaptive is the Workers dataset;
+    // grouped by date for the sparkline. quantiles give p50/p99 CPU time
+    // in microseconds (we convert to ms on the way out).
+    const gql = `query($accountId:String!,$scriptName:String!,$since:Time!){
+      viewer{accounts(filter:{accountTag:$accountId}){
+        workersInvocationsAdaptive(
+          filter:{scriptName:$scriptName, datetime_geq:$since},
+          limit:10000,
+          orderBy:[date_ASC]
+        ){
+          sum{requests errors subrequests}
+          quantiles{cpuTimeP50 cpuTimeP99}
+          dimensions{date}
+        }
+      }}
+    }`;
+    const aRes = await cfGraphQL(env, gql, { accountId, scriptName: name, since });
+    if (aRes.ok && aRes.data?.viewer?.accounts?.[0]?.workersInvocationsAdaptive) {
+      const rows = aRes.data.viewer.accounts[0].workersInvocationsAdaptive;
+      let totalReq = 0, totalErr = 0, p50us = 0, p99us = 0, n = 0;
+      for (const row of rows) {
+        const req = row.sum?.requests || 0;
+        const err = row.sum?.errors || 0;
+        totalReq += req; totalErr += err;
+        p50us += row.quantiles?.cpuTimeP50 || 0;
+        p99us += row.quantiles?.cpuTimeP99 || 0;
+        n++;
+        out.daily.push({ date: row.dimensions?.date || '', requests: req, errors: err });
+      }
+      out.requests_7d = totalReq;
+      out.errors_7d = totalErr;
+      out.error_rate = totalReq > 0 ? totalErr / totalReq : 0;
+      out.p50_cpu_ms = n > 0 ? Math.round((p50us / n) / 1000 * 100) / 100 : null;
+      out.p99_cpu_ms = n > 0 ? Math.round((p99us / n) / 1000 * 100) / 100 : null;
+    } else {
+      out.analytics_error = aRes.error || `gql_${aRes.status || 'failed'}`;
+    }
+
+    // Recent deployments — last 5. Endpoint returns paginated results; we
+    // only need the first page sorted desc.
+    const dRes = await cfFetch(env, `/client/v4/accounts/${encodeURIComponent(accountId)}/workers/scripts/${encodeURIComponent(name)}/deployments`);
+    if (dRes.ok && Array.isArray(dRes.data?.result?.deployments)) {
+      out.recent_deploys = dRes.data.result.deployments.slice(0, 5).map(d => ({
+        version_id: d.versions?.[0]?.version_id || d.id || null,
+        created_at: d.created_on || d.metadata?.created_on || null,
+      }));
+    } else {
+      out.deploys_error = dRes.error || `deploys_${dRes.status || 'failed'}`;
+    }
+    return out;
+  }));
+
+  // Storage stats — best-effort, individual try/catch. The endpoint shapes
+  // differ between KV/R2/D1 and not every metric is exposed via REST.
+  const storage = { kv: null, r2: null, d1: [] };
+
+  // R2 bucket head — object count + size aren't first-class on the REST
+  // bucket endpoint; the bucket listing only returns metadata. We list
+  // objects with limit=1 + use the response's truncated/cursor pattern,
+  // OR just hit the bucket endpoint and return whatever shows. For real
+  // counts the worker-side R2 binding is better, but this endpoint runs
+  // outside that context — leave object_count null for now.
+  try {
+    const r2Res = await cfFetch(env, `/client/v4/accounts/${encodeURIComponent(accountId)}/r2/buckets/rafter-assets`);
+    if (r2Res.ok && r2Res.data?.result) {
+      storage.r2 = { bucket: 'rafter-assets', creation_date: r2Res.data.result.creation_date || null, object_count: null, total_size_bytes: null };
+    }
+  } catch { /* ignore */ }
+
+  // KV namespace metadata.
+  try {
+    const kvRes = await cfFetch(env, `/client/v4/accounts/${encodeURIComponent(accountId)}/storage/kv/namespaces`);
+    if (kvRes.ok && Array.isArray(kvRes.data?.result)) {
+      const list = kvRes.data.result;
+      storage.kv = {
+        namespace_count: list.length,
+        namespaces: list.map(n => ({ id: n.id, title: n.title })),
+      };
+    }
+  } catch { /* ignore */ }
+
+  // D1 databases.
+  try {
+    const dbRes = await cfFetch(env, `/client/v4/accounts/${encodeURIComponent(accountId)}/d1/database`);
+    if (dbRes.ok && Array.isArray(dbRes.data?.result)) {
+      storage.d1 = dbRes.data.result.map(db => ({
+        name: db.name,
+        id: db.uuid,
+        file_size_bytes: db.file_size ?? null,
+        num_tables: db.num_tables ?? null,
+        version: db.version ?? null,
+      }));
+    }
+  } catch { /* ignore */ }
+
+  return json({ ok: true, workers, storage, generated_at: new Date().toISOString() });
+}
+
+// ── RFT-128: Issues (Linear) ─────────────────────────────────────────────────
+//
+// Linear GraphQL aggregator. The team key is "RFT" per CLAUDE.md. The token
+// is a personal API key with read scope. Auth header is bare (no "Bearer "
+// prefix) per Linear's docs.
+
+async function linearGraphQL(env, query, variables) {
+  if (!env.LINEAR_API_TOKEN) return { ok: false, error: 'linear_token_not_set' };
+  try {
+    const res = await fetch('https://api.linear.app/graphql', {
+      method: 'POST',
+      headers: { 'Authorization': env.LINEAR_API_TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ query, variables }),
+    });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return { ok: false, status: res.status, error: data?.errors?.[0]?.message || `http_${res.status}` };
+    if (data?.errors?.length) return { ok: false, error: data.errors[0].message };
+    return { ok: true, data: data?.data };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+async function handleConsoleIssues(env) {
+  // Single query — pulls open + recently-completed in one round trip.
+  // priorityLabel resolves the priority number (0-4) to a string Linear
+  // returns ("Urgent", "High", etc.). state.type is one of triage/backlog/
+  // unstarted/started/completed/canceled.
+  const query = `
+    query {
+      open: issues(
+        filter: { team: { key: { eq: "RFT" } }, state: { type: { nin: ["completed","canceled"] } } }
+        first: 100
+        orderBy: updatedAt
+      ) {
+        nodes {
+          id identifier title priority priorityLabel url
+          state { name type }
+          labels { nodes { name color } }
+          assignee { name email }
+          createdAt updatedAt
+        }
+      }
+      completedRecent: issues(
+        filter: { team: { key: { eq: "RFT" } }, state: { type: { eq: "completed" } }, completedAt: { gte: "-P7D" } }
+        first: 100
+        orderBy: updatedAt
+      ) {
+        nodes { id identifier title completedAt }
+      }
+    }
+  `;
+  const res = await linearGraphQL(env, query);
+  if (!res.ok) {
+    return json({ ok: false, error: 'linear_query_failed', detail: res.error }, 502);
+  }
+  const open = res.data?.open?.nodes || [];
+  const completed7d = res.data?.completedRecent?.nodes || [];
+
+  const byPriority = { urgent: 0, high: 0, medium: 0, low: 0, none: 0 };
+  const byState = { backlog: 0, unstarted: 0, started: 0, triage: 0 };
+  for (const i of open) {
+    const p = (i.priorityLabel || 'none').toLowerCase();
+    if (byPriority[p] !== undefined) byPriority[p]++;
+    else byPriority.none++;
+    const st = (i.state?.type || 'unstarted').toLowerCase();
+    if (byState[st] !== undefined) byState[st]++;
+    else byState.unstarted++;
+  }
+
+  const issues = open.map(i => ({
+    id: i.id,
+    identifier: i.identifier,
+    title: i.title,
+    priority: i.priority,
+    priority_label: i.priorityLabel,
+    state: i.state?.name || null,
+    state_type: i.state?.type || null,
+    labels: (i.labels?.nodes || []).map(l => ({ name: l.name, color: l.color })),
+    assignee: i.assignee?.name || null,
+    url: i.url,
+    created_at: i.createdAt,
+    updated_at: i.updatedAt,
+  }));
+
+  return json({
+    ok: true,
+    summary: {
+      total_open: open.length,
+      by_priority: byPriority,
+      by_state: byState,
+      completed_7d: completed7d.length,
+    },
+    issues,
+  });
+}
+
+// ── RFT-129: Make scenarios ──────────────────────────────────────────────────
+//
+// Make REST API aggregator. Auth uses "Token <token>" header per Make's docs
+// and confirmed by the existing materials-sync probe path. Lightweight
+// 5-minute in-memory cache because the console may poll on every nav-click
+// and Make's rate limits are tight.
+
+const MAKE_CACHE = { data: null, expires_at: 0 };
+const MAKE_CACHE_TTL_MS = 5 * 60 * 1000;
+
+async function makeFetch(env, path) {
+  if (!env.MAKE_API_TOKEN) return { ok: false, error: 'make_token_not_set' };
+  const base = env.MAKE_API_BASE_URL || 'https://eu1.make.com';
+  try {
+    const res = await fetch(`${base}${path}`, { headers: { 'Authorization': `Token ${env.MAKE_API_TOKEN}` } });
+    const data = await res.json().catch(() => null);
+    if (!res.ok) return { ok: false, status: res.status, error: data?.message || `http_${res.status}` };
+    return { ok: true, data };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+}
+
+async function handleConsoleMakeScenarios(env) {
+  // Serve cached if fresh.
+  if (MAKE_CACHE.data && Date.now() < MAKE_CACHE.expires_at) {
+    return json({ ...MAKE_CACHE.data, cached: true, cache_age_ms: Date.now() - (MAKE_CACHE.expires_at - MAKE_CACHE_TTL_MS) });
+  }
+
+  const listRes = await makeFetch(env, '/api/v2/scenarios');
+  if (!listRes.ok) return json({ ok: false, error: 'make_list_failed', detail: listRes.error }, 502);
+  const scenarios = Array.isArray(listRes.data?.scenarios) ? listRes.data.scenarios : (Array.isArray(listRes.data) ? listRes.data : []);
+
+  // Derive org from the first scenario (Make scenarios all belong to one team/org).
+  const orgId = scenarios[0]?.organizationId || scenarios[0]?.teamId || null;
+  let plan = null;
+  if (orgId) {
+    const usageRes = await makeFetch(env, `/api/v2/organizations/${encodeURIComponent(orgId)}/usage`);
+    if (usageRes.ok && usageRes.data) {
+      const u = usageRes.data;
+      plan = {
+        credits_limit: u.operations_limit ?? u.credits_limit ?? null,
+        credits_used: u.operations_used ?? u.credits_used ?? null,
+        credits_remaining: u.operations_remaining ?? u.credits_remaining ?? null,
+        reset_date: u.reset_date ?? u.next_reset ?? null,
+      };
+    }
+  }
+
+  // Per-scenario 30-day consumption. Bounded fan-out — the platform has
+  // maybe two scenarios; this won't blow out even with a few.
+  const scenarioDetails = await Promise.all(scenarios.map(async (s) => {
+    const id = s.id;
+    let ops30d = null, credits30d = null;
+    try {
+      const cRes = await makeFetch(env, `/api/v2/scenarios/${encodeURIComponent(id)}/consumptions`);
+      if (cRes.ok && cRes.data) {
+        const rows = Array.isArray(cRes.data.consumptions) ? cRes.data.consumptions : (Array.isArray(cRes.data) ? cRes.data : []);
+        ops30d = rows.reduce((a, r) => a + (r.operations || r.ops || 0), 0);
+        credits30d = rows.reduce((a, r) => a + (r.centicredits ? r.centicredits / 100 : (r.credits || 0)), 0);
+      }
+    } catch { /* per-scenario consumption is non-critical */ }
+
+    return {
+      id,
+      name: s.name || `Scenario ${id}`,
+      is_active: !!s.isActive && !s.isPaused,
+      is_paused: !!s.isPaused,
+      last_execution_at: s.lastExecution || s.lastExecutionAt || null,
+      operations_30d: ops30d,
+      credits_30d: credits30d,
+    };
+  }));
+
+  const active = scenarioDetails.filter(s => s.is_active).length;
+  const paused = scenarioDetails.filter(s => s.is_paused).length;
+  const total_ops_30d = scenarioDetails.reduce((a, s) => a + (s.operations_30d || 0), 0);
+  const total_credits_30d = scenarioDetails.reduce((a, s) => a + (s.credits_30d || 0), 0);
+
+  const payload = {
+    ok: true,
+    summary: {
+      total_scenarios: scenarioDetails.length,
+      active, paused,
+      total_operations_30d: total_ops_30d,
+      total_credits_30d,
+    },
+    plan,
+    scenarios: scenarioDetails,
+  };
+  MAKE_CACHE.data = payload;
+  MAKE_CACHE.expires_at = Date.now() + MAKE_CACHE_TTL_MS;
+  return json({ ...payload, cached: false });
+}
+
+// ── RFT-130: Cost & usage ────────────────────────────────────────────────────
+//
+// Aggregates the other console endpoints + a static PLAN_CONFIG table.
+// PLAN_CONFIG is a known-values code constant — update inline when plans
+// change. Building a UI editor for two providers' billing tiers is a worse
+// use of time than just editing this constant.
+
+const PLAN_CONFIG = {
+  cloudflare: { plan: 'Workers Free', monthly_cost: 0, currency: 'USD', notes: 'Free tier across Workers, KV, R2, D1' },
+  make: { plan: 'Core', monthly_cost: 9, currency: 'USD', notes: 'Core plan; 10K operations/month' },
+  clerk: { plan: 'Pro', monthly_cost: 25, currency: 'USD', notes: 'Pro plan; 1000 MAU included, $0.02/MAU after' },
+  domain: { plan: 'au registry', monthly_cost: 25 / 12, currency: 'AUD', notes: 'deepgreensea.au annual / 12' },
+};
+
+const CLOUDFLARE_FREE_LIMITS = {
+  workers_requests_per_day: 100_000,
+  kv_storage_gb: 1,
+  r2_storage_gb: 10,
+  d1_reads_per_day: 5_000_000,
+  d1_writes_per_day: 100_000,
+};
+
+const MAKE_OPS_LIMIT = 10_000;     // Core plan operations/month
+const CLERK_MAU_INCLUDED = 1000;
+
+async function handleConsoleCostUsage(env) {
+  // Pull from our own console endpoints in-process. Each returns a Response
+  // object — we read .json() and continue with degraded values when the
+  // upstream is unavailable.
+  let healthData = null;
+  try {
+    const r = await handleConsolePlatformHealth(env);
+    if (r.ok) healthData = await r.json();
+  } catch { /* degrade */ }
+  let makeData = null;
+  try {
+    const r = await handleConsoleMakeScenarios(env);
+    if (r.ok) makeData = await r.json();
+  } catch { /* degrade */ }
+
+  // Cloudflare daily requests — sum across workers, then average per day to
+  // compare against the per-day free-tier limit. 7-day window / 7 = avg.
+  const totalReq7d = (healthData?.workers || []).reduce((a, w) => a + (w.requests_7d || 0), 0);
+  const dailyReq = totalReq7d / 7;
+  const cfReqPct = (dailyReq / CLOUDFLARE_FREE_LIMITS.workers_requests_per_day) * 100;
+
+  // Make operations vs plan limit.
+  const makeOps30d = makeData?.summary?.total_operations_30d || 0;
+  const makePct = (makeOps30d / MAKE_OPS_LIMIT) * 100;
+
+  const headroomStatus = (pct) => pct >= 90 ? 'critical' : pct >= 70 ? 'warning' : 'ok';
+
+  const providers = [
+    {
+      name: 'Cloudflare',
+      ...PLAN_CONFIG.cloudflare,
+      usage: { metric: 'Workers requests/day (7d avg)', current: Math.round(dailyReq), limit: CLOUDFLARE_FREE_LIMITS.workers_requests_per_day, percentage: Math.round(cfReqPct * 10) / 10 },
+      headroom_status: headroomStatus(cfReqPct),
+    },
+    {
+      name: 'Make',
+      ...PLAN_CONFIG.make,
+      usage: { metric: 'Operations (30d)', current: makeOps30d, limit: MAKE_OPS_LIMIT, percentage: Math.round(makePct * 10) / 10 },
+      headroom_status: headroomStatus(makePct),
+    },
+    {
+      name: 'Clerk',
+      ...PLAN_CONFIG.clerk,
+      usage: { metric: 'MAU', current: null, limit: CLERK_MAU_INCLUDED, percentage: null, note: 'MAU lookup not yet wired — Clerk Backend API does not expose org-wide MAU in a single call.' },
+      headroom_status: 'ok',
+    },
+    {
+      name: 'Domain (deepgreensea.au)',
+      ...PLAN_CONFIG.domain,
+      usage: null,
+      headroom_status: 'ok',
+    },
+  ];
+
+  // Monthly total in AUD + USD separately (no FX conversion — exact-to-the-
+  // cent isn't the value here, broad-strokes is).
+  let totalUsd = 0, totalAud = 0;
+  for (const p of providers) {
+    if (p.currency === 'USD') totalUsd += p.monthly_cost;
+    else if (p.currency === 'AUD') totalAud += p.monthly_cost;
+  }
+
+  const alerts = providers
+    .filter(p => p.usage && (p.usage.percentage ?? 0) >= 70)
+    .map(p => ({
+      provider: p.name,
+      metric: p.usage.metric,
+      percentage: p.usage.percentage,
+      current: p.usage.current,
+      limit: p.usage.limit,
+      message: p.usage.percentage >= 90
+        ? `${p.name} ${p.usage.metric} is at ${p.usage.percentage}% — billing imminent if growth continues.`
+        : `${p.name} ${p.usage.metric} is at ${p.usage.percentage}% — monitor.`,
+    }));
+
+  return json({
+    ok: true,
+    providers,
+    monthly_total: { usd: Math.round(totalUsd * 100) / 100, aud: Math.round(totalAud * 100) / 100 },
+    free_tier_alerts: alerts,
+    plan_config_note: 'Plan costs are hardcoded in admin-api PLAN_CONFIG. Update inline when plans change.',
+    generated_at: new Date().toISOString(),
+  });
 }
 
 // ── Tenant teardown (RFT-30) ─────────────────────────────────────────────────
