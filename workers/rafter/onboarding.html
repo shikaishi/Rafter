@@ -688,7 +688,6 @@ textarea { resize: vertical; min-height: 68px; }
         <div class="section-title">
           <i class="ti ti-template"></i> Quote Sections
           <span class="source-badge badge-sm8" style="margin-left:4px;">ServiceM8 ✓</span>
-          <span class="optional-badge">can edit</span>
           <span class="rep-count" id="section-count"></span>
         </div>
         <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
@@ -764,7 +763,6 @@ textarea { resize: vertical; min-height: 68px; }
       <div class="section">
         <div class="section-title">
           <i class="ti ti-palette"></i> Branding palette
-          <span class="optional-badge">optional — can change later</span>
         </div>
         <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
           Colours used on your PDF quotes. Pick a preset or set your own — they apply to headings, accents, and section backgrounds.
@@ -796,7 +794,7 @@ textarea { resize: vertical; min-height: 68px; }
 
       <!-- Customer Email Template -->
       <div class="section">
-        <div class="section-title"><i class="ti ti-mail"></i> Customer Email Template <span class="optional-badge">optional</span></div>
+        <div class="section-title"><i class="ti ti-mail"></i> Customer Email Template</div>
         <p style="font-size:13px;color:var(--rf-muted);margin:0 0 12px;">
           The HTML email sent to customers with their quote attached. Leave blank to use a sensible default with your logo.
         </p>
@@ -812,7 +810,7 @@ textarea { resize: vertical; min-height: 68px; }
             <label>Email HTML</label>
             <button type="button" id="email-preview-btn" class="btn-preview"><i class="ti ti-eye"></i> Preview</button>
           </div>
-          <textarea id="email_template" rows="10" placeholder="Leave blank — a default will be generated with your logo and contact details."></textarea>
+          <textarea id="email_template" rows="10" placeholder="Write your customer email here — or leave empty to use a branded default with your logo and contact details."></textarea>
           <div class="field-hint">Click a merge tag above to insert it at the cursor.</div>
         </div>
         <div id="email-preview-panel" hidden>
@@ -825,7 +823,6 @@ textarea { resize: vertical; min-height: 68px; }
       <div class="section">
         <div class="section-title">
           <i class="ti ti-award"></i> Credentials
-          <span class="optional-badge">optional — can add later</span>
           <span class="rep-count" id="credential-count"></span>
         </div>
         <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">
@@ -841,7 +838,6 @@ textarea { resize: vertical; min-height: 68px; }
       <div class="section">
         <div class="section-title">
           <i class="ti ti-file-text"></i> Terms &amp; Conditions
-          <span class="optional-badge">optional — can add later</span>
           <span class="rep-count" id="tc-count"></span>
         </div>
         <p style="font-size:13px;color:var(--rf-muted);margin:0 0 14px;">Shown at the bottom of PDF quotes. Add one clause per entry, or paste your full T&Cs as a block.</p>
@@ -916,7 +912,6 @@ textarea { resize: vertical; min-height: 68px; }
     <div class="section">
       <div class="section-title">
         <i class="ti ti-photo"></i> Upload Photos
-        <span class="optional-badge">optional — skip and return later</span>
       </div>
       <p style="font-size:13px;color:var(--rf-muted);margin:0 0 16px;">
         Photos are organised by category and appear in the photo picker when building a quote.
