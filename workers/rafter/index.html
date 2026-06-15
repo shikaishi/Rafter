@@ -1083,7 +1083,7 @@
     <div class="footer-actions">
       <!-- RFT-98 — Save Draft + last-saved indicator. Tertiary: lower visual
            weight than Preview/Submit. Disabled until at least one section is
-           selected (auto-save has the same precondition). -->
+           selected. RFT-133: manual save only — auto-save removed. -->
       <button class="btn-outline" id="saveDraftBtn" type="button" disabled><i class="ti ti-device-floppy"></i>Save draft</button>
       <span class="draft-saved-indicator" id="draftSavedIndicator"></span>
       <button class="btn btn-secondary" id="previewBtn" type="button"><i class="ti ti-eye"></i>Preview PDF</button>
@@ -1798,10 +1798,20 @@ async function rehydrateFromDraft(quoteRef) {
 // ===== RFT-98 — DRAFT SAVE / RESUME / DISCARD =====
 //
 // A draft is the in-progress quote builder state persisted to rafter-quotes
-// with status='draft' and no sm8_job_uuid. The operator can save manually
-// (Save draft button) or via 60s debounced auto-save after any input change.
-// Drafts are listed on boot via /drafts?status=draft and surfaced via the
-// resume banner. On successful submit, the backend cleans the draft row.
+// with status='draft' and no sm8_job_uuid. The operator saves manually via
+// the Save draft button. Drafts are listed on boot via /drafts?status=draft
+// and surfaced via the resume banner. On successful submit, the backend
+// cleans the draft row.
+//
+// RFT-133 (2026-06-16): the 60s debounced auto-save was REMOVED. An operator
+// reported a BVT quote jumping to submitted state ~60s after editing without
+// clicking Submit. A static audit of every showSuccess call site, the
+// /store-draft endpoint, and writeQuoteRow could not produce a code path
+// from auto-save to submit-completion UI — but the bug was reproducible and
+// the 60s timer was the only timed action in the form. Per Will's safety-
+// over-convenience principle, auto-save is gone. If reintroduced, the
+// trigger MUST be something other than a wall-clock timer so the operator's
+// mental model and the system's behaviour line up.
 
 function formatRelTime(ts) {
   const t = (ts instanceof Date) ? ts : new Date(ts);
@@ -1825,9 +1835,9 @@ function formatTimeShort(ts) {
 function updateSaveDraftBtnState() {
   const btn = $("saveDraftBtn");
   if (!btn) return;
-  // Draft save requires at least one section (matches auto-save guard).
-  // Hidden entirely in amend mode — amend has its own submit-as-version
-  // flow and "drafting an amend" isn't a thing on rafter-quotes.
+  // Draft save requires at least one section. Hidden entirely in amend
+  // mode — amend has its own submit-as-version flow and "drafting an
+  // amend" isn't a thing on rafter-quotes.
   if (state.amendOf) { btn.style.display = "none"; $("draftSavedIndicator").textContent = ""; return; }
   btn.style.display = "";
   btn.disabled = state.sections.length === 0 || state.draftSaveInFlight;
@@ -1878,15 +1888,10 @@ async function saveDraft({ manual } = {}) {
   }
 }
 
-// Debounced auto-save. 60s after the last input event, save silently. Guard
-// inside saveDraft itself catches the "no sections yet" case so the
-// debounce can fire whenever; cheap.
-const autoSaveDraft = debounce(() => { saveDraft({ manual: false }); }, 60000);
-
-function scheduleAutoSave() {
-  if (state.amendOf) return; // RFT-98: draft surface is non-amend only
-  autoSaveDraft();
-}
+// RFT-133: auto-save removed (see top-of-block note). scheduleAutoSave is kept
+// as a no-op so existing call sites don't break — the manual Save draft button
+// is the only path that writes a draft row.
+function scheduleAutoSave() { /* RFT-133: intentionally empty */ }
 
 async function checkDraftBanner() {
   // Skip entirely in amend mode — a draft banner on top of an amend would be
@@ -2300,8 +2305,6 @@ function renderSections() {
   list.querySelectorAll('.ws-textarea').forEach(autoResize);
   // RFT-98 — sections array drives the Save Draft enabled state.
   updateSaveDraftBtnState();
-  // Section adds/removes/edits also count as input for auto-save purposes.
-  scheduleAutoSave();
 }
 
 function renderOneSection(s) {
@@ -2913,16 +2916,9 @@ function bindEvents() {
     window.location.href = `/${encodeURIComponent(slug)}?find=1`;
   });
 
-  // RFT-98 — Save draft button + auto-save on any input/change in the form.
-  // appMain encompasses every quote-builder input; one delegated listener
-  // covers section line items, photos, header fields without re-wiring per
-  // element when sections render/re-render.
+  // RFT-98 — Save draft button. RFT-133: appMain input/change listeners that
+  // scheduled an auto-save have been removed — manual save only.
   $("saveDraftBtn").addEventListener("click", () => saveDraft({ manual: true }));
-  const appMain = $("appMain");
-  if (appMain) {
-    appMain.addEventListener("input", scheduleAutoSave);
-    appMain.addEventListener("change", scheduleAutoSave);
-  }
   $("draftResumeBtn").addEventListener("click", (e) => { e.preventDefault(); resumeDraft(); });
   $("draftDiscardBtn").addEventListener("click", (e) => { e.preventDefault(); discardDraftBanner(); });
   updateSaveDraftBtnState();
