@@ -1214,6 +1214,10 @@ async function redirectToSignIn() {
   // exists for this RP ID. If it doesn't, surface the "ask admin for an
   // invitation" message instead of dropping to hosted UI.
   if (await attemptPasskeySignIn()) {
+    // RFT-134 — explicit nav, suppress beforeunload warning. The session
+    // was just re-established by passkey; no need to prompt about
+    // in-memory work (rehydrate after reload is the standard recovery).
+    state.intentionallyNavigating = true;
     window.location.reload();
     return;
   }
@@ -1287,6 +1291,12 @@ const state = {
   resumedFromDraft: false,    // true when current quote_ref came from /draft/{ref} status=draft
   draftLastSavedAt: null,     // Date — last successful save
   draftSaveInFlight: false,
+  // RFT-134 — set true by any code path that performs an intentional
+  // navigation (cog→settings after save, startNewQuote, redirectToSignIn,
+  // post-submit "Submit another"). The beforeunload handler bails when this
+  // is true, so the operator only sees the "Leave site?" warning on actually
+  // accidental nav (tab close, back button, typed-URL change).
+  intentionallyNavigating: false,
 };
 
 // ===== UTILITIES =====
@@ -1665,6 +1675,9 @@ function formatFinderDate(iso) {
 function onSelectQuote(quoteRef) {
   // Hard navigation — boot will re-run, see ?quote_ref=, and rehydrate. Keeps
   // the boot path single. Slug preserved by using same hostname + first path segment.
+  // RFT-134 — explicit nav (operator picked a quote from the finder),
+  // suppress beforeunload warning.
+  state.intentionallyNavigating = true;
   const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
   window.location.href = `/${encodeURIComponent(slug)}?quote_ref=${encodeURIComponent(quoteRef)}`;
 }
@@ -1679,6 +1692,8 @@ function bindFinderEvents() {
   }, 250);
   search.addEventListener("input", debouncedSearch);
   $("finderBackBtn").addEventListener("click", () => {
+    // RFT-134 — finder doesn't have form sections in scope; flag for safety.
+    state.intentionallyNavigating = true;
     const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
     window.location.href = `/${encodeURIComponent(slug)}`;
   });
@@ -2802,11 +2817,20 @@ function returnToQuote() {
 // first place — so the page reloaded straight back into editing the same
 // quote. Strip query params on the way out so a blank form loads.
 function startNewQuote() {
+  // RFT-134 — explicit nav, suppress beforeunload warning.
+  state.intentionallyNavigating = true;
   const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
   window.location.href = `/${encodeURIComponent(slug)}`;
 }
 
 function showSuccess(payload, opts = {}) {
+  // RFT-134 — the quote has been issued to SM8 (or the amend version
+  // attached). The in-memory sections are no longer "unsaved" by the
+  // operator's mental model — they're done. Suppress the beforeunload
+  // warning for the remainder of this page session so closing the tab
+  // from the success screen doesn't surface a confusing "unsaved
+  // changes" prompt.
+  state.intentionallyNavigating = true;
   if (opts.amended) {
     const v = opts.newVersion ? `v${opts.newVersion}` : "new version";
     if (opts.emailSent && payload.customer_email) {
@@ -2885,6 +2909,57 @@ function submitWithEmail() {
 
 // ===== EVENTS =====
 function bindEvents() {
+  // RFT-134 — beforeunload guard. Fires whenever the operator has any
+  // section state on the form (work that would be lost on close). Suppressed
+  // for navigations we initiated ourselves (state.intentionallyNavigating
+  // set by startNewQuote, the settings-cog handler below, redirectToSignIn,
+  // the finder, etc.). The handler must be synchronous and must call
+  // preventDefault() + assign returnValue to trigger the browser's native
+  // dialog — modern browsers ignore the returned string but the assignment
+  // is still required for backwards compat. Covers fresh-quote AND amend
+  // mode (RFT-72 partial mitigation — see the RFT-72 comment for the gap
+  // that remains in the "device loss / power off" branch).
+  window.addEventListener("beforeunload", (e) => {
+    if (state.intentionallyNavigating) return;
+    if (!state.sections || state.sections.length === 0) return;
+    e.preventDefault();
+    e.returnValue = ""; // required for Chrome
+  });
+
+  // RFT-134 — settings cog: save before navigate. The cog is the most
+  // common "I leave the form mid-edit" path. Hard navigation would drop
+  // in-memory state; we save the draft first, then navigate. saveDraft is
+  // already amend-aware (no-ops in amend mode because the Save draft
+  // button is hidden there), so this only acts on fresh-quote work.
+  const settingsCog = $("settingsCog");
+  if (settingsCog) {
+    settingsCog.addEventListener("click", async (e) => {
+      // No sections — nothing to save. Set the intentional-nav flag and
+      // let the default <a href="/settings"> navigation run.
+      if (!state.sections || state.sections.length === 0) {
+        state.intentionallyNavigating = true;
+        return;
+      }
+      // Sections present — preventDefault, swap to spinner, save, navigate.
+      e.preventDefault();
+      const origHTML = settingsCog.innerHTML;
+      settingsCog.innerHTML = '<i class="ti ti-loader-2 btn-spinner"></i>';
+      settingsCog.style.pointerEvents = "none";
+      const ok = await saveDraft({ manual: true });
+      // saveDraft({ manual: true }) toasts on both success and failure, so
+      // the operator has feedback either way. On failure we restore the
+      // cog and DO NOT navigate — they can retry, copy the work, or accept
+      // the loss as an explicit second click.
+      if (!ok) {
+        settingsCog.innerHTML = origHTML;
+        settingsCog.style.pointerEvents = "";
+        return;
+      }
+      state.intentionallyNavigating = true;
+      window.location.href = "/settings";
+    });
+  }
+
   $("clientName").addEventListener("input", (e) => {
     state.clientName = e.target.value;
     // Only clear the selected client when the name actually changes away from the selected value.
@@ -2919,6 +2994,8 @@ function bindEvents() {
   $("amendJobBtn").addEventListener("click", amendJobOnly);
   $("amendEmailBtn").addEventListener("click", amendWithEmail);
   $("findBtn").addEventListener("click", () => {
+    // RFT-134 — explicit nav into the finder, suppress beforeunload warning.
+    state.intentionallyNavigating = true;
     const slug = window.location.pathname.replace(/^\//, "").split("/")[0];
     window.location.href = `/${encodeURIComponent(slug)}?find=1`;
   });
