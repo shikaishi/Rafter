@@ -2,6 +2,29 @@
 
 Extracted verbatim from CLAUDE.md (pre-split). For canonical UUIDs and safety rules, see CLAUDE.md.
 
+## Inject
+
+Claude Code cannot modify Make scenarios — Make is UI-only. Document any required change
+and hand to Will. Do not generate code that assumes a Make scenario can be created /
+patched / re-activated programmatically.
+
+BUG-25: opening a prod scenario in the Make UI silently reverts API-PATCHed changes. Two
+modules in the prod Rafter Form scenario (`5537814`) carry API-patched fixes that would
+be lost on a UI save. Never open the prod scenario in the UI to "just look" — the cost is
+silent regression. Read scenario state via the Make API only.
+
+Probe 2 watched list is `5537814` only as of 2026-06-07 (`MAKE_SCENARIO_IDS` in
+`workers/materials-sync/index.js`). Legacy scenarios `5612449` (Account Discovery) and
+`5612520` (Data Retrieval) were deactivated after RFT-69 Path 2 removed Make from the
+OAuth path — don't re-add either to the watched list.
+
+Probe 2 alerts on `isPaused`, `isActive === false`, or `dlqCount > 0` — `dlqCount > 0` is
+the primary early-warning signal for execution failures that haven't yet deactivated the
+scenario. Falling below the daily heartbeat also triggers an alert.
+
+Outstanding hygiene: Make webhook URL is exposed in client-side JS (RFT-58 open). Don't
+add new client-side exposures without flagging.
+
 ## Make.com scenarios
 
 | Scenario | Webhook URL | Purpose |

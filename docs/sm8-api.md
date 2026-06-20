@@ -2,6 +2,44 @@
 
 Extracted verbatim from CLAUDE.md (pre-split). For canonical UUIDs and safety rules, see CLAUDE.md.
 
+## Inject
+
+Token freshness is an invariant: every handler that calls SM8 MUST call
+`refreshTokenIfNeeded(uuid, env)` first. The 1-hour access token gets refreshed when
+within 5 minutes of expiry. Skipping the call burned BUG-23 — a stale cached token
+disguised the missing scope on the trial instance. The refresh writes the new
+`access_token` / `refresh_token` / `expires_at` slice back to `client:{uuid}`. Refresh
+logic lives in `workers/materials-sync/index.js` only — other workers that need SM8
+calls either go through the binding or read the token after a sync, never refresh.
+
+OData `$filter` does not support `or`-joined predicates — the API returns HTTP 400 with
+an opaque body. The only batch shape that works is N parallel `GET /<object>/{uuid}.json`
+requests. Canonical implementation: `sm8FetchActiveSet` in materials-sync. Materials
+fetches MUST include `?$filter=active eq 1`; omitting returns archived rows mixed with live.
+
+Created-record UUIDs come back in the `x-record-uuid` response header, never the JSON
+body, on `POST /job.json` and `POST /Attachment.json` (VER-03). Reading `.uuid` from the
+parsed body returns undefined silently — the request looks like it succeeded.
+
+PDF delivery is the **two-step Attachment API**, not the SM8 Inbox (VER-01 negative,
+VER-02 negative). Step 1: `POST /Attachment.json` with metadata returns attachment UUID
+in the header. Step 2: `POST /Attachment/{uuid}.file` uploads the binary. Both steps
+required for the file to surface in the SM8 job view.
+
+The runtime-confirmed Attachment scope is `manage_attachments` only. `read_attachments`
+is documented in old SM8 material but is not a real scope name and will silently widen
+your OAuth URL with a no-op (RFT-118 sweep). Canonical scope string is mirrored across
+`setup.html`, `onboarding.html`, and the Settings → ServiceM8 connection pane — keep
+them in sync with the inline "CANONICAL SCOPE" comments.
+
+Vendor record gotchas (used at onboarding prefill): `v.email` is the SM8 relay address,
+not the operator's real email — never prefill the business_email field from it. ABN
+field is `v.abn_number`; `v.abn` is undefined and prefills as blank.
+
+Append-only is a Rafter convention, not an SM8 limitation. `POST /job/{uuid}.json` would
+overwrite `job_description` if asked. Rafter chose append-with-delimiter so amendments
+preserve quote history on the job — revisitable but in force until Will says otherwise.
+
 ## ServiceM8 API
 
 **Base URL:** `https://api.servicem8.com/api_1.0/`

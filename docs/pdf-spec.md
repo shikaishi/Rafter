@@ -2,6 +2,44 @@
 
 Extracted verbatim from CLAUDE.md (pre-split). For canonical UUIDs and safety rules, see CLAUDE.md.
 
+## Inject
+
+Fonts must be base64-inlined via `workers/pdf/fonts.js` (`MULISH_400_TTF_B64`,
+`MULISH_700_TTF_B64`, `PLAYFAIR_600_LATIN_B64`). Google Fonts CDN
+(`fonts.googleapis.com`, `fonts.gstatic.com`) does NOT load in headless Chromium —
+the request times out silently and the PDF renders in a fallback face that breaks layout.
+Browser pages under `workers/rafter/*.html` legitimately use Google Fonts; this rule
+applies to `workers/pdf/index.js` only.
+
+Photo compression runs inside `page.evaluate()` (Puppeteer browser context), not in the
+Worker. `OffscreenCanvas` does not exist in the Workers runtime — moving compression up
+breaks the deploy. Target = 400px wide, JPEG quality 0.78 (lines 264 and 271). The same
+target is applied at ingest in `onboarding.html:resizePhoto` so R2 is already correct.
+
+`compatibility_flags = ["nodejs_compat"]` + `compatibility_date = "2024-09-23"` are
+required in `workers/pdf/wrangler.toml` for puppeteer. Removing either breaks the deploy.
+
+Branding presets are single-source in `workers/pdf/index.js` lines 13-35 (`PRESETS`,
+`PLATFORM_DEFAULTS`, `resolveBranding`). `rafter-pdf` exposes them via `GET /presets`;
+admin-api proxies via the `PDF_WORKER` service binding and settings.html lazy-fetches.
+Never inline-mirror the palette list anywhere — swatch-vs-rendered-PDF drift is the
+worst branding failure mode (RFT-105 explicit warning). `resolveBranding` falls through
+to `PLATFORM_DEFAULTS` on unknown keys, so removing a preset never crashes — orphan
+tenants render in the platform palette.
+
+The PDF preview's `window.open()` MUST stay synchronous inside the click handler in
+`workers/rafter/index.html`. Moving it after an `await` lets the browser pop-up
+blocker kill it. The interstitial is `win.document.write()`-d before the fetch starts.
+
+Quote title is hardcoded in `pdf/index.js:24-27` (`PROPOSAL_TYPE_LABEL`). The
+`client.proposal_types` KV field is dead — no reader. Don't wire it back without
+Will's design decision (open issue).
+
+Footer has page number only. No URL, no timestamp. Cover page has no proposal number.
+Numerals are Mulish — Playfair is reserved for ALL CAPS headings + job title.
+
+## Reference
+
 **Font loading:** Google Fonts does NOT load in headless Chromium. All fonts (Mulish 400/700,
 Playfair Display 600) must be inlined as base64 data URIs. Do not reference Google Fonts CDN.
 

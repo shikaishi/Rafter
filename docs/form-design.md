@@ -2,6 +2,19 @@
 
 Extracted verbatim from CLAUDE.md (pre-split). For canonical UUIDs and safety rules, see CLAUDE.md.
 
+## Inject
+
+Operator form palette is locked at the CSS-variable layer in `workers/rafter/index.html`.
+Edits to the `:root` block change chrome for every tenant — these are platform variables,
+not branding values.
+
+`--rf-green: #0D2E1C` and `--rf-lime: #84B741` are Andy-specific brand values that leaked
+into the platform palette. Per-tenant branding belongs in the `branding` pane of
+`/settings` (RFT-105 single-source presets in `workers/pdf/index.js`), not in the form's
+CSS variables. Don't add more tenant-specific colour names here.
+
+Devices: 768px minimum, tablet landscape, touch-first (D10). Mobile out of scope.
+
 ## Operator form design (index.html) — CSS variables
 
 ```css

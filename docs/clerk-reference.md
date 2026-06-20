@@ -3,6 +3,44 @@
 Extracted verbatim from CLAUDE.md (pre-split). For canonical UUIDs and safety rules, see CLAUDE.md.
 For the onboarding flow that uses Clerk org events, see [onboarding-reference.md](onboarding-reference.md).
 
+## Inject
+
+Prod emits v2 session tokens (`v: 2`, claims nested under `o: { id, rol, slg }`). There is
+NO top-level `org_id` / `org_role` / `org_slug` claim on prod. The role value is the SHORT
+form (`"admin"`, `"member"`) without the `org:` prefix v1 used. `@clerk/backend@1.34.0`
+returns raw decoded claims — no normalisation — so a bare `jwtPayload.org_id` read returns
+`undefined` and silently 401s every request (RFT-107 root cause).
+
+Every org-scoped endpoint MUST use the helpers in `workers/admin-api/index.js`:
+`extractOrgId(jwtPayload)` and `extractOrgRole(jwtPayload)`. The role helper re-applies the
+`org:` prefix so every `=== 'org:admin'` comparison site continues to work unchanged.
+Bare `jwtPayload.org_id` / `jwtPayload.org_role` reads are forbidden outside the helper
+bodies themselves.
+
+JWT verification is networkless via `verifyToken` from `@clerk/backend` with `jwtKey:
+env.CLERK_JWT_KEY` (PEM). Never fetch JWKS at request time.
+
+`CLERK_AUTHORIZED_PARTY` is comma-separated (RFT-122) so both `rafter.deepgreensea.au` and
+`ops.deepgreensea.au` can present valid JWTs from the same Clerk instance. Pass it via
+`authorizedParties: parties.length ? parties : undefined` to `verifyToken`. Skipping the
+authorizedParties check leaves sibling-subdomain session cookies usable cross-surface.
+
+Browser-side Clerk loads from `clerk.deepgreensea.au/npm/@clerk/clerk-js@6.14.0/dist/clerk.browser.js`
+(pinned across all six `workers/rafter/*.html` pages). Brave + ad-blockers block jsDelivr —
+never substitute a jsDelivr URL. Use `window.Clerk` directly; the data-attribute on the
+script tag instantiates it (not `new window.Clerk(KEY)`).
+
+CSS gotcha: include `[hidden]{display:none!important}` in any HTML using Clerk-mounted
+elements — Clerk's stylesheet sets `display:flex` which overrides the bare `hidden` attribute.
+
+The `org` is the security boundary. One Clerk org per Rafter client. `clerk_org:{orgId}`
+reverse-index in KV maps the org to its tenant UUID — every JWT-gated endpoint resolves
+the tenant via this lookup, never via the request body.
+
+Webhooks: `organization.created` only. `verifyWebhook(request, { signingSecret:
+env.CLERK_WEBHOOK_SECRET })` is the signature check. Svix retry storms — guard with
+`svix:{svix-id}` dedup key plus `clerk_org:` existence check.
+
 ## Clerk (NEW v2.0)
 
 **Purpose:** Identity, onboarding gate, billing. Replaces URL-as-password security model.

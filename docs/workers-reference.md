@@ -2,6 +2,42 @@
 
 Extracted verbatim from CLAUDE.md (pre-split). For canonical UUIDs and safety rules, see CLAUDE.md.
 
+## Inject
+
+Worker-to-worker calls go through the service binding, never a `workers.dev` URL. The edge
+silently drops same-account W2W subrequests routed via workers.dev — zero events in
+`wrangler tail`, no error returned. Bindings: `MATERIALS_SYNC_WORKER` (on admin-api),
+`PDF_WORKER` (on admin-api + materials-sync), `ADMIN_API` (on materials-sync + pdf).
+Call site shape: `env.PDF_WORKER.fetch(new Request('https://internal/path', { ... }))`.
+
+Five workers ship from `workers/`: `admin-api`, `materials-sync`, `pdf` (Worker code),
+`rafter`, `ops-console` (Worker with Assets — HTML only, no `index.js`). Never put
+`wrangler.toml` at the repo root. Each worker deploys manually from its own dir.
+
+KV key formats are fixed: `client:{uuid}` is the canonical record; `slug:{slug}` and
+`clerk_org:{orgId}` are reverse indices and are required by every endpoint that resolves
+a tenant from JWT (`/onboarding/sm8-prefill`, `/onboarding/photos`, `/onboarding/provision`,
+`/settings/*`). Forget the reverse index, those routes 404 silently. KV namespace ID
+across every worker is `7c7ad02d8136452eb6d03d1af89a684f` — never declare a new one.
+
+Tooling: `wrangler v4 kv key list` and `kv key get` are broken (return empty / not-found).
+Cloudflare MCP `kv_get` / `kv_list` is the reliable path; fall back to wrangler only if MCP
+serialisation fails, then ask Will to read the dashboard rather than iterating workarounds.
+
+Route-class auth is locked (RFT-25): `/webhooks/clerk` = Svix HMAC; `/admin/*` = Bearer
+`RAFTER_ADMIN_SECRET`; `/onboarding/*`, `/form/*`, `/settings/*` = Clerk JWT. Cross-class
+auth is a structural error.
+
+Direct KV writes outside admin-api are forbidden except for materials-sync's documented
+territory: `store-token` (writes the SM8 token slice on `client:{uuid}`), `refreshTokenIfNeeded`
+(rewrites the same slice), the materials cache under `materials:{uuid}`, and a
+`clerk_org:{orgId}` reverse-index safety fallback. pdf and rafter never write KV.
+
+Past incident landmine: never log the env object. `console.log(env)`, `Object.keys(env)`,
+`JSON.stringify(env)` echoed `CLERK_WEBHOOK_SECRET` to terminal (RFT-24) and forced a
+secret rotation. Use structured event logs — `console.log(JSON.stringify({event: 'name', ...}))`
+is the convention across all three Worker `index.js` files.
+
 ## Cloudflare infrastructure
 
 **KV tooling note:** Wrangler v4 `kv key list` returns `[]` — use Cloudflare REST API directly
