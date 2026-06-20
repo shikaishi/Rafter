@@ -2926,6 +2926,29 @@ function bindEvents() {
     e.returnValue = ""; // required for Chrome
   });
 
+  // RFT-131 port — defensive Enter swallow on inputs. Browser autofill on
+  // the customer-email field (and any other email/text input) fires a
+  // synthetic Enter when the operator picks a suggestion from the
+  // autocomplete dropdown. With Submit/Submit-and-email buttons sharing
+  // the form surface, that synthetic Enter can trigger an unintended
+  // submission. Same root cause as the onboarding fix — see the
+  // RFT-131 follow-up note in onboarding.html for the trace. Capture-
+  // phase so it runs before any inner handler. Allowlist exception for
+  // the custom-section input (RFT-125), which has a legitimate
+  // Enter-to-add-section binding.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter") return;
+    const t = e.target;
+    if (!t || t.tagName !== "INPUT") return; // textareas + buttons unaffected
+    if (t.id === "customSectionInput") return; // RFT-125 legit Enter use
+    e.preventDefault();
+    e.stopPropagation();
+    // Blur commits the typed/selected value via blur-bound listeners
+    // (state syncs, validation, etc.) and closes any open browser
+    // autocomplete dropdown.
+    t.blur();
+  }, true);
+
   // RFT-134 — settings cog: save before navigate. The cog is the most
   // common "I leave the form mid-edit" path. Hard navigation would drop
   // in-memory state; we save the draft first, then navigate. saveDraft is
