@@ -221,6 +221,15 @@ D-NEW-6 (RFT-70 Option C) defined the establish-or-refresh SM8 OAuth backend, bu
 
 Legacy `/setup.html` remains reachable but is no longer the documented reconnect path.
 
+### Ops console — canonical operator identity
+
+`ops.deepgreensea.au` (rafter-ops-console Worker) is gated by `platformOperatorGate` in admin-api: Clerk JWT `sub` claim must appear in the `PLATFORM_OPERATORS` secret on `rafter-admin-api` (comma-separated allowlist). Orthogonal to org membership — operator can belong to any org or none; the gate keys on user_id only.
+
+* **Canonical operator account:** `will@thurlow.net` — Clerk user `user_3FckHCA3gPzpfXTeYbmFtwzi7Mj` (prod instance). Created direct in Clerk dashboard (not via tenant sign-up flow) so it carries no tenant-org membership. Sole entry in `PLATFORM_OPERATORS` as of 2026-06-25.
+* **Adding another operator:** new Clerk user via dashboard → copy user_id → `cd workers/admin-api && npx wrangler secret put PLATFORM_OPERATORS` with the new comma-separated list. Secret is opaque on read-back; check `wrangler secret list` only confirms presence, not contents.
+* **Membership-required caveat:** prod Clerk has "Personal Accounts: OFF (Membership required)". A no-membership operator account *can* still sign in and reach the gate — the `c8d4f14` boot-fix silently `setActive`s the first available org if there is one and falls through cleanly when there isn't. If hosted-UI sign-in for a no-membership operator gets stuck on choose-organization, add them as a member of one existing org in the Clerk dashboard (role doesn't matter; gate ignores org context).
+* **Passkey enrolment is per-(account, device).** Enrol on each device individually via `accounts.deepgreensea.au` user settings to get silent sign-in there.
+
 ---
 
 ## Architecture decisions (locked — do not reopen without explicit instruction)
