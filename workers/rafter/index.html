@@ -1010,30 +1010,59 @@
       <div>
         <label class="field-label" for="clientName">Customer name</label>
         <div class="input-wrap" style="position:relative;">
-          <input class="input" id="clientName" type="text" autocomplete="off" placeholder="Type to search ServiceM8…">
+          <!-- Edge wallet ("Saved info") ignores autocomplete=off for fields
+               it heuristically classifies as personal info. THREE defences,
+               applied to all four Section 1 inputs (clientName here, plus
+               siteAddress / customerPhone / customerEmail below) because all
+               four are about the CUSTOMER, not the operator — Edge's "fill
+               with the user's info" model is structurally wrong for them.
+                 • type="search" on the SM8 search field — Chromium does not
+                   offer personal-info autofill on search-type inputs.
+                 • Unique non-matching name — wallet matches on common patterns
+                   ("name", "fullname", "email", "phone", "address"); a
+                   Rafter-specific name breaks the heuristic.
+                 • autocomplete="new-password" — empirical hard defeat across
+                   Chromium browsers. Semantically wrong (these aren't password
+                   fields) but the only token that reliably suppresses Edge's
+                   wallet AND Chrome's address autofill AND password manager
+                   suggestions. The label/type still give correct UX (email
+                   keyboard, tel keyboard, search clear-X) — only the
+                   autocomplete behaviour is suppressed.
+               Trade-off: a saved-passwords manager (1Password, Bitwarden) may
+               misinterpret these as new-password fields. Acceptable cost vs.
+               the wallet leaking the operator's personal contacts into a
+               customer-data field. -->
+          <input class="input" id="clientName" name="rft-sm8-customer-search" type="search" autocomplete="new-password" placeholder="Type to search ServiceM8…">
           <div id="clientDropdown" class="dropdown" style="display:none;"></div>
         </div>
+        <!-- RFT-153: inline validation error (mirrors #emailError pattern). -->
+        <div id="clientNameError" class="hint" style="color:var(--rf-danger);display:none;">Customer name is required — type a new customer or pick one from the ServiceM8 search.</div>
+        <!-- RFT-153 Part B: SM8 selection state chip. Hidden by default;
+             populated by updateClientSelectionVisual() on selection commit,
+             on input (typed without selection), and on SM8-search-unavailable. -->
         <div id="clientHint" class="hint"></div>
       </div>
       <div>
         <label class="field-label" for="siteAddress">Site address</label>
         <div class="input-wrap">
           <i class="ti ti-map-pin"></i>
-          <input class="input with-icon" id="siteAddress" type="text" autocomplete="off" placeholder="Start typing an address…">
+          <input class="input with-icon" id="siteAddress" name="rft-site-address" type="text" autocomplete="new-password" placeholder="Start typing an address…">
         </div>
+        <!-- RFT-153: inline validation error. -->
+        <div id="siteAddressError" class="hint" style="color:var(--rf-danger);display:none;">Site address is required.</div>
       </div>
       <div>
         <label class="field-label" for="customerPhone">Customer phone</label>
         <div class="input-wrap">
           <i class="ti ti-phone"></i>
-          <input class="input with-icon" id="customerPhone" type="tel" autocomplete="off" placeholder="Customer phone number…">
+          <input class="input with-icon" id="customerPhone" name="rft-customer-phone" type="tel" autocomplete="new-password" placeholder="Customer phone number…">
         </div>
       </div>
       <div>
         <label class="field-label" for="customerEmail">Customer email</label>
         <div class="input-wrap">
           <i class="ti ti-mail"></i>
-          <input class="input with-icon" id="customerEmail" type="email" autocomplete="off" placeholder="Customer email address…">
+          <input class="input with-icon" id="customerEmail" name="rft-customer-email" type="email" autocomplete="new-password" placeholder="Customer email address…">
         </div>
         <div id="emailError" class="hint" style="color:var(--rf-danger);display:none;">Please enter a valid email address to send the quote.</div>
       </div>
@@ -1810,6 +1839,16 @@ async function rehydrateFromDraft(quoteRef) {
     $("customerPhone").value = state.customerPhone || "";
     $("notes").value         = state.notes || "";
 
+    // RFT-153 Part B: reflect rehydrated SM8 selection state in the chip.
+    // Drafts and amends carry client_sm8_uuid forward where the original had
+    // one; without this the chip stays empty and the operator sees no
+    // confirmation that the existing-customer link is intact.
+    if (state.clientSm8Uuid) {
+      updateClientSelectionVisual('selected');
+    } else if (state.clientName) {
+      updateClientSelectionVisual('typed');
+    }
+
     return true;
   } catch (e) {
     toast("Could not load that quote. Starting a new one.", "err");
@@ -1975,6 +2014,10 @@ async function discardDraftBanner() {
 // original submit's send_email field.
 async function doAmend(sendEmail) {
   if (!state.amendOf) return;
+  // RFT-153 Part A — same validation as fresh submit. Amend rehydrates from
+  // rafter-quotes so name/address are already populated, but the operator can
+  // edit them; defence-in-depth.
+  if (!validateClientFields()) return;
   const btn = sendEmail ? $("amendEmailBtn") : $("amendJobBtn");
   if (btn.disabled) return;
   const originalHtml = btn.innerHTML;
@@ -2117,16 +2160,56 @@ function sm8SearchUnavailableHint() {
     ? "ServiceM8 search unavailable — ask your admin."
     : "ServiceM8 search unavailable — reconnect in Settings → ServiceM8 connection.";
 }
+
+// RFT-153 Part B — visible SM8 selection state. The customer-name input is
+// dual-purpose (free text → new customer, or selection commit → existing SM8
+// customer). Before this hint was non-existent for the typed-but-not-selected
+// state, so an operator who tried to pick an existing customer but failed to
+// commit the selection (mousedown didn't land, dropdown collapsed, etc.) had
+// no visual signal that they were about to submit a new-customer create. The
+// 27 June 2026 Q-20260627-1218 failure is the canonical case.
+//   - 'selected'   → green chip confirming the SM8 customer is committed
+//   - 'typed'      → neutral note saying a new customer will be created
+//   - 'unavailable'→ existing search-unavailable hint (preserved verbatim)
+//   - null/cleared → empty
+function updateClientSelectionVisual(mode) {
+  const hint = $("clientHint");
+  if (!hint) return;
+  if (mode === 'selected') {
+    const name = state.clientSelectedName || state.clientName || "ServiceM8 customer";
+    hint.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:var(--rf-leaf,#84B741);color:#fff;font-weight:600;font-size:12px;"><i class="ti ti-check"></i>Selected: ' + escapeHtml(name) + ' <span style="opacity:.85;font-weight:500;">(ServiceM8)</span></span>';
+  } else if (mode === 'typed') {
+    hint.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;padding:4px 10px;border-radius:999px;background:#F1EDE3;color:#0D2E1C;font-weight:500;font-size:12px;"><i class="ti ti-user-plus"></i>New customer — will be created in ServiceM8 on submit</span>';
+  } else if (mode === 'unavailable') {
+    hint.textContent = sm8SearchUnavailableHint();
+  } else {
+    hint.textContent = "";
+  }
+}
 async function sm8Search(q) {
   const dd = $("clientDropdown");
-  if (!state.sm8SearchAvailable) { dd.style.display = "none"; $("clientHint").textContent = sm8SearchUnavailableHint(); return; }
-  if (!q || q.length < 3) { dd.style.display = "none"; $("clientHint").textContent = ""; return; }
+  if (!state.sm8SearchAvailable) { dd.style.display = "none"; updateClientSelectionVisual('unavailable'); return; }
+  // RFT-153 Part B: when the input has typed text and no SM8 customer is
+  // selected, show the "new customer" chip even before the search request
+  // fires — operator should not have to wait for the debounce to know what's
+  // about to happen on submit.
+  if (!q || q.length < 3) {
+    dd.style.display = "none";
+    if (state.clientSm8Uuid) {
+      updateClientSelectionVisual('selected');
+    } else if (q && q.length > 0) {
+      updateClientSelectionVisual('typed');
+    } else {
+      updateClientSelectionVisual(null);
+    }
+    return;
+  }
   try {
     const r = await authedFetch(`${API}/sm8-search?uuid=${state.clientUuid}&q=${encodeURIComponent(q)}`);
     if (r.status === 401 || r.status === 412) {
       state.sm8SearchAvailable = false;
       dd.style.display = "none";
-      $("clientHint").textContent = sm8SearchUnavailableHint();
+      updateClientSelectionVisual('unavailable');
       return;
     }
     if (!r.ok) throw new Error("sm8_" + r.status);
@@ -2135,7 +2218,8 @@ async function sm8Search(q) {
     if (!items.length) {
       dd.innerHTML = `<div class="item empty">No match — will be created as a new client in ServiceM8</div>`;
       dd.style.display = "block";
-      $("clientHint").textContent = "";
+      // No match → the typed text will be a new customer on submit.
+      if (!state.clientSm8Uuid) updateClientSelectionVisual('typed');
       return;
     }
     dd.innerHTML = items.map((c) => `<div class="item" data-uuid="${escapeHtml(c.uuid)}" data-name="${escapeHtml(c.name)}" data-addr="${escapeHtml(c.address||"")}" data-email="${escapeHtml(c.email||"")}" data-phone="${escapeHtml(c.phone||"")}">
@@ -2163,7 +2247,12 @@ async function sm8Search(q) {
           $("customerPhone").value = state.customerPhone;
         }
         dd.style.display = "none";
-        $("clientHint").textContent = "Existing ServiceM8 client";
+        // RFT-153 Part B: visible chip replaces the prior plain-text hint.
+        // Also clear any inline validation errors the operator may have hit
+        // (selecting a customer satisfies the name + likely site-address rule).
+        updateClientSelectionVisual('selected');
+        $("clientNameError").style.display = "none";
+        if (state.siteAddress) $("siteAddressError").style.display = "none";
       });
     });
   } catch (e) {
@@ -2864,8 +2953,46 @@ function showSuccess(payload, opts = {}) {
   ss.scrollIntoView({ behavior: "smooth", block: "start" });
 }
 
+// RFT-153 Part A — required-field validation. Runs at the form boundary so
+// nothing reaches the PDF worker / Make / SM8 without a customer name + site
+// address. Either a typed name OR a committed SM8 selection satisfies the
+// name rule. Returns true when OK, false (with inline error + focus + scroll)
+// when not. Anchored to the 27 June 2026 Q-20260627-1218 failure: that
+// payload would now be rejected here, before the webhook is called.
+function validateClientFields() {
+  const nameErrEl = $("clientNameError");
+  const addrErrEl = $("siteAddressError");
+  let firstBad = null;
+  const typedName = ($("clientName").value || "").trim();
+  const nameOk = !!state.clientSm8Uuid || typedName.length > 0;
+  if (nameOk) {
+    nameErrEl.style.display = "none";
+  } else {
+    nameErrEl.style.display = "";
+    firstBad = firstBad || $("clientName");
+  }
+  const typedAddr = ($("siteAddress").value || "").trim();
+  if (typedAddr.length > 0) {
+    addrErrEl.style.display = "none";
+  } else {
+    addrErrEl.style.display = "";
+    firstBad = firstBad || $("siteAddress");
+  }
+  if (firstBad) {
+    firstBad.scrollIntoView({ behavior: "smooth", block: "center" });
+    firstBad.focus({ preventScroll: true });
+    toast("Fill in the highlighted fields before submitting.", "err");
+    return false;
+  }
+  return true;
+}
+
 async function doSubmit(sendEmail) {
   if (!state.sections.length) return toast("Add at least one section before submitting.", "err");
+  // RFT-153 Part A — block submit when required customer fields are missing.
+  // Runs BEFORE the button-busy / network-call branch so the operator gets
+  // immediate inline feedback rather than a spinner-then-error round-trip.
+  if (!validateClientFields()) return;
   const btn = sendEmail ? $("submitEmailBtn") : $("submitJobBtn");
   if (btn.disabled) return;
   const originalHtml = btn.innerHTML;
@@ -2997,8 +3124,9 @@ function bindEvents() {
       $("siteAddress").value = "";
       $("customerEmail").value = "";
       $("customerPhone").value = "";
-      $("clientHint").textContent = "";
     }
+    // RFT-153: clear validation error as soon as the operator starts typing.
+    if (e.target.value.trim()) $("clientNameError").style.display = "none";
     sm8SearchDebounced(e.target.value.trim());
   });
   $("clientName").addEventListener("blur", () => {
@@ -3009,7 +3137,11 @@ function bindEvents() {
     if (state.customerEmail) $("emailError").style.display = "none";
   });
   $("customerPhone").addEventListener("input", (e) => { state.customerPhone = e.target.value; });
-  $("siteAddress").addEventListener("input", (e) => { state.siteAddress = e.target.value; });
+  $("siteAddress").addEventListener("input", (e) => {
+    state.siteAddress = e.target.value;
+    // RFT-153: clear validation error as soon as the operator starts typing.
+    if (e.target.value.trim()) $("siteAddressError").style.display = "none";
+  });
   $("notes").addEventListener("input", (e) => { state.notes = e.target.value; });
   $("previewBtn").addEventListener("click", previewPdf);
   $("submitJobBtn").addEventListener("click", submitJobOnly);
