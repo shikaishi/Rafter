@@ -28,9 +28,27 @@ const ALLOWED_ORIGINS = new Set([
   'https://rafter.deepgreensea.au',
   'https://ops.deepgreensea.au',
 ]);
+// Versions Preview URLs for the rafter / ops-console / admin-api Workers
+// follow the shape https://<8-hex>-<worker>.<account>.workers.dev. Pre-2026-06-28
+// any browser fetch from a preview origin was CORS-rejected (Origin not in the
+// Set above, ACAO fell through to the prod origin, mismatch, browser refused).
+// That broke the entire preview-as-staging workflow — the rafter form on a
+// preview URL booted into "Operator not found" because its tenant-mode lookup
+// failed CORS before it could render Section 1.
+//
+// Widening the CORS allowlist to ECHO any rafter/ops-console preview origin
+// fixes the workflow without weakening security: the CORS check is
+// defence-in-depth per the comment above, and the perimeter is actually the
+// Cloudflare account boundary (only an attacker with deploy access to this
+// account could host JS at a `*-rafter.will-8e8.workers.dev` URL — at which
+// point they're already past CORS entirely). Clerk JWT verification remains
+// the real auth gate on every endpoint.
+const PREVIEW_ORIGIN_RE = /^https:\/\/[a-f0-9]{8}-(rafter|rafter-ops-console|rafter-admin-api)\.will-8e8\.workers\.dev$/;
 function resolveOrigin(request) {
   const o = request.headers.get('Origin') || '';
-  return ALLOWED_ORIGINS.has(o) ? o : 'https://rafter.deepgreensea.au';
+  if (ALLOWED_ORIGINS.has(o)) return o;
+  if (PREVIEW_ORIGIN_RE.test(o)) return o;
+  return 'https://rafter.deepgreensea.au';
 }
 function corsPreflightHeaders(request) {
   return {
