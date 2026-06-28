@@ -3750,8 +3750,19 @@ async function makeFetch(env, path) {
   const base = env.MAKE_API_BASE_URL || 'https://eu1.make.com';
   try {
     const res = await fetch(`${base}${path}`, { headers: { 'Authorization': `Token ${env.MAKE_API_TOKEN}` } });
-    const data = await res.json().catch(() => null);
-    if (!res.ok) return { ok: false, status: res.status, error: data?.message || `http_${res.status}` };
+    const text = await res.text();
+    let data = null;
+    try { data = JSON.parse(text); } catch { /* not JSON */ }
+    if (!res.ok) {
+      // Log full response so wrangler tail captures the real error during debugging.
+      console.error(JSON.stringify({
+        event: 'make_fetch_error',
+        path, status: res.status,
+        body_preview: text.slice(0, 400),
+      }));
+      const errMsg = data?.message || data?.detail || data?.error || (text ? text.slice(0, 200) : `http_${res.status}`);
+      return { ok: false, status: res.status, error: errMsg, body_preview: text.slice(0, 400) };
+    }
     return { ok: true, data };
   } catch (e) {
     return { ok: false, error: e.message };
@@ -3764,53 +3775,162 @@ async function handleConsoleMakeScenarios(env) {
     return json({ ...MAKE_CACHE.data, cached: true, cache_age_ms: Date.now() - (MAKE_CACHE.expires_at - MAKE_CACHE_TTL_MS) });
   }
 
-  const listRes = await makeFetch(env, '/api/v2/scenarios');
-  if (!listRes.ok) return json({ ok: false, error: 'make_list_failed', detail: listRes.error }, 502);
-  const scenarios = Array.isArray(listRes.data?.scenarios) ? listRes.data.scenarios : (Array.isArray(listRes.data) ? listRes.data : []);
-
-  // Derive org from the first scenario (Make scenarios all belong to one team/org).
-  const orgId = scenarios[0]?.organizationId || scenarios[0]?.teamId || null;
-  let plan = null;
-  if (orgId) {
-    const usageRes = await makeFetch(env, `/api/v2/organizations/${encodeURIComponent(orgId)}/usage`);
-    if (usageRes.ok && usageRes.data) {
-      const u = usageRes.data;
-      plan = {
-        credits_limit: u.operations_limit ?? u.credits_limit ?? null,
-        credits_used: u.operations_used ?? u.credits_used ?? null,
-        credits_remaining: u.operations_remaining ?? u.credits_remaining ?? null,
-        reset_date: u.reset_date ?? u.next_reset ?? null,
-      };
+  // Make tightened /api/v2/scenarios sometime after 2026-06-15:
+  //   (a) requires a teamId query param
+  //   (b) requires a cols= specifier listing which columns to return
+  // The list endpoint 500s if either is missing; direct-resource fetches
+  // (/scenarios/{id}, .../consumptions) keep working without them.
+  //
+  // teamId discovery: hit a known scenario from the materials-sync probe
+  // pattern and read its teamId off the response. Robust to the Make UI
+  // URL ambiguity (the URL shows either team OR org scope, and the
+  // operator can't always tell which). MAKE_TEAM_ID env override is kept
+  // for break-glass.
+  const PROBE_IDS = ['5537814', '5612449', '5962197']; // Andy prod / Account Discovery / dev — at least one is accessible.
+  let probeScenario = null;
+  let probeIdUsed = null;
+  let probeErrors = [];
+  for (const id of PROBE_IDS) {
+    const r = await makeFetch(env, `/api/v2/scenarios/${id}`);
+    if (r.ok) {
+      probeScenario = r.data?.scenario || r.data;
+      probeIdUsed = id;
+      break;
+    }
+    probeErrors.push(`${id}:${r.error}`);
+  }
+  if (!probeScenario) {
+    return json({
+      ok: false, error: 'make_probe_failed',
+      detail: `No probe scenario reachable. Errors: ${probeErrors.join(' ; ')}`,
+    }, 502);
+  }
+  const discoveredTeamId = probeScenario.teamId != null ? String(probeScenario.teamId) : null;
+  // Discovery wins over env override — env was a manual guess, discovery
+  // is what Make's own response says. Env stays as last-resort fallback
+  // for the case where discovery returns no teamId field.
+  const teamId = discoveredTeamId || env.MAKE_TEAM_ID;
+  if (!teamId) {
+    return json({
+      ok: false, error: 'make_team_id_unknown',
+      detail: `Probe scenario ${probeIdUsed} returned no teamId field, and MAKE_TEAM_ID env not set.`,
+      probe_scenario_keys: Object.keys(probeScenario).join(','),
+    }, 502);
+  }
+  // Try simplest list shape first; add cols on retry if it fails.
+  let listRes = await makeFetch(env, `/api/v2/scenarios?teamId=${encodeURIComponent(teamId)}`);
+  let listShape = 'teamId_only';
+  if (!listRes.ok) {
+    const firstErr = listRes.error;
+    const firstBody = listRes.body_preview;
+    listRes = await makeFetch(env, `/api/v2/scenarios?teamId=${encodeURIComponent(teamId)}&cols=id,name,isActive,isPaused,lastExecution`);
+    listShape = 'teamId_with_cols';
+    if (!listRes.ok) {
+      return json({
+        ok: false, error: 'make_list_failed',
+        detail: `teamId_only: ${firstErr} · teamId_with_cols: ${listRes.error}`,
+        team_id_used: teamId,
+        team_id_source: discoveredTeamId ? `probe_${probeIdUsed}` : 'env',
+        discovered_team_id: discoveredTeamId,
+        env_team_id: env.MAKE_TEAM_ID || null,
+        first_body: firstBody,
+        second_body: listRes.body_preview,
+      }, 502);
     }
   }
+  const scenarios = Array.isArray(listRes.data?.scenarios) ? listRes.data.scenarios : (Array.isArray(listRes.data) ? listRes.data : []);
 
-  // Per-scenario 30-day consumption. Bounded fan-out — the platform has
-  // maybe two scenarios; this won't blow out even with a few.
+  // Plan info — /teams/{teamId}/usage returns a DAILY TIME SERIES, not a
+  // plan summary: { data: [{date, operations, dataTransfer, centicredits}] }.
+  // Sum the operations across the period to get "used", combine with the
+  // hardcoded Core plan limit (MAKE_OPS_LIMIT) for the % bar, estimate the
+  // reset date as period_start + 30 days (Make's monthly cycle anchors on
+  // the subscription start day).
+  let plan = null;
+  const usageRes = await makeFetch(env, `/api/v2/teams/${encodeURIComponent(teamId)}/usage`);
+  if (usageRes.ok && usageRes.data) {
+    const series = Array.isArray(usageRes.data?.data) ? usageRes.data.data : [];
+    const opsUsed = series.reduce((a, r) => a + (Number(r.operations) || 0), 0);
+    const centiUsed = series.reduce((a, r) => a + (Number(r.centicredits) || 0), 0);
+    const transferUsed = series.reduce((a, r) => a + (Number(r.dataTransfer) || 0), 0);
+    const periodStart = series[0]?.date ? new Date(series[0].date) : null;
+    const resetEstimate = periodStart ? new Date(periodStart.getTime() + 30 * 86400 * 1000) : null;
+    plan = {
+      credits_limit: MAKE_OPS_LIMIT,
+      credits_used: opsUsed,
+      credits_remaining: MAKE_OPS_LIMIT - opsUsed,
+      reset_date: resetEstimate ? resetEstimate.toISOString() : null,
+      period_start: periodStart ? periodStart.toISOString() : null,
+      period_days_seen: series.length,
+      total_credits_period: Math.round(centiUsed) / 100,
+      total_transfer_bytes_period: transferUsed,
+    };
+  }
+
+  // Per-scenario detail:
+  //   • ops + credits — read straight off the list response (operations,
+  //     centicredits). Consumptions endpoint is dead (404 Not found).
+  //   • last execution + recent runs — fetch /scenarios/{id}/logs?pg[limit]=10
+  //     per the materials-sync probe pattern; gives last 10 run timestamps,
+  //     statuses, durations, ops, credits. Used both for "last_run_at"
+  //     summary and the expandable run-details table in the UI.
   const scenarioDetails = await Promise.all(scenarios.map(async (s) => {
     const id = s.id;
-    let ops30d = null, credits30d = null;
+    const ops_period = typeof s.operations === 'number' ? s.operations : null;
+    const credits_period = typeof s.centicredits === 'number' ? s.centicredits / 100 : null;
+
+    let last_run_at = null, last_run_ok = null;
+    let recent_runs = [];
+    let recent_runs_summary = null;
     try {
-      const cRes = await makeFetch(env, `/api/v2/scenarios/${encodeURIComponent(id)}/consumptions`);
-      if (cRes.ok && cRes.data) {
-        const rows = Array.isArray(cRes.data.consumptions) ? cRes.data.consumptions : (Array.isArray(cRes.data) ? cRes.data : []);
-        ops30d = rows.reduce((a, r) => a + (r.operations || r.ops || 0), 0);
-        credits30d = rows.reduce((a, r) => a + (r.centicredits ? r.centicredits / 100 : (r.credits || 0)), 0);
+      const lRes = await makeFetch(env, `/api/v2/scenarios/${encodeURIComponent(id)}/logs?pg[limit]=10`);
+      if (lRes.ok && lRes.data) {
+        const logs = Array.isArray(lRes.data) ? lRes.data
+          : (lRes.data.scenarioLogs || lRes.data.logs || []);
+        recent_runs = logs.slice(0, 10).map(l => ({
+          timestamp: l.timestamp || null,
+          status_ok: l.status === 1,
+          duration_ms: typeof l.duration === 'number' ? l.duration : null,
+          operations: typeof l.operations === 'number' ? l.operations : 0,
+          credits: typeof l.centicredits === 'number' ? l.centicredits / 100 : 0,
+        }));
+        if (recent_runs[0]) {
+          last_run_at = recent_runs[0].timestamp;
+          last_run_ok = recent_runs[0].status_ok;
+        }
+        if (recent_runs.length > 0) {
+          const success = recent_runs.filter(r => r.status_ok).length;
+          const error = recent_runs.length - success;
+          const durations = recent_runs.filter(r => r.duration_ms != null).map(r => r.duration_ms);
+          const avgDur = durations.length > 0 ? durations.reduce((a, d) => a + d, 0) / durations.length : null;
+          recent_runs_summary = {
+            total: recent_runs.length,
+            success, error,
+            error_rate: Math.round((error / recent_runs.length) * 1000) / 10, // pct, 1dp
+            avg_duration_ms: avgDur != null ? Math.round(avgDur) : null,
+          };
+        }
       }
-    } catch { /* per-scenario consumption is non-critical */ }
+    } catch { /* non-critical */ }
 
     return {
       id,
       name: s.name || `Scenario ${id}`,
       is_active: !!s.isActive && !s.isPaused,
       is_paused: !!s.isPaused,
-      last_execution_at: s.lastExecution || s.lastExecutionAt || null,
-      operations_30d: ops30d,
-      credits_30d: credits30d,
+      last_execution_at: last_run_at,
+      last_run_ok,
+      operations_30d: ops_period,
+      credits_30d: credits_period,
+      dlq_count: s.dlqCount ?? 0,
+      recent_runs,
+      recent_runs_summary,
     };
   }));
 
   const active = scenarioDetails.filter(s => s.is_active).length;
   const paused = scenarioDetails.filter(s => s.is_paused).length;
+  const inactive = scenarioDetails.length - active - paused;
   const total_ops_30d = scenarioDetails.reduce((a, s) => a + (s.operations_30d || 0), 0);
   const total_credits_30d = scenarioDetails.reduce((a, s) => a + (s.credits_30d || 0), 0);
 
@@ -3818,7 +3938,8 @@ async function handleConsoleMakeScenarios(env) {
     ok: true,
     summary: {
       total_scenarios: scenarioDetails.length,
-      active, paused,
+      active, paused, inactive,
+      off: paused + inactive,
       total_operations_30d: total_ops_30d,
       total_credits_30d,
     },
@@ -3843,6 +3964,46 @@ const PLAN_CONFIG = {
   clerk: { plan: 'Pro', monthly_cost: 25, currency: 'USD', notes: 'Pro plan; 1000 MAU included, $0.02/MAU after' },
   domain: { plan: 'au registry', monthly_cost: 25 / 12, currency: 'AUD', notes: 'deepgreensea.au annual / 12' },
 };
+
+// USD→AUD rate fetch with KV cache. Will works in AUD; the platform bills
+// USD on three of four providers. Cache freshness is 24h — bills don't move
+// hour-to-hour; ECB daily mid-rate is fine for "what does this cost me in
+// AUD" framing. KV TTL is 7d so a frankfurter outage falls back to the
+// most recent value rather than the hardcoded floor.
+async function fetchUsdToAudRate(env) {
+  const KV_KEY = 'fx:usd_aud';
+  const FRESHNESS_MS = 24 * 60 * 60 * 1000;
+  const KV_TTL_SECONDS = 7 * 24 * 3600;
+  const FALLBACK_RATE = 1.50;
+
+  let cached = null;
+  try {
+    const raw = await env.RAFTER_CLIENTS.get(KV_KEY);
+    if (raw) cached = JSON.parse(raw);
+  } catch { /* swallow */ }
+
+  if (cached?.fetched_at && (Date.now() - cached.fetched_at) < FRESHNESS_MS) {
+    return { rate: cached.rate, date: cached.date, source: cached.source, from_cache: true };
+  }
+
+  try {
+    const r = await fetch('https://api.frankfurter.app/latest?from=USD&to=AUD');
+    if (r.ok) {
+      const data = await r.json();
+      const rate = data?.rates?.AUD;
+      if (typeof rate === 'number' && rate > 0) {
+        const fresh = { rate, date: data.date || null, source: 'frankfurter.app', fetched_at: Date.now() };
+        await env.RAFTER_CLIENTS.put(KV_KEY, JSON.stringify(fresh), { expirationTtl: KV_TTL_SECONDS }).catch(() => {});
+        return { rate: fresh.rate, date: fresh.date, source: fresh.source, from_cache: false };
+      }
+    }
+  } catch { /* swallow */ }
+
+  if (cached?.rate) {
+    return { rate: cached.rate, date: cached.date, source: cached.source + ' (stale)', from_cache: true };
+  }
+  return { rate: FALLBACK_RATE, date: null, source: 'fallback_floor', from_cache: false };
+}
 
 const CLOUDFLARE_FREE_LIMITS = {
   workers_requests_per_day: 100_000,
@@ -3909,13 +4070,19 @@ async function handleConsoleCostUsage(env) {
     },
   ];
 
-  // Monthly total in AUD + USD separately (no FX conversion — exact-to-the-
-  // cent isn't the value here, broad-strokes is).
+  // Fetch USD→AUD rate (24h KV-cached) and decorate each USD provider with
+  // its AUD-equivalent, plus compute combined AUD-equivalent grand total.
+  const fx = await fetchUsdToAudRate(env);
   let totalUsd = 0, totalAud = 0;
   for (const p of providers) {
-    if (p.currency === 'USD') totalUsd += p.monthly_cost;
-    else if (p.currency === 'AUD') totalAud += p.monthly_cost;
+    if (p.currency === 'USD') {
+      totalUsd += p.monthly_cost;
+      p.monthly_cost_aud_equivalent = Math.round(p.monthly_cost * fx.rate * 100) / 100;
+    } else if (p.currency === 'AUD') {
+      totalAud += p.monthly_cost;
+    }
   }
+  const totalAudEquivalent = totalUsd * fx.rate + totalAud;
 
   const alerts = providers
     .filter(p => p.usage && (p.usage.percentage ?? 0) >= 70)
@@ -3933,7 +4100,14 @@ async function handleConsoleCostUsage(env) {
   return json({
     ok: true,
     providers,
-    monthly_total: { usd: Math.round(totalUsd * 100) / 100, aud: Math.round(totalAud * 100) / 100 },
+    monthly_total: {
+      usd: Math.round(totalUsd * 100) / 100,
+      aud: Math.round(totalAud * 100) / 100,
+      aud_equivalent: Math.round(totalAudEquivalent * 100) / 100,
+    },
+    fx_rate: Math.round(fx.rate * 10000) / 10000,
+    fx_rate_date: fx.date,
+    fx_rate_source: fx.source,
     free_tier_alerts: alerts,
     plan_config_note: 'Plan costs are hardcoded in admin-api PLAN_CONFIG. Update inline when plans change.',
     generated_at: new Date().toISOString(),
