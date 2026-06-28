@@ -169,6 +169,49 @@ async function writeD1Event(env, eventType, clientUuid, payload) {
   }
 }
 
+// RFT-155 Layer 1 — persist every submit attempt to rafter-events.submissions.
+// Writes a row at the start of handleGenerate(mode=submit) with status='pending',
+// and is later flipped to 'make_accepted' / 'webhook_failed' by
+// updateSubmissionStatus once the Make webhook call resolves. The submissions
+// table was empty (zero rows ever) before this change — see the 27 June 2026
+// Q-20260627-1218 incident: the failed submission had no trace anywhere on
+// the Rafter side because the failure happened inside the Make scenario, after
+// Make's webhook had already 200'd. Multi-row per quote_ref is acceptable for
+// now (every attempt = one row) — Layer 3 surfacing can dedupe on display.
+async function writeSubmissionRow(env, payload, status) {
+  if (!env.RAFTER_EVENTS) return;
+  try {
+    await env.RAFTER_EVENTS.prepare(
+      "INSERT INTO submissions (id, client_uuid, quote_ref, submitted_at, total_value, proposal_type, status) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).bind(
+      crypto.randomUUID(),
+      payload.client_uuid || null,
+      payload.quote_ref || "(no-ref)",
+      new Date().toISOString(),
+      payload.total != null ? Number(payload.total) : null,
+      payload.proposal_type || null,
+      status
+    ).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: "submissions_write_failed", quote_ref: payload.quote_ref, error: e.message }));
+  }
+}
+
+async function updateSubmissionStatus(env, quoteRef, status) {
+  if (!env.RAFTER_EVENTS || !quoteRef) return;
+  try {
+    // Flip the most recent row for this quote_ref. Targeting MAX(submitted_at)
+    // (via the subquery) keeps amend/resubmit rows independent — each attempt
+    // gets its own status. The status flip is best-effort; if the row write
+    // earlier failed (e.g. D1 transient), this no-ops without throwing.
+    await env.RAFTER_EVENTS.prepare(
+      "UPDATE submissions SET status = ? WHERE quote_ref = ? AND submitted_at = (SELECT MAX(submitted_at) FROM submissions WHERE quote_ref = ?)"
+    ).bind(status, quoteRef, quoteRef).run();
+  } catch (e) {
+    console.error(JSON.stringify({ event: "submissions_update_failed", quote_ref: quoteRef, error: e.message }));
+  }
+}
+
 function logCrossTenantAttempt(env, request, details) {
   const event = {
     event: "cross_tenant_attempt",
@@ -382,11 +425,33 @@ async function handleGenerate(request, env, url) {
   form.append("customer_email",   payload.customer_email   || "");
   form.append("send_email",       String(payload.send_email === true));
 
+  // RFT-155 Layer 1 — persist the submit attempt BEFORE the Make call so a
+  // mid-flight crash still leaves a row. Status starts 'pending'; we flip it
+  // below once Make returns. Fire-and-forget the event log alongside.
+  await writeSubmissionRow(env, payload, "pending");
+  writeD1Event(env, "quote_submitted", payload.client_uuid, {
+    quote_ref: payload.quote_ref || null,
+    total: payload.total ?? null,
+    send_email: payload.send_email === true,
+    has_sm8_uuid: !!payload.client_sm8_uuid,
+  }).catch(() => {});
+
   const makeRes = await fetch(client.webhook_url, { method: "POST", body: form });
   if (!makeRes.ok) {
     const detail = await makeRes.text().catch(() => "");
+    // Layer 2 — webhook itself unreachable / 5xx. This is the rare network-
+    // level failure; the common SM8-rejected-inside-Make case still returns
+    // 200 here (DLQ entry created internally) and is NOT visible to this
+    // worker. Probe 2 catches the DLQ case nightly; further correlation is
+    // out-of-scope for Layer 1+2 (see RFT-155 Layer 2 + RFT-157).
+    await updateSubmissionStatus(env, payload.quote_ref, "webhook_failed");
     return json({ error: "make_webhook_failed", status: makeRes.status, detail: detail.slice(0, 500) }, 502);
   }
+
+  // Layer 2 — Make webhook accepted the payload. NOT the same as "SM8 created
+  // the job"; that happens asynchronously inside the Make scenario. Status
+  // 'make_accepted' is the honest description of what we know at this point.
+  await updateSubmissionStatus(env, payload.quote_ref, "make_accepted");
 
   return json({ ok: true, quote_ref: payload.quote_ref || null });
 }
