@@ -21,29 +21,10 @@ For the onboarding flow that uses Clerk org events, see [onboarding-reference.md
 - GST/tax: not yet supported in Clerk. Manual invoice short-term.
 - Subscription lapse → Worker gates access, redirects to billing page
 
-**Clerk instance (test):**
-- Publishable key: `pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ`
-- Clerk domain: `first-kiwi-3.clerk.accounts.dev`
-- JWKS: `https://first-kiwi-3.clerk.accounts.dev/.well-known/jwks.json`
-- **CLERK_JWT_KEY (PEM public key):** `-----BEGIN PUBLIC KEY-----\nMIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEAuQIvdh+gKaqIqbz/sqKA\nyQnpYtMQ1kf1PM06Ujy82763e2uKi6oJVh2TGqj3gf5FMMVI387U3AMJ+6Ada4Zi\nJmPPQJ8PzXb+rz9Oe4R4feOu7B7wx9bGBndO66KQJc4FCP1/PiB5qkmkRTjAzjPx\nV8tQXG2/dz+U8egyfZbVGkp2HKlWOobOhs1sxT4EXk89JVE5DeY/Yibj5KHvdl2Y\n6EWWkSJWeDn66CQCQ0eMtvYTRHbfM6tFp9YxlStVu3ggb+5iX1s6ceyYrxJDGHM0\nQMWwXZsC0lb+VUgUEzD/5ppNHnNBsg9ArEsANBz6keChFYkI3WecoTm6RwWJ3fcj\n2wIDAQAB\n-----END PUBLIC KEY-----`
+**Clerk instance (test) — DECOMMISSIONED 2026-06-29.** The dev Clerk instance (`first-kiwi-3.clerk.accounts.dev`, `pk_test_Zmly…`) was decommissioned when the dev Rafter tenant was rebound to a prod-Clerk org ("Rafter Dev", `org_3Fo4VG9mt320TAO9Tbi4L1ixjAp`). The original dev-Clerk org `org_3ER2eDTmyc31XYw6QiJkbT3gDmx` "DeepGreenSea" was deleted in the same session. Final dashboard-side instance delete done by Will after this commit.
 
-**Clerk JS CDN (use this, not jsDelivr):** jsDelivr is blocked by Brave and other ad blockers. Always load from the Clerk-hosted CDN with `data-clerk-publishable-key` attribute:
-```html
-<script
-  data-clerk-publishable-key="pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ"
-  src="https://first-kiwi-3.clerk.accounts.dev/npm/@clerk/clerk-js@latest/dist/clerk.browser.js"
-  crossorigin="anonymous"
-></script>
-```
-Use `window.Clerk` directly as the instance (NOT `new window.Clerk(KEY)`). Add `[hidden]{display:none!important}` to CSS — `display:flex` on loading states overrides the `hidden` attribute otherwise.
+For the live prod Clerk configuration — publishable key, JWKS, secrets, custom domains, webhook subscription, helper functions for v2 token claims — see the **Prod auth state — cutover 2026-06-11** section in CLAUDE.md (single source of truth).
+
+**Clerk JS CDN — general guidance:** Always load from the Clerk-hosted CDN, never jsDelivr (jsDelivr is blocked by Brave and other ad blockers). Use `window.Clerk` directly as the instance (NOT `new window.Clerk(KEY)`). Add `[hidden]{display:none!important}` to CSS — `display:flex` on loading states overrides the `hidden` attribute otherwise.
 
 **sign-up.html flow:** Uses `clerk.redirectToSignUp()` and `clerk.redirectToCreateOrganization()` (hosted redirects, no embedded components). After org creation Clerk redirects to `/onboarding.html`. The `organization.created` webhook fires → admin-api creates stub KV record. onboarding.html completes the record via `/onboarding/provision`.
-
-**Clerk Dashboard to-do:** Set Application name to "Rafter" (Configure → Settings) — currently shows "Index of /" as default org name suggestion.
-
-**Clerk environment variables (to be added to all Workers):**
-```
-CLERK_PUBLISHABLE_KEY=pk_test_Zmlyc3Qta2l3aS0zLmNsZXJrLmFjY291bnRzLmRldiQ
-CLERK_SECRET_KEY=sk_test_...
-CLERK_WEBHOOK_SECRET=whsec_...
-```
