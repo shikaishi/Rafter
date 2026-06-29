@@ -5,3 +5,10 @@ node_modules/
 .env
 .rft101
 scripts/.test-secret
+
+# Claude Code per-machine state and skill cache
+.claude/settings.local.json
+.claude/skills/
+
+# Playwright MCP run artefacts
+.playwright-mcp/
