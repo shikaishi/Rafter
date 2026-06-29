@@ -2,9 +2,15 @@
 <html lang="en-AU">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#0F1F15">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Rafter ops">
 <title>Rafter ops</title>
 <link id="favicon" rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='6' fill='%230F1F15'/%3E%3Cpath d='M9 8h9.5a5.5 5.5 0 0 1 2 10.6L24 24h-4.4l-3.7-5.1H13V24H9V8zm4 3.5v3.9h5a1.95 1.95 0 0 0 0-3.9h-5z' fill='%236EE7A0'/%3E%3C/svg%3E">
+<link rel="manifest" href="/manifest.json">
+<link rel="apple-touch-icon" href="/icon.png">
 <link href="https://cdn.jsdelivr.net/npm/@tabler/icons-webfont@3.5.0/dist/tabler-icons.min.css" rel="stylesheet">
 <style>
 :root {
@@ -561,6 +567,9 @@ body {
   border-radius: 6px; padding: 12px 16px; margin-bottom: 10px;
 }
 .scenario-card.errored { border-left: 3px solid var(--ops-danger); }
+.scenario-card.expandable { cursor: pointer; transition: border-color 0.15s; }
+.scenario-card.expandable:hover { border-color: var(--ops-fern); }
+.scenario-card.expanded { border-color: var(--ops-moss); }
 .scenario-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .scenario-name { font-size: 13px; font-weight: 500; color: var(--ops-text); flex: 1; }
 .scenario-state {
@@ -570,7 +579,44 @@ body {
 }
 .scenario-state.active { background: var(--ops-tinted); color: var(--ops-success); }
 .scenario-state.paused { background: #FEF6E7; color: var(--ops-warn); }
+.scenario-state.inactive { background: #F3F4F6; color: var(--ops-muted); }
+.scenario-chevron { color: var(--ops-fern); font-size: 14px; transition: transform 0.15s; }
+.scenario-card.expanded .scenario-chevron { transform: rotate(180deg); }
 .scenario-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; font-size: 11px; }
+
+/* Expandable run details (per-scenario last 10 runs) */
+.scenario-runs {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 0.5px dashed var(--ops-border);
+}
+.scenario-runs-summary {
+  display: flex; gap: 14px; flex-wrap: wrap;
+  font-size: 11px; color: var(--ops-muted); font-family: var(--font-mono);
+  margin-bottom: 10px;
+}
+.scenario-runs-summary .v { color: var(--ops-text); }
+.scenario-runs-summary .err-rate.high { color: var(--ops-danger); }
+.scenario-runs-table {
+  background: var(--ops-tinted);
+  border-radius: 4px;
+  overflow: hidden;
+}
+.scenario-runs-table table {
+  width: 100%; border-collapse: collapse; font-size: 11px; font-family: var(--font-mono);
+}
+.scenario-runs-table th, .scenario-runs-table td {
+  padding: 6px 10px; text-align: left;
+  border-bottom: 0.5px solid var(--ops-border);
+}
+.scenario-runs-table tr:last-child td { border-bottom: none; }
+.scenario-runs-table th {
+  font-size: 9.5px; color: var(--ops-fern); font-weight: 600;
+  text-transform: uppercase; letter-spacing: 0.04em;
+}
+.run-status { display: inline-flex; align-items: center; gap: 4px; font-weight: 600; }
+.run-status.ok { color: var(--ops-success); }
+.run-status.err { color: var(--ops-danger); }
+.scenario-runs-empty { font-style: italic; color: var(--ops-muted); font-size: 11px; padding: 8px 0; }
 .usage-bar-wrap { margin-top: 16px; }
 .usage-bar-label { display: flex; justify-content: space-between; font-size: 11px; color: var(--ops-muted); margin-bottom: 4px; font-family: var(--font-mono); }
 .usage-bar-track { background: #F3F4F6; height: 8px; border-radius: 4px; overflow: hidden; }
@@ -605,6 +651,112 @@ body {
 .cost-table td { font-family: var(--font-mono); }
 .cost-table tr:last-child td { border-bottom: none; font-weight: 600; }
 .cost-table .total-row td { background: var(--ops-tinted); }
+
+/* ============================================================================
+   Mobile breakpoint (≤768px) — phone-first "quick checks while out" use case.
+   Layout flips to column-reverse so the existing sidebar markup becomes a
+   bottom nav strip; main content stays at top. Sidebar head + foot collapse;
+   nav becomes an icon-strip with tiny labels.
+   ========================================================================= */
+@media (max-width: 768px) {
+  body { font-size: 14px; }
+
+  /* Layout: column-reverse so .sidebar renders below .main visually. */
+  .app {
+    flex-direction: column-reverse;
+    height: 100dvh; /* dynamic viewport accounts for iOS URL bar collapse */
+  }
+
+  /* Sidebar → bottom nav strip */
+  .sidebar {
+    width: 100%; height: auto;
+    flex-direction: row; align-items: stretch;
+    border-right: none; border-top: 1px solid var(--ops-canopy);
+    padding-bottom: env(safe-area-inset-bottom, 0); /* iPhone home indicator */
+  }
+  .sidebar-head, .sidebar-foot { display: none; }
+  .sidebar-nav {
+    flex: 1; padding: 0;
+    display: flex; flex-direction: row;
+    overflow-x: auto; overflow-y: hidden;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .sidebar-nav::-webkit-scrollbar { display: none; }
+  .nav-item {
+    flex: 1 0 auto; min-width: 62px;
+    flex-direction: column; gap: 3px;
+    padding: 9px 4px 6px; margin: 0;
+    border-radius: 0;
+    font-size: 9.5px; font-weight: 500; text-align: center;
+    white-space: nowrap;
+    border-top: 2px solid transparent;
+    width: auto;
+  }
+  .nav-item.active {
+    background: var(--ops-canopy);
+    border-top-color: var(--ops-mint);
+  }
+  .nav-item .ti { font-size: 20px; }
+
+  /* Main content area */
+  .main { padding-top: env(safe-area-inset-top, 0); }
+  .main-inner { padding: 14px 14px 24px; max-width: 100%; }
+
+  /* View header */
+  .view-header { flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+  .view-header h1 { font-size: 19px; }
+  .view-header .meta { font-size: 11px; }
+  .view-header .actions { margin-left: 0; width: 100%; }
+  .btn-action { width: 100%; justify-content: center; }
+
+  /* Summary cards → 2-col grid */
+  .summary-row {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 8px; margin-bottom: 16px;
+  }
+  .summary-card { padding: 10px 12px; }
+  .summary-number { font-size: 18px; }
+  .summary-label { font-size: 10px; }
+  .summary-sub { font-size: 10px; }
+
+  /* Tenant card head + stats */
+  .tenant-head { flex-wrap: wrap; gap: 8px; padding: 12px 14px; }
+  .tenant-name { font-size: 13.5px; }
+  .tenant-ids { font-size: 10.5px; }
+  .tenant-stats { padding: 0 14px 12px; gap: 10px 14px; font-size: 10.5px; }
+  .tenant-badges { flex-wrap: wrap; }
+
+  /* Tenant detail: stack columns; actions stack vertically */
+  .tenant-detail {
+    grid-template-columns: 1fr;
+    gap: 14px; padding: 14px;
+  }
+  .detail-actions {
+    flex-direction: column; align-items: stretch;
+  }
+  .btn-link, .btn-danger {
+    width: 100%; justify-content: center;
+    padding: 10px 12px; font-size: 13px;
+    margin-left: 0;
+  }
+  .env-editor { flex-wrap: wrap; }
+
+  /* Provider cards */
+  .provider-head { flex-wrap: wrap; gap: 6px; }
+  .provider-name { flex-basis: 100%; }
+
+  /* Cost table — horizontal scroll so columns stay readable */
+  .cost-table {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .cost-table table { font-size: 11px; min-width: 460px; }
+  .cost-table th, .cost-table td { padding: 6px 10px; }
+
+  /* Generic tables anywhere else also become scrollable */
+  table { display: block; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+}
 </style>
 </head>
 <body>
@@ -1743,7 +1895,17 @@ async function loadMakeScenarios() {
   $('mPlanBar').innerHTML = '';
   try {
     const res = await authedFetch(`${ADMIN_API}/console/make-scenarios`);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    if (!res.ok) {
+      // Read the body and surface ALL diagnostic fields the API returned.
+      const body = await res.json().catch(() => ({}));
+      const parts = [`HTTP ${res.status}`];
+      for (const k of Object.keys(body)) {
+        if (k === 'ok') continue;
+        const v = body[k];
+        parts.push(`${k}: ${typeof v === 'string' ? v : JSON.stringify(v)}`);
+      }
+      throw new Error(parts.join(' · '));
+    }
     const data = await res.json();
     renderMakeScenarios(data);
   } catch (e) {
@@ -1755,7 +1917,14 @@ function renderMakeScenarios(data) {
   const s = data.summary || {};
   const plan = data.plan || {};
   $('mActive').textContent = `${s.active || 0}/${s.total_scenarios || 0}`;
-  $('mPaused').textContent = `${s.paused || 0} paused`;
+  // Show combined off-state (paused + inactive). Inactive scenarios are ones
+  // that exist in Make but aren't currently running and haven't been put in
+  // explicit Paused state — common for tied-off historical scenarios.
+  const off = (s.paused || 0) + (s.inactive || 0);
+  const parts = [];
+  if (s.paused) parts.push(`${s.paused} paused`);
+  if (s.inactive) parts.push(`${s.inactive} inactive`);
+  $('mPaused').textContent = parts.length ? parts.join(' · ') : `${off} off`;
   $('mOps').textContent = (s.total_operations_30d || 0).toLocaleString();
   $('mCredits').textContent = (plan.credits_used != null ? plan.credits_used.toLocaleString() : '—');
   $('mCreditsSub').textContent = plan.credits_limit ? `of ${plan.credits_limit.toLocaleString()}` : 'of plan limit';
@@ -1782,12 +1951,15 @@ function renderUsageBar(label, current, limit, pct) {
 }
 
 function renderScenarioCard(sc) {
-  const state = sc.is_active ? 'active' : sc.is_paused ? 'paused' : 'paused';
+  const state = sc.is_active ? 'active' : sc.is_paused ? 'paused' : 'inactive';
+  const hasRuns = Array.isArray(sc.recent_runs) && sc.recent_runs.length > 0;
+  const expandable = hasRuns; // only show chevron + click if there's something to expand
   return `
-    <div class="scenario-card">
+    <div class="scenario-card ${expandable ? 'expandable' : ''}" data-scenario-id="${esc(String(sc.id))}">
       <div class="scenario-head">
         <span class="scenario-name">${esc(sc.name)}</span>
         <span class="scenario-state ${state}">${state}</span>
+        ${expandable ? '<i class="ti ti-chevron-down scenario-chevron"></i>' : ''}
       </div>
       <div class="scenario-stats">
         <div><div class="worker-stat-label">last run</div><div class="worker-stat-value">${esc(fmtRel(sc.last_execution_at))}</div></div>
@@ -1795,9 +1967,57 @@ function renderScenarioCard(sc) {
         <div><div class="worker-stat-label">credits 30d</div><div class="worker-stat-value">${sc.credits_30d != null ? sc.credits_30d.toLocaleString() : '—'}</div></div>
         <div><div class="worker-stat-label">id</div><div class="worker-stat-value" style="font-size:11px;">${esc(String(sc.id))}</div></div>
       </div>
+      ${hasRuns ? renderScenarioRuns(sc) : ''}
     </div>
   `;
 }
+
+function renderScenarioRuns(sc) {
+  const sum = sc.recent_runs_summary || {};
+  const errClass = (sum.error_rate || 0) >= 20 ? 'high' : '';
+  const avgSec = sum.avg_duration_ms != null ? (sum.avg_duration_ms / 1000).toFixed(1) : '—';
+  const rows = sc.recent_runs.map(r => {
+    const ts = r.timestamp ? new Date(r.timestamp).toLocaleString('en-AU', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }) : '—';
+    const dur = r.duration_ms != null ? (r.duration_ms / 1000).toFixed(1) + 's' : '—';
+    const statusCls = r.status_ok ? 'ok' : 'err';
+    const statusIcon = r.status_ok ? '<i class="ti ti-check"></i>' : '<i class="ti ti-x"></i>';
+    return `<tr>
+      <td><span class="run-status ${statusCls}">${statusIcon}</span></td>
+      <td>${esc(ts)}</td>
+      <td>${esc(dur)}</td>
+      <td>${(r.operations || 0).toLocaleString()}</td>
+      <td>${(r.credits || 0).toFixed(2)}</td>
+    </tr>`;
+  }).join('');
+  return `
+    <div class="scenario-runs" hidden>
+      <div class="scenario-runs-summary">
+        <span>last <span class="v">${sum.total || 0}</span> runs</span>
+        <span><span class="v" style="color:var(--ops-success);">${sum.success || 0} ✓</span></span>
+        <span><span class="v ${(sum.error || 0) > 0 ? 'err-rate high' : ''}">${sum.error || 0} ✗</span></span>
+        <span>avg <span class="v">${avgSec}s</span></span>
+        <span>err rate <span class="v err-rate ${errClass}">${(sum.error_rate || 0).toFixed(1)}%</span></span>
+      </div>
+      <div class="scenario-runs-table">
+        <table>
+          <thead><tr><th></th><th>when</th><th>duration</th><th>ops</th><th>credits</th></tr></thead>
+          <tbody>${rows}</tbody>
+        </table>
+      </div>
+    </div>
+  `;
+}
+
+// Wire card expand toggles after every render. Uses event delegation so we
+// don't have to re-bind after refresh.
+document.addEventListener('click', (e) => {
+  const card = e.target.closest?.('.scenario-card.expandable');
+  if (!card) return;
+  const runs = card.querySelector('.scenario-runs');
+  if (!runs) return;
+  const expanded = card.classList.toggle('expanded');
+  runs.hidden = !expanded;
+});
 
 // ─── RFT-130 Cost & usage ─────────────────────────────────────────────────────
 
@@ -1818,8 +2038,15 @@ async function loadCostUsage() {
 function renderCostUsage(data) {
   const providers = data.providers || [];
   const alerts = data.free_tier_alerts || [];
-  $('cMonthly').textContent = `$${(data.monthly_total?.usd || 0).toFixed(2)}`;
-  $('cMonthlySub').textContent = `USD + A$${(data.monthly_total?.aud || 0).toFixed(2)}`;
+  const totalAud = data.monthly_total?.aud_equivalent ?? data.monthly_total?.aud ?? 0;
+  $('cMonthly').textContent = `A$${totalAud.toFixed(2)}`;
+  // Sub-label: original USD + AUD split + FX provenance.
+  const usdPart = data.monthly_total?.usd || 0;
+  const audPart = data.monthly_total?.aud || 0;
+  const fxStr = data.fx_rate
+    ? `FX 1 USD = A$${data.fx_rate.toFixed(4)}${data.fx_rate_date ? ` · ${esc(data.fx_rate_date)}` : ''}${data.fx_rate_source ? ` · ${esc(data.fx_rate_source)}` : ''}`
+    : 'FX rate unavailable';
+  $('cMonthlySub').innerHTML = `${usdPart > 0 ? `$${usdPart.toFixed(2)} USD` : ''}${usdPart > 0 && audPart > 0 ? ' + ' : ''}${audPart > 0 ? `A$${audPart.toFixed(2)}` : ''}<br><span style="font-size:9px;opacity:0.7;">${fxStr}</span>`;
   $('cAlerts').textContent = alerts.length;
   $('cAlertsCard').classList.toggle('danger', alerts.length > 0);
   $('cProviders').textContent = providers.length;
@@ -1845,25 +2072,43 @@ function renderCostUsage(data) {
     </div>
   `;
 
-  $('cProviderList').innerHTML = providers.map(p => `
-    <div class="provider-card">
-      <div class="provider-head">
-        <span class="provider-name">${esc(p.name)}</span>
-        <span class="provider-cost">${p.monthly_cost > 0 ? `${p.currency} $${p.monthly_cost.toFixed(2)}/mo` : 'free'}</span>
-        <span class="headroom-badge ${esc(p.headroom_status)}">${esc(p.headroom_status)}</span>
+  $('cProviderList').innerHTML = providers.map(p => {
+    const costStr = p.monthly_cost > 0
+      ? (p.currency === 'USD' && p.monthly_cost_aud_equivalent != null
+          ? `${p.currency} $${p.monthly_cost.toFixed(2)}/mo <span style="opacity:0.7;">(A$${p.monthly_cost_aud_equivalent.toFixed(2)})</span>`
+          : `${p.currency} $${p.monthly_cost.toFixed(2)}/mo`)
+      : 'free';
+    return `
+      <div class="provider-card">
+        <div class="provider-head">
+          <span class="provider-name">${esc(p.name)}</span>
+          <span class="provider-cost">${costStr}</span>
+          <span class="headroom-badge ${esc(p.headroom_status)}">${esc(p.headroom_status)}</span>
+        </div>
+        <div style="font-size:11px;color:var(--ops-muted);margin-bottom:8px;">${esc(p.plan)} · ${esc(p.notes || '')}</div>
+        ${p.usage && p.usage.percentage != null ? renderUsageBar(p.usage.metric, p.usage.current, p.usage.limit, p.usage.percentage) : (p.usage?.note ? `<div class="unavailable">${esc(p.usage.note)}</div>` : '')}
       </div>
-      <div style="font-size:11px;color:var(--ops-muted);margin-bottom:8px;">${esc(p.plan)} · ${esc(p.notes || '')}</div>
-      ${p.usage && p.usage.percentage != null ? renderUsageBar(p.usage.metric, p.usage.current, p.usage.limit, p.usage.percentage) : (p.usage?.note ? `<div class="unavailable">${esc(p.usage.note)}</div>` : '')}
-    </div>
-  `).join('');
+    `;
+  }).join('');
 
+  // Breakdown table: native currency + AUD-equivalent column for USD lines.
+  const audEq = data.monthly_total?.aud_equivalent ?? 0;
   $('cBreakdown').innerHTML = `
     <div class="cost-table">
       <table>
-        <thead><tr><th>Provider</th><th>Plan</th><th>Monthly</th><th>Currency</th></tr></thead>
+        <thead><tr><th>Provider</th><th>Plan</th><th>Monthly</th><th>AUD equiv.</th></tr></thead>
         <tbody>
-          ${providers.map(p => `<tr><td>${esc(p.name)}</td><td>${esc(p.plan)}</td><td>$${p.monthly_cost.toFixed(2)}</td><td>${esc(p.currency)}</td></tr>`).join('')}
-          <tr class="total-row"><td colspan="2">Total</td><td>$${(data.monthly_total?.usd || 0).toFixed(2)} USD + $${(data.monthly_total?.aud || 0).toFixed(2)} AUD</td><td>—</td></tr>
+          ${providers.map(p => `<tr>
+            <td>${esc(p.name)}</td>
+            <td>${esc(p.plan)}</td>
+            <td>${p.currency} $${p.monthly_cost.toFixed(2)}</td>
+            <td>A$${(p.currency === 'AUD' ? p.monthly_cost : (p.monthly_cost_aud_equivalent ?? p.monthly_cost * (data.fx_rate || 1.5))).toFixed(2)}</td>
+          </tr>`).join('')}
+          <tr class="total-row">
+            <td colspan="2">Total</td>
+            <td>$${(data.monthly_total?.usd || 0).toFixed(2)} USD + $${(data.monthly_total?.aud || 0).toFixed(2)} AUD</td>
+            <td>A$${audEq.toFixed(2)}</td>
+          </tr>
         </tbody>
       </table>
     </div>

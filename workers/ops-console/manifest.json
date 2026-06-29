@@ -1,0 +1,19 @@
+{
+  "name": "Rafter ops",
+  "short_name": "Rafter ops",
+  "description": "Platform operator console for the Rafter quoting platform.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0A1610",
+  "theme_color": "#0F1F15",
+  "icons": [
+    {
+      "src": "/icon.png",
+      "sizes": "any",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
